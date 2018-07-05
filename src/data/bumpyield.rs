@@ -2,7 +2,7 @@ use std::rc::Rc;
 use data::curves::RateCurve;
 use data::curves::AnnualisedFlatBump;
 use data::curves::ContinuouslyCompoundedFlatBump;
-use data::bump::Bump;
+use data::bump::Bumper;
 
 /// Bump that defines all the supported bumps and risk transformations of a
 /// rate curve such as a borrow curve or a yield curve.
@@ -21,7 +21,7 @@ impl BumpYield {
     }
 }
 
-impl Bump<Rc<RateCurve>> for BumpYield {
+impl Bumper<Rc<RateCurve>> for BumpYield {
 
     fn apply(&self, surface: Rc<RateCurve>) -> Rc<RateCurve> {
         match self {

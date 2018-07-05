@@ -1,6 +1,5 @@
 use core::qm;
 use std::rc::Rc;
-use dates::Date;
 use instruments::Instrument;
 use instruments::PricingContext;
 use instruments::DependencyContext;
@@ -12,11 +11,8 @@ use risk::TimeBumpable;
 use risk::Saveable;
 use pricers::PricerFactory;
 use data::fixings::FixingTable;
-use data::bumpspot::BumpSpot;
+use data::bump::Bump;
 use data::bumptime::BumpTime;
-use data::bumpvol::BumpVol;
-use data::bumpdivs::BumpDivs;
-use data::bumpyield::BumpYield;
 use risk::marketdata::MarketData;
 
 /// The SelfPricer calculator uses the Priceable interface of an
@@ -94,37 +90,10 @@ impl Pricer for SelfPricer {
     }
 }
 
-/// There is a lot of discussion on the Rust language forum of ways to avoid
-/// this braindead boilerplate.
 impl Bumpable for SelfPricer {
-    fn bump_spot(&mut self, id: &str, bump: &BumpSpot,
-        save: &mut Saveable) -> Result<bool, qm::Error> {
-        self.context.bump_spot(id, bump, save)
-    }
-
-    fn bump_yield(&mut self, credit_id: &str, bump: &BumpYield,
-        save: &mut Saveable) -> Result<bool, qm::Error> {
-        self.context.bump_yield(credit_id, bump, save)
-    }
-
-    fn bump_borrow(&mut self, id: &str, bump: &BumpYield,
-        save: &mut Saveable) -> Result<bool, qm::Error> {
-        self.context.bump_borrow(id, bump, save)
-    }
-
-    fn bump_divs(&mut self, id: &str, bump: &BumpDivs,
-        save: &mut Saveable) -> Result<bool, qm::Error> {
-        self.context.bump_divs(id, bump, save)
-    }
-
-    fn bump_vol(&mut self, id: &str, bump: &BumpVol,
-        save: &mut Saveable) -> Result<bool, qm::Error> {
-        self.context.bump_vol(id, bump, save)
-    }
-
-    fn bump_discount_date(&mut self, replacement: Date, save: &mut Saveable)
+    fn bump(&mut self, bump: &Bump, save: &mut Saveable)
         -> Result<bool, qm::Error> {
-        self.context.bump_discount_date(replacement, save)
+        self.context.bump(bump, save)
     }
 
     fn forward_id_by_credit_id(&self, credit_id: &str)
@@ -151,9 +120,14 @@ impl TimeBumpable for SelfPricer {
 mod tests {
     use super::*;
     use std::rc::Rc;
+    use dates::Date;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
     use math::numerics::approx_eq;
+    use data::bumpspot::BumpSpot;
+    use data::bumpdivs::BumpDivs;
+    use data::bumpvol::BumpVol;
+    use data::bumpyield::BumpYield;
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
 
@@ -180,9 +154,8 @@ mod tests {
 
         // now bump the spot and price. Note that this equates to roughly
         // delta of 0.5, which is what we expect for an atm option
-        let bump = BumpSpot::new_relative(0.01);
-        let bumped = pricer.as_mut_bumpable().bump_spot(
-            "BP.L", &bump, &mut *save).unwrap();
+        let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
+        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price, 17.343905306334765, 1e-12);
@@ -195,9 +168,8 @@ mod tests {
 
         // now bump the vol and price. The new price is a bit larger, as
         // expected. (An atm option has roughly max vega.)
-        let bump = BumpVol::new_flat_additive(0.01);
-        let bumped = pricer.as_mut_bumpable().bump_vol(
-            "BP.L", &bump, &mut *save).unwrap();
+        let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
+        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price, 17.13982242072566, 1e-12);
@@ -210,9 +182,8 @@ mod tests {
 
         // now bump the divs and price. As expected, this makes the
         // price decrease by a small amount.
-        let bump = BumpDivs::new_all_relative(0.01);
-        let bumped = pricer.as_mut_bumpable().bump_divs(
-            "BP.L", &bump, &mut *save).unwrap();
+        let bump = Bump::new_divs("BP.L", BumpDivs::new_all_relative(0.01));
+        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price, 16.691032323609356, 1e-12);
@@ -225,9 +196,8 @@ mod tests {
 
         // now bump the yield underlying the equity and price. This
         // increases the forward, so we expect the call price to increase.
-        let bump = BumpYield::new_flat_annualised(0.01);
-        let bumped = pricer.as_mut_bumpable().bump_yield(
-            "LSE", &bump, &mut *save).unwrap();
+        let bump = Bump::new_yield("LSE", BumpYield::new_flat_annualised(0.01));
+        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price, 17.525364353942656, 1e-12);
@@ -239,9 +209,8 @@ mod tests {
         assert_approx(price, unbumped_price, 1e-12);
 
         // now bump the yield underlying the option and price
-        let bump = BumpYield::new_flat_annualised(0.01);
-        let bumped = pricer.as_mut_bumpable().bump_yield(
-            "OPT", &bump, &mut *save).unwrap();
+        let bump = Bump::new_yield("OPT", BumpYield::new_flat_annualised(0.01));
+        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price, 16.495466805921325, 1e-12);

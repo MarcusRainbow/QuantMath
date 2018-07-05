@@ -22,15 +22,11 @@ use instruments::RcInstrument;
 use risk::BumpablePricingContext;
 use risk::Bumpable;
 use risk::Saveable;
-use data::bumpspot::BumpSpot;
-use data::bumpyield::BumpYield;
-use data::bumpdivs::BumpDivs;
-use data::bumpvol::BumpVol;
+use data::bump::Bump;
 use models::MonteCarloModel;
 use models::MonteCarloTimeline;
 use models::MonteCarloModelFactory;
 use dates::datetime::DateDayFraction;
-use dates::Date;
 
 /// The BlackDiffusionFactory is able to create a BlackDiffusion model, given
 /// the timeline of the product(s) to value, and the market data to value it
@@ -505,63 +501,32 @@ impl MonteCarloContext for BlackDiffusion {
     }
 }
 
-// TODO: Strong sense of deja vu comparing this code with risk::cache or any
-// other model. Want some way of common coding all this.
 impl Bumpable for BlackDiffusion {
 
-    fn bump_spot(&mut self, id: &str, bump: &BumpSpot, any_saved: &mut Saveable)
+    fn bump(&mut self, bump: &Bump, any_saved: &mut Saveable)
         -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.as_mut_bumpable().bump_spot(id, bump, 
-            &mut *saved.saved_data)?;
-        self.refetch(id, bumped, saved)
-    }
 
-    fn bump_yield(&mut self, credit_id: &str, bump: &BumpYield,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
+        // bump the underlying market data (and prefetched content if any)
         let saved = to_saved(any_saved)?;
-        let bumped = self.context.as_mut_bumpable().bump_yield(credit_id, bump,
+        let bumped = self.context.as_mut_bumpable().bump(bump, 
             &mut *saved.saved_data)?;
 
-        // we have to copy these ids to avoid a tangle with borrowing
-        let v = self.forward_id_by_credit_id(credit_id)?.to_vec();
-        for id in v.iter() {
-            self.refetch(&id, bumped, saved)?;
+        // refetch any paths that may have changed
+        match bump {
+            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, saved),
+            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, saved),
+            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, saved),
+            &Bump::Vol(ref id, _) => self.refetch(&id, bumped, saved),
+            &Bump::Yield(ref credit_id, _) => {
+                // we have to copy these ids to avoid a tangle with borrowing
+                let v = self.forward_id_by_credit_id(&credit_id)?.to_vec();
+                for id in v.iter() {
+                    self.refetch(&id, bumped, saved)?;
+                }
+                Ok(bumped)
+            },
+            &Bump::DiscountDate(_) => Ok(bumped) // does not affect paths
         }
-
-        Ok(bumped)
-    }
-
-    fn bump_borrow(&mut self, id: &str, bump: &BumpYield,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.as_mut_bumpable().bump_borrow(id, bump, 
-            &mut *saved.saved_data)?;
-        self.refetch(id, bumped, saved)
-    }
-
-    fn bump_divs(&mut self, id: &str, bump: &BumpDivs,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.as_mut_bumpable().bump_divs(id, bump, 
-            &mut *saved.saved_data)?;
-        self.refetch(id, bumped, saved)
-    }
-
-    fn bump_vol(&mut self, id: &str, bump: &BumpVol,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.as_mut_bumpable().bump_vol(id, bump,
-            &mut *saved.saved_data)?;
-        self.refetch(id, bumped, saved)
-    }
-
-    fn bump_discount_date(&mut self, replacement: Date,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        self.context.as_mut_bumpable().bump_discount_date(replacement,
-            &mut *saved.saved_data)
-        // the data stored here does not depend on the discount date
     }
 
     fn new_saveable(&self) -> Box<Saveable> {
@@ -632,5 +597,3 @@ impl Saveable for SavedBlackDiffusion {
         self.paths.clear();
     }
 }
-
-
