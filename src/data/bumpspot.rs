@@ -1,4 +1,4 @@
-use data::bump::Bump;
+use data::bump::Bumper;
 
 /// Bump that defines all the supported bumps to a spot value
 pub enum BumpSpot {
@@ -16,7 +16,7 @@ impl BumpSpot {
     }
 }
 
-impl Bump<f64> for BumpSpot {
+impl Bumper<f64> for BumpSpot {
 
     fn apply(&self, old_spot: f64) -> f64 {
         match self {

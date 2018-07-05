@@ -4,10 +4,7 @@ use std::any::Any;
 use data::volsurface::VolSurface;
 use data::forward::Forward;
 use data::curves::RateCurve;
-use data::bumpspot::BumpSpot;
-use data::bumpyield::BumpYield;
-use data::bumpdivs::BumpDivs;
-use data::bumpvol::BumpVol;
+use data::bump::Bump;
 use dates::Date;
 use instruments::Instrument;
 use instruments::PricingContext;
@@ -231,54 +228,29 @@ fn find_cached_data<T: Clone>(id: &str, collection: &HashMap<String, T>,
 
 impl Bumpable for PricingContextPrefetch {
 
-    fn bump_spot(&mut self, id: &str, bump: &BumpSpot, any_saved: &mut Saveable)
+    fn bump(&mut self, bump: &Bump, any_saved: &mut Saveable)
         -> Result<bool, qm::Error> {
+
+        // delegate to the underlying market data to do the actual bumping
         let saved = to_saved(any_saved)?;
-        let bumped = self.context.bump_spot(id, bump, &mut saved.saved_data)?;
-        self.refetch(id, bumped, false, saved)
-    }
+        let bumped = self.context.bump(bump, &mut saved.saved_data)?;
 
-    fn bump_yield(&mut self, credit_id: &str, bump: &BumpYield,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.bump_yield(credit_id, bump,
-            &mut saved.saved_data)?;
-
-        // we have to copy these ids to avoid a tangle with borrowing
-        let v = self.dependencies.forward_id_by_credit_id(credit_id).to_vec();
-        for id in v.iter() { 
-            self.refetch(&id, bumped, false, saved)?;
-        }
-
-        Ok(bumped)
-    }
-
-    fn bump_borrow(&mut self, id: &str, bump: &BumpYield,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.bump_borrow(id, bump, &mut saved.saved_data)?;
-        self.refetch(id, bumped, false, saved)
-    }
-
-    fn bump_divs(&mut self, id: &str, bump: &BumpDivs,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.bump_divs(id, bump, &mut saved.saved_data)?;
-        self.refetch(id, bumped, false, saved)
-    }
-
-    fn bump_vol(&mut self, id: &str, bump: &BumpVol,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        let bumped = self.context.bump_vol(id, bump, &mut saved.saved_data)?;
-        self.refetch(id, false, bumped, saved)
-    }
-
-    fn bump_discount_date(&mut self, replacement: Date,
-        any_saved: &mut Saveable) -> Result<bool, qm::Error> {
-        let saved = to_saved(any_saved)?;
-        self.context.bump_discount_date(replacement, &mut saved.saved_data)
-        // the data stored here does not depend on the discount date
+        // we may need to refetch some of the prefetched data
+        match bump {
+            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, false, saved),
+            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, false, saved),
+            &Bump::Vol(ref id, _) => self.refetch(&id, false, bumped, saved),
+            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, false, saved),
+            &Bump::Yield(ref credit_id, _) => {
+                // we have to copy these ids to avoid a tangle with borrowing
+                let v = self.dependencies
+                    .forward_id_by_credit_id(&credit_id).to_vec();
+                for id in v.iter() {
+                    self.refetch(&id, bumped, false, saved)?;
+                }
+                Ok(bumped) },
+            &Bump::DiscountDate(_) => Ok(bumped) // nothing to refetch
+        } 
     }
 
     fn forward_id_by_credit_id(&self, credit_id: &str)
@@ -369,6 +341,10 @@ mod tests {
     use math::numerics::approx_eq;
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
+    use data::bumpspot::BumpSpot;
+    use data::bumpdivs::BumpDivs;
+    use data::bumpvol::BumpVol;
+    use data::bumpyield::BumpYield;
 
     fn create_dependencies(instrument: &Rc<Instrument>, spot_date: Date)
         -> Rc<DependencyCollector> {
@@ -395,10 +371,11 @@ mod tests {
             dependencies).unwrap();
         let mut save = SavedPrefetch::new();
 
+
         // now bump the spot and price. Note that this equates to roughly
         // delta of 0.5, which is what we expect for an atm option
-        let bump = BumpSpot::new_relative(0.01);
-        let bumped = mut_data.bump_spot("BP.L", &bump, &mut save).unwrap();
+        let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
+        let bumped = mut_data.bump(&bump, &mut save).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.343905306334765, 1e-12);
@@ -411,8 +388,8 @@ mod tests {
 
         // now bump the vol and price. The new price is a bit larger, as
         // expected. (An atm option has roughly max vega.)
-        let bump = BumpVol::new_flat_additive(0.01);
-        let bumped = mut_data.bump_vol("BP.L", &bump, &mut save).unwrap();
+        let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
+        let bumped = mut_data.bump(&bump, &mut save).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.13982242072566, 1e-12);
@@ -425,8 +402,8 @@ mod tests {
 
         // now bump the divs and price. As expected, this makes the
         // price decrease by a small amount.
-        let bump = BumpDivs::new_all_relative(0.01);
-        let bumped = mut_data.bump_divs("BP.L", &bump, &mut save).unwrap();
+        let bump = Bump::new_divs("BP.L", BumpDivs::new_all_relative(0.01));
+        let bumped = mut_data.bump(&bump, &mut save).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 16.691032323609356, 1e-12);
@@ -439,8 +416,8 @@ mod tests {
 
         // now bump the yield underlying the equity and price. This
         // increases the forward, so we expect the call price to increase.
-        let bump = BumpYield::new_flat_annualised(0.01);
-        let bumped = mut_data.bump_yield("LSE", &bump, &mut save).unwrap();
+        let bump = Bump::new_yield("LSE", BumpYield::new_flat_annualised(0.01));
+        let bumped = mut_data.bump(&bump, &mut save).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.525364353942656, 1e-12);
@@ -452,8 +429,8 @@ mod tests {
         assert_approx(price, unbumped_price, 1e-12);
 
         // now bump the yield underlying the option and price
-        let bump = BumpYield::new_flat_annualised(0.01);
-        let bumped = mut_data.bump_yield("OPT", &bump, &mut save).unwrap();
+        let bump = Bump::new_yield("OPT", BumpYield::new_flat_annualised(0.01));
+        let bumped = mut_data.bump(&bump, &mut save).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 16.495466805921325, 1e-12);

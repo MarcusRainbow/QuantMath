@@ -2,7 +2,7 @@ use std::rc::Rc;
 use data::volsurface::VolSurface;
 use data::voldecorators::TimeScaledBumpVol;
 use data::voldecorators::ParallelBumpVol;
-use data::bump::Bump;
+use data::bump::Bumper;
 
 /// Bump that defines all the supported bumps and risk transformations of a
 /// vol surface.
@@ -21,7 +21,7 @@ impl BumpVol {
     }
 }
 
-impl Bump<Rc<VolSurface>> for BumpVol {
+impl Bumper<Rc<VolSurface>> for BumpVol {
 
     fn apply(&self, surface: Rc<VolSurface>) -> Rc<VolSurface> {
         match self {

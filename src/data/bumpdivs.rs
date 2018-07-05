@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use data::divstream::DividendStream;
-use data::bump::Bump;
+use data::bump::Bumper;
 
 /// Bump that defines all the supported bumps and risk transformations of a
 /// vol surface.
@@ -14,7 +14,7 @@ impl BumpDivs {
     }
 }
 
-impl Bump<Rc<DividendStream>> for BumpDivs {
+impl Bumper<Rc<DividendStream>> for BumpDivs {
 
     fn apply(&self, divs: Rc<DividendStream>) -> Rc<DividendStream> {
         match self {

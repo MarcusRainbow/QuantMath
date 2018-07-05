@@ -3,13 +3,9 @@ pub mod dependencies;
 pub mod cache;
 
 use core::qm;
-use data::bumpvol::BumpVol;
-use data::bumpdivs::BumpDivs;
-use data::bumpyield::BumpYield;
-use data::bumpspot::BumpSpot;
+use data::bump::Bump;
 use data::bumptime::BumpTime;
 use instruments::PricingContext;
-use dates::Date;
 use std::any::Any;
 
 /// Interface that defines all bumps of simple underlying market data. This
@@ -19,47 +15,18 @@ use std::any::Any;
 /// so it can be restored later.
 pub trait Bumpable {
 
-    /// Bumps a spot value. Returns true if the spot was actually bumped. The
-    /// bump specifies things like the bump size and whether the bump is
-    /// relative or absolute, or a replacement. The id is that of the
-    /// instrument being bumped.
-    fn bump_spot(&mut self, id: &str, bump: &BumpSpot,
-        save: &mut Saveable) -> Result<bool, qm::Error>;
-
-    /// Bumps a yield curve. Returns true if it was bumped. Note that this may
-    /// take the yields negative. Models ought to cope with negative yields.
-    /// The bump specifies the form of the bump, which may be a flat bump,
-    /// or a term structure, or a complex bump representing delta to a
-    /// calibration instrument, for example.
-    fn bump_yield(&mut self, credit_id: &str, bump: &BumpYield,
-        save: &mut Saveable) -> Result<bool, qm::Error>;
-
-    /// Bumps a borrow curve. Returns true if it was bumped. The bump
-    /// may specify a flat bump, or a term structure.
-    fn bump_borrow(&mut self, id: &str, bump: &BumpYield,
-        save: &mut Saveable) -> Result<bool, qm::Error>;
-
-    /// Bumps dividends and returns true if any were bumped. The bump
-    /// may specify bumps to all dividends or to dividend yields, or to
-    /// specific dividends etc.
-    fn bump_divs(&mut self, id: &str, bump: &BumpDivs,
-        save: &mut Saveable) -> Result<bool, qm::Error>;
-
-    /// Bumps a vol surface and returns true if it was bumped. Normally
-    /// negative bumps are quietly floored so that the resulting vol never
-    /// goes negative.
-    fn bump_vol(&mut self, id: &str, bump: &BumpVol,
-        save: &mut Saveable) -> Result<bool, qm::Error>;
-
-    /// Bumps the discount date. This is the only sort of time bump that can
-    /// be performed on the pricing context alone. A bump to the spot date
-    /// generally also involves a change to the instrument.
-    fn bump_discount_date(&mut self, replacement: Date, save: &mut Saveable)
+    /// Applies a bump to market data or to anything derived from market data,
+    /// such as a model or a pricer.
+    fn bump(&mut self, bump: &Bump, save: &mut Saveable)
         -> Result<bool, qm::Error>;
 
     /// Optionally allows access to the mapping from credit id to zero or
     /// more forward ids. This is essential for handling dependencies. If this
     /// information is not available, it returns an error. 
+    ///
+    /// TODO this method does not feel as if it belongs in this interface. It is
+    /// used for implementing some instantiations of the interface, but never
+    /// invoked externally.
     fn forward_id_by_credit_id(&self, credit_id: &str)
         -> Result<&[String], qm::Error>;
  
