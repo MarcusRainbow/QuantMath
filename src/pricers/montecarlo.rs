@@ -12,7 +12,7 @@ use risk::Saveable;
 use pricers::PricerFactory;
 use data::fixings::FixingTable;
 use data::bump::Bump;
-use data::bumptime::BumpTime;
+use risk::bumptime::BumpTime;
 use risk::marketdata::MarketData;
 use models::MonteCarloModel;
 use models::MonteCarloModelFactory;
@@ -121,9 +121,12 @@ impl Bumpable for MonteCarloPricer {
         self.model.bump(bump, save)
     }
 
-    fn forward_id_by_credit_id(&self, credit_id: &str)
-        -> Result<&[String], qm::Error> {
-        self.model.forward_id_by_credit_id(credit_id)
+    fn dependencies(&self) -> Result<&DependencyCollector, qm::Error> {
+        self.model.dependencies()
+    }
+
+    fn context(&self) -> &PricingContext {
+        self.model.as_bumpable().context()
     }
 
     fn new_saveable(&self) -> Box<Saveable> {
@@ -136,8 +139,8 @@ impl Bumpable for MonteCarloPricer {
 }
 
 impl TimeBumpable for MonteCarloPricer {
-    fn bump_time(&mut self, _bump: &BumpTime) -> Result<(), qm::Error> {
-        Err(qm::Error::new("Time bumps not yet supported"))
+    fn bump_time(&mut self, bump: &BumpTime) -> Result<(), qm::Error> {
+        bump.apply(&mut self.instruments, self.model.as_mut_bumpable())
     }
 }
 
@@ -153,13 +156,14 @@ mod tests {
     use data::bumpdivs::BumpDivs;
     use data::bumpvol::BumpVol;
     use data::bumpyield::BumpYield;
+    use data::bumpspotdate::SpotDynamics;
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
     use models::blackdiffusion::BlackDiffusionFactory;
 
     fn sample_fixings() -> FixingTable {
         let today = Date::from_ymd(2017, 01, 02);
-        FixingTable::new(today, &[
+        FixingTable::from_fixings(today, &[
             ("BP.L", &[
             (DateTime::new(today - 7, TimeOfDay::Close), 102.0)])]).unwrap()
     }
@@ -256,6 +260,71 @@ mod tests {
         save.clear();
         let price = pricer.price().unwrap();
         assert_approx(price, unbumped_price, 1e-12);
+    }
+
+    #[test]
+    fn monte_carlo_price_forward_european_time_bumped() {
+
+        let market_data: Rc<MarketData> = Rc::new(sample_market_data());
+        let instrument: Rc<Instrument> = sample_european();
+        let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
+
+        let n_paths = 100000;
+        let correlation_substep = 20;
+        let path_substep = 0.01;
+        let model_factory = Box::new(BlackDiffusionFactory::new(
+            correlation_substep, path_substep, n_paths));
+        let factory = MonteCarloPricerFactory::new(model_factory);
+        let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
+
+        let unbumped_price = pricer.price().unwrap();
+        assert_approx(unbumped_price, 16.710717400832973, 0.3);
+
+        // delta bump
+        let mut save = pricer.as_bumpable().new_saveable();
+        let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
+        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        assert!(bumped);
+        let bumped_price = pricer.price().unwrap();
+        assert_approx(bumped_price - unbumped_price, 0.6385136829719436, 0.01);
+        pricer.as_mut_bumpable().restore(&*save).unwrap();
+        save.clear();
+
+        // bump past the strike date. Should result in a small negative theta.
+        let spot_date = Date::from_ymd(2017, 01, 02);
+        let dynamics = SpotDynamics::StickyForward;
+        let time_bump = BumpTime::new(spot_date + 1, spot_date, dynamics);
+        pricer.as_mut_time_bumpable().bump_time(&time_bump).unwrap();
+        let bumped_price = pricer.price().unwrap();
+        assert_approx(bumped_price - unbumped_price, -0.014358367372203418, 0.001);
+
+        // again test the delta -- should now be much larger
+        // TODO what is going on with the delta here?
+        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        assert!(bumped);
+        let delta_bumped_price = pricer.price().unwrap();
+        assert_approx(delta_bumped_price - bumped_price, 0.6400378851826503, 0.01);
+        pricer.as_mut_bumpable().restore(&*save).unwrap();
+        save.clear();
+
+        // advance up to just before the expiry date (should now be close to intrinsic)
+        let expiry_date = Date::from_ymd(2018, 06, 01);
+        let time_bump = BumpTime::new(expiry_date - 1, spot_date, dynamics);
+        pricer.as_mut_time_bumpable().bump_time(&time_bump).unwrap();
+        let bumped_price = pricer.price().unwrap();
+        assert_approx(bumped_price, 7.22725500883927, 0.1);
+
+        // advance to the expiry date
+        let time_bump = BumpTime::new(expiry_date, spot_date, dynamics);
+        pricer.as_mut_time_bumpable().bump_time(&time_bump).unwrap();
+        let bumped_price = pricer.price().unwrap();
+        assert_approx(bumped_price, 7.217204429675299, 0.1);
+
+        // advance past the expiry date
+        let time_bump = BumpTime::new(expiry_date, spot_date, dynamics);
+        pricer.as_mut_time_bumpable().bump_time(&time_bump).unwrap();
+        let bumped_price = pricer.price().unwrap();
+        assert_approx(bumped_price, 7.218294099633042, 0.1);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

@@ -22,6 +22,7 @@ use instruments::RcInstrument;
 use risk::BumpablePricingContext;
 use risk::Bumpable;
 use risk::Saveable;
+use risk::dependencies::DependencyCollector;
 use data::bump::Bump;
 use models::MonteCarloModel;
 use models::MonteCarloTimeline;
@@ -168,7 +169,7 @@ impl BlackDiffusion {
 
         let paths = fetch_paths(&observations, &correlated_gaussians,
             context.as_pricing_context(), &instruments, 
-            correlation_substep, &substepping, n_paths)?;
+            &substepping, n_paths)?;
 
         // create the model with these paths and gaussians
         Ok(BlackDiffusion { 
@@ -208,6 +209,19 @@ impl BlackDiffusion {
         }        
 
         Ok(true)
+    }
+
+    /// Refetch all paths for all assets. Note that this does not refetch the
+    /// correlated gaussians, so does not work for a correlation bump. It also
+    /// assumes the form of the instrument(s) being priced is unchanged.
+    pub fn refetch_all(&mut self) -> Result<(), qm::Error> {
+
+        let n_paths = self.paths.shape()[0];
+
+        self.paths = fetch_paths(&self.observations, &self.correlated_gaussians,
+            self.context.as_pricing_context(), &self.instruments,
+            &self.substepping, n_paths)?;
+        Ok(())
     }
 }
 
@@ -347,7 +361,6 @@ pub fn fetch_paths(
     correlated_gaussians: &Array3<f64>,
     context: &PricingContext,
     instruments: &Vec<RcInstrument>,
-    _correlation_substep: usize,
     substepping: &[usize],
     n_paths: usize) -> Result<Array3<f64>, qm::Error> {
 
@@ -499,6 +512,10 @@ impl MonteCarloContext for BlackDiffusion {
         }
         Ok(total)
     }
+
+    fn pricing_context(&self) -> &PricingContext {
+        &*self.context.as_pricing_context()
+    }
 }
 
 impl Bumpable for BlackDiffusion {
@@ -519,13 +536,26 @@ impl Bumpable for BlackDiffusion {
             &Bump::Vol(ref id, _) => self.refetch(&id, bumped, saved),
             &Bump::Yield(ref credit_id, _) => {
                 // we have to copy these ids to avoid a tangle with borrowing
-                let v = self.forward_id_by_credit_id(&credit_id)?.to_vec();
+                let v = self.dependencies()?
+                    .forward_id_by_credit_id(&credit_id).to_vec();
                 for id in v.iter() {
                     self.refetch(&id, bumped, saved)?;
                 }
                 Ok(bumped)
             },
-            &Bump::DiscountDate(_) => Ok(bumped) // does not affect paths
+            &Bump::DiscountDate(_) => Ok(bumped), // does not affect paths
+            &Bump::SpotDate(_) => {
+                if bumped {
+                    // Theta bumping in Monte-Carlo is a difficult compromise. We want to
+                    // use the same paths as the unbumped case, to improve convergence.
+                    // However, this means we ignore subtle changes to correlations in the
+                    // first step, and more seriously we ignore changes to the form of the
+                    // instruments. For example, fixings may have been passed. We need to
+                    // spot this case and handle it.
+                    self.refetch_all()?;
+                }
+                Ok(bumped)
+            }
         }
     }
 
@@ -534,9 +564,12 @@ impl Bumpable for BlackDiffusion {
             self.context.as_bumpable().new_saveable()))
     }
 
-    fn forward_id_by_credit_id(&self, credit_id: &str) 
-        -> Result<&[String], qm::Error> {
-        self.context.as_bumpable().forward_id_by_credit_id(credit_id)
+    fn dependencies(&self) -> Result<&DependencyCollector, qm::Error> {
+        self.context.dependencies()
+    }
+
+    fn context(&self) -> &PricingContext {
+        self.context.as_pricing_context()
     }
 
     fn restore(&mut self, any_saved: &Saveable) -> Result<(), qm::Error> {

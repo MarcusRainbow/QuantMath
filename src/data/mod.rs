@@ -1,7 +1,7 @@
 pub mod bump;
 pub mod bumpdivs;
 pub mod bumpspot;
-pub mod bumptime;
+pub mod bumpspotdate;
 pub mod bumpvol;
 pub mod bumpyield;
 pub mod curves;

@@ -1,5 +1,7 @@
+use std::collections::hash_map::Iter;
 use instruments::DependencyContext;
 use dates::Date;
+use dates::datetime::DateTime;
 use instruments::Instrument;
 use instruments::RcInstrument;
 use instruments::SpotRequirement;
@@ -16,7 +18,9 @@ pub struct DependencyCollector {
     vol_surfaces: HashMap<RcInstrument, Date>,
     instruments: HashMap<String, Rc<Instrument>>,
     forward_id_from_credit_id: HashMap<String, Vec<String>>,
-    empty: Vec<String>
+    fixings: HashMap<String, Vec<DateTime>>,
+    empty: Vec<String>,
+    empty_fixings: Vec<DateTime>
 }
 
 impl DependencyCollector {
@@ -29,7 +33,9 @@ impl DependencyCollector {
             vol_surfaces: HashMap::new(),
             instruments: HashMap::new(),
             forward_id_from_credit_id: HashMap::new(),
-            empty: Vec::<String>::new()
+            fixings: HashMap::new(),
+            empty: Vec::<String>::new(),
+            empty_fixings: Vec::<DateTime>::new()
         }
     }
 
@@ -71,6 +77,18 @@ impl DependencyCollector {
         } else {
             &self.empty
         }       
+    }
+
+    pub fn instruments_iter(&self) -> Iter<String, Rc<Instrument>> {
+        self.instruments.iter()
+    }
+
+    pub fn fixings(&self, id: &str) -> &[DateTime] {
+        if let Some(fixings) = self.fixings.get(&id.to_string()) {
+            &fixings
+        } else {
+            &self.empty_fixings
+        }
     }
 
     fn add_instrument(&mut self, instrument: &Rc<Instrument>) {
@@ -141,6 +159,12 @@ impl DependencyContext for DependencyCollector {
         set_hwm(instrument, high_water_mark, &mut self.vol_surfaces);
         self.add_instrument(instrument);
     }
+
+    fn fixing(&mut self, id: &str, date: DateTime) {
+        self.fixings.entry(id.to_string()).or_insert(Vec::new())
+            .push(date)
+    }
+
 }
 
 pub fn set_hwm_by_str(id: &str, high_water_mark: Date,
