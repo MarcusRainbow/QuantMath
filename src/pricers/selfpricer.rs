@@ -9,10 +9,11 @@ use risk::dependencies::DependencyCollector;
 use risk::Bumpable;
 use risk::TimeBumpable;
 use risk::Saveable;
+use risk::BumpablePricingContext;
 use pricers::PricerFactory;
 use data::fixings::FixingTable;
 use data::bump::Bump;
-use data::bumptime::BumpTime;
+use risk::bumptime::BumpTime;
 use risk::marketdata::MarketData;
 
 /// The SelfPricer calculator uses the Priceable interface of an
@@ -96,9 +97,12 @@ impl Bumpable for SelfPricer {
         self.context.bump(bump, save)
     }
 
-    fn forward_id_by_credit_id(&self, credit_id: &str)
-        -> Result<&[String], qm::Error> {
-        self.context.forward_id_by_credit_id(credit_id)
+    fn dependencies(&self) -> Result<&DependencyCollector, qm::Error> {
+        self.context.dependencies()
+    }
+
+    fn context(&self) -> &PricingContext {
+        self.context.as_pricing_context()
     }
 
     fn new_saveable(&self) -> Box<Saveable> {
@@ -111,9 +115,9 @@ impl Bumpable for SelfPricer {
 }
 
 impl TimeBumpable for SelfPricer {
-    fn bump_time(&mut self, _bump: &BumpTime) -> Result<(), qm::Error> {
-        Err(qm::Error::new("Time bumps not yet supported"))
-    }
+    fn bump_time(&mut self, bump: &BumpTime) -> Result<(), qm::Error> {
+         bump.apply(&mut self.instruments, &mut self.context)
+   }
 }
 
 #[cfg(test)]
@@ -133,7 +137,7 @@ mod tests {
 
     fn sample_fixings() -> FixingTable {
         let today = Date::from_ymd(2017, 01, 02);
-        FixingTable::new(today, &[
+        FixingTable::from_fixings(today, &[
             ("BP.L", &[
             (DateTime::new(today - 7, TimeOfDay::Close), 102.0)])]).unwrap()
     }
@@ -221,6 +225,23 @@ mod tests {
         let price = pricer.price().unwrap();
         assert_approx(price, unbumped_price, 1e-12);
     }
+
+/*
+    #[test]
+    fn self_price_european_time_bumps() {
+
+        let market_data: Rc<MarketData> = Rc::new(sample_market_data());
+        let instrument: Rc<Instrument> = sample_european();
+        let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
+
+        let factory = SelfPricerFactory::new();
+        let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
+        let mut save = pricer.as_bumpable().new_saveable();
+
+        let unbumped_price = pricer.price().unwrap();
+        assert_approx(unbumped_price, 16.710717400832973, 1e-12);
+    }
+*/
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {
         assert!(approx_eq(value, expected, tolerance),

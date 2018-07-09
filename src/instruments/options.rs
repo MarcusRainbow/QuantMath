@@ -582,7 +582,7 @@ mod tests {
 
     fn sample_fixings() -> FixingTable {
         let today = Date::from_ymd(2018, 06, 01);
-        FixingTable::new(today, &[
+        FixingTable::from_fixings(today, &[
             ("BP.L", &[
             (DateTime::new(today, TimeOfDay::Close), 100.0),
             (DateTime::new(today - 7, TimeOfDay::Close), 102.0)])]).unwrap()

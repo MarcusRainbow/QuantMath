@@ -13,23 +13,44 @@ impl FixingTable {
 
     /// Creates a fixing table, given a date to which fixings are known and an
     /// array of fixing curve data keyed by instrument id.
-    pub fn new(fixings_known_until: Date,
+    pub fn from_fixings(fixings_known_until: Date,
         fixings: &[(&str, &[(DateTime, f64)])]) 
         -> Result<FixingTable, qm::Error> {
 
-        let mut fixings_by_id = HashMap::new();
+        let mut fixing_table = FixingTable::new(fixings_known_until);
         for fixing in fixings.iter() {
             let fixing_curve = Fixings::new(fixing.0, fixing.1)?;
-            if let Some(_) = fixings_by_id.insert(
-                fixing.0.to_string(), fixing_curve) {
-            
-                return Err(duplicate_fixing_curve(fixing.0))
-            }
+            fixing_table.insert(fixing.0, fixing_curve)?;
         }
+        Ok(fixing_table)
+    }
 
-        Ok(FixingTable {
-            fixings_known_until: fixings_known_until,
-            fixings_by_id: fixings_by_id })
+    /// TODO this is the same code as the above constructor. Needs templating
+    pub fn from_map(fixings_known_until: Date,
+        fixings: &HashMap<String, Vec<(DateTime, f64)>>) 
+        -> Result<FixingTable, qm::Error> {
+
+        let mut fixing_table = FixingTable::new(fixings_known_until);
+        for fixing in fixings.iter() {
+            let fixing_curve = Fixings::new(fixing.0, fixing.1)?;
+            fixing_table.insert(fixing.0, fixing_curve)?;
+        }
+        Ok(fixing_table)
+    }
+
+    /// Creates an empty fixing table, given a date to which fixings are known.
+    pub fn new(fixings_known_until: Date) -> FixingTable {
+        FixingTable { fixings_known_until: fixings_known_until,
+            fixings_by_id: HashMap::new() }
+    }
+
+    /// Adds a fixings curve
+    pub fn insert(&mut self, id: &str, fixings: Fixings) 
+        -> Result<(), qm::Error> {
+        if let Some(_) = self.fixings_by_id.insert(id.to_string(), fixings) {
+            return Err(duplicate_fixing_curve(id))
+        }
+        Ok(())
     }
 
     /// Tries to get a fixing for the given instrument and date. Returns None
@@ -133,7 +154,7 @@ mod tests {
     fn sample_fixings() -> FixingTable {
 
         let today = Date::from_ymd(2018, 01, 01);
-        FixingTable::new(today, &[
+        FixingTable::from_fixings(today, &[
             ("BT.L", &[
             (DateTime::new(today, TimeOfDay::Open), 123.4),
             (DateTime::new(today - 7, TimeOfDay::Close), 123.3),

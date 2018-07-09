@@ -115,6 +115,27 @@ pub trait Instrument {
     }
 }
 
+/// Utility method to fix all instruments in a vector, returning them as a weighted vector.
+/// Currently we do not attempt to net instruments of the same type, though we could do so.
+/// If there are no changes to any instruments, we return a copy of the original vector.
+pub fn fix_all(instruments: &Vec<(f64, Rc<Instrument>)>, fixing_table: &FixingTable)
+    -> Result<Vec<(f64, Rc<Instrument>)>, qm::Error> {
+
+    let mut result = Vec::<(f64, Rc<Instrument>)>::new();
+    for &(weight, ref instrument) in instruments.iter() {
+        if let Some(decomposition) = instrument.fix(&fixing_table)? {
+            for &(weight2, ref instrument) in decomposition.iter() {
+                result.push((weight * weight2, instrument.clone()));
+            }
+        } else {
+            // this instrument is unchanged, just copy it over
+            result.push((weight, instrument.clone()));
+        }
+    }
+
+    Ok(result)
+}
+
 /// When making hash maps or sets of instruments, we only key by the id, which
 /// should be unique across all instrument types.
 #[derive(Clone)]
@@ -191,6 +212,10 @@ pub trait DependencyContext {
     /// vols.
     fn vol_surface(&mut self, instrument: &Rc<Instrument>,
         high_water_mark: Date);
+
+    /// Specify a dependency on a specific fixing, by underlier id and
+    /// date-time
+    fn fixing(&mut self, id: &str, date: DateTime);
 }
 
 /// The external dependencies of an instrument. For example, valuation may
@@ -407,4 +432,8 @@ pub trait MonteCarloContext {
     /// order as they were passed to the flow method in MonteCarloDependencies.
     fn evaluate_flows(&self, quantities: ArrayView2<f64>) 
         -> Result<f64, qm::Error>;
+
+    /// Access to the underlying pricing context. Note that this is unaffected by
+    /// the filtration within any path.
+    fn pricing_context(&self) -> &PricingContext;
 }

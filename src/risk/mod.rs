@@ -1,11 +1,13 @@
 pub mod marketdata;
 pub mod dependencies;
 pub mod cache;
+pub mod bumptime;
 
 use core::qm;
 use data::bump::Bump;
-use data::bumptime::BumpTime;
+use risk::bumptime::BumpTime;
 use instruments::PricingContext;
+use risk::dependencies::DependencyCollector;
 use std::any::Any;
 
 /// Interface that defines all bumps of simple underlying market data. This
@@ -20,15 +22,12 @@ pub trait Bumpable {
     fn bump(&mut self, bump: &Bump, save: &mut Saveable)
         -> Result<bool, qm::Error>;
 
-    /// Optionally allows access to the mapping from credit id to zero or
-    /// more forward ids. This is essential for handling dependencies. If this
-    /// information is not available, it returns an error. 
-    ///
-    /// TODO this method does not feel as if it belongs in this interface. It is
-    /// used for implementing some instantiations of the interface, but never
-    /// invoked externally.
-    fn forward_id_by_credit_id(&self, credit_id: &str)
-        -> Result<&[String], qm::Error>;
+    /// Optionally allows access to the dependencies that drive the bumpability.
+    fn dependencies(&self) -> Result<&DependencyCollector, qm::Error>;
+
+    /// Allows access to the pricing context that is to be bumped. This is useful
+    /// for bumps that adjust their size according to the forward etc.
+    fn context(&self) -> &PricingContext;
  
     /// Creates a save area to use with this bump
     fn new_saveable(&self) -> Box<Saveable>;
@@ -76,4 +75,3 @@ pub trait Saveable : Any {
     /// Clears the saved state, so a restore operation is a no-op
     fn clear(&mut self);
 }
-

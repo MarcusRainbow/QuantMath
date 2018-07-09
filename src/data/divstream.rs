@@ -167,10 +167,6 @@ impl DividendBootstrap {
                 high_water_mark: high_water_mark })
         }
 
-        if div_stream.dividends[0].ex_date <= base_date {
-            return Err(qm::Error::new("Dividends on or before the base date"))
-        }
-
         if !div_stream.div_yield.is_zero()
             && div_stream.dividends[n-1].ex_date() 
             > div_stream.div_yield.base_date() {
@@ -192,7 +188,10 @@ impl DividendBootstrap {
 
         for dividend in div_stream.dividends.iter() {
             let ex_date = dividend.ex_date;
-            if ex_date < prev_ex_date {
+            if ex_date < base_date {
+                // quietly ignore dividends before the base date
+                continue;
+            } else if ex_date < prev_ex_date {
                 return Err(qm::Error::new("Dividends not in ex date order"))
             } else if ex_date > bootstrap_to {
                 // ignore dividends we are never going to use

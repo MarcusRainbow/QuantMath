@@ -13,12 +13,15 @@ use data::bumpspot::BumpSpot;
 use data::bumpdivs::BumpDivs;
 use data::bumpyield::BumpYield;
 use data::bumpvol::BumpVol;
+use data::bumpspotdate::BumpSpotDate;
+use data::bumpspotdate::SpotDynamics;
 use data::bump::Bumper;
 use instruments::Instrument;
 use instruments::PricingContext;
 use risk::Bumpable;
 use risk::Saveable;
 use risk::BumpablePricingContext;
+use risk::dependencies::DependencyCollector;
 
 /// The market data struct contains all the market data supplied for a
 /// valuation. It has methods for building the analytics needed for valuation
@@ -86,6 +89,56 @@ impl MarketData {
             dividends: dividends,
             vol_surfaces: vol_surfaces }
     }
+
+    /// Bumps the spot date, for example during a Theta calculation
+    pub fn bump_spot_date(&mut self, bump: &BumpSpotDate, dependencies: &DependencyCollector)
+        -> Result<(), qm::Error> {
+
+        let new_spot_date = bump.spot_date();
+  
+        match bump.spot_dynamics() {
+            SpotDynamics::StickyForward => self.sticky_forward_bump(new_spot_date, dependencies)?,
+            SpotDynamics::StickySpot => self.sticky_spot_bump(new_spot_date, dependencies)?
+        }
+
+        self.spot_date = new_spot_date;
+        Ok(())
+    }
+
+    fn sticky_forward_bump(&mut self, new_spot_date: Date, dependencies: &DependencyCollector)
+        -> Result<(), qm::Error> {
+        
+        // We cannot modify the spots map in situ because it is also being used for the
+        // forward curve calculations (borrow rules in Rust). Rather than introduce unsafe
+        // code, we just do it by creating a new HashMap and then assigning it.
+        let mut new_spots = HashMap::<String, f64>::new();
+
+        for (id, spot) in self.spots.iter() {
+            if let Some(instrument) = dependencies.instrument_by_id(id) {
+                let instr: &Instrument = &*instrument.clone();
+                let curve = self.forward_curve(instr, new_spot_date)?;
+                let new_spot = curve.forward(new_spot_date)?;
+                new_spots.insert(id.to_string(), new_spot);
+            } else {
+                // If we cannot find the instrument, the most likely reason
+                // is that the user has supplied market data for it but the
+                // instruments either do not require it or only require spot.
+                // For now, just assume spot dynamics
+                new_spots.insert(id.to_string(), *spot);
+            }
+        }
+
+        self.spots = new_spots;
+
+        Ok(())
+    }
+
+    fn sticky_spot_bump(&mut self, _new_spot_date: Date, _dependencies: &DependencyCollector)
+        -> Result<(), qm::Error> {
+        // for now, do nothing. Need to think about what to do about dividends
+        Ok(())
+    }
+
 }
 
 impl PricingContext for MarketData {
@@ -188,19 +241,23 @@ impl Bumpable for MarketData {
                 saved.discount_date = self.discount_date;
                 self.discount_date = Some(replacement);
                 saved.replaced_discount_date = true;
-                Ok(saved.discount_date != self.discount_date)
-            }
+                Ok(saved.discount_date != self.discount_date) },
+            &Bump::SpotDate(_) => Err(qm::Error::new("MarketData does not have \
+                enough information to handle spot date bumping on its own. It needs \
+                to be handled by a containing PricingContextPrefetch."))
         }
     }
 
-    fn forward_id_by_credit_id(&self, _credit_id: &str) 
-        -> Result<&[String], qm::Error> {
-        Err(qm::Error::new("Forward id from credit id mapping not available \
-            you need to use PrefetchedPricingContext"))
+    fn dependencies(&self) -> Result<&DependencyCollector, qm::Error> {
+        Err(qm::Error::new("Dependency information not available"))
     }
 
     fn new_saveable(&self) -> Box<Saveable> {
         Box::new(SavedData::new())
+    }
+
+    fn context(&self) -> &PricingContext {
+        self.as_pricing_context()
     }
 
     fn restore(&mut self, any_saved: &Saveable) -> Result<(), qm::Error> {
@@ -320,6 +377,7 @@ pub mod tests {
     use dates::rules::BusinessDays;
     use instruments::assets::Equity;
     use instruments::options::SpotStartingEuropean;
+    use instruments::options::ForwardStartingEuropean;
     use instruments::options::PutOrCall;
     use instruments::options::OptionSettlement;
     use instruments::Priceable;
@@ -362,9 +420,26 @@ pub mod tests {
         let currency = Rc::new(sample_currency(2));
         let settlement = sample_settlement(2);
         let equity = Rc::new(sample_equity(currency, 2));
-        let european = SpotStartingEuropean::new("SampleEquity", "OPT",
+        let european = SpotStartingEuropean::new("SampleSpotEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike, put_or_call, OptionSettlement::Cash).unwrap();
+        Rc::new(european)
+    }
+
+    pub fn sample_forward_european() -> Rc<ForwardStartingEuropean> {
+
+        let strike_fraction = 0.95;
+        let strike_date = DateTime::new(
+            Date::from_ymd(2017, 01, 02), TimeOfDay::Close);
+        let put_or_call = PutOrCall::Call;
+        let expiry = DateTime::new(
+            Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
+        let currency = Rc::new(sample_currency(2));
+        let settlement = sample_settlement(2);
+        let equity = Rc::new(sample_equity(currency, 2));
+        let european = ForwardStartingEuropean::new("SampleForwardEuropean", "OPT",
+            equity.clone(), settlement, expiry,
+            strike_fraction, strike_date, put_or_call, OptionSettlement::Cash).unwrap();
         Rc::new(european)
     }
 
@@ -524,6 +599,50 @@ pub mod tests {
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 16.495466805921325, 1e-12);
+      
+        // when we restore, it should take the price back
+        mut_data.restore(&save).unwrap();
+        save.clear();
+        let price = european.price(&mut_data).unwrap();
+        assert_approx(price, unbumped_price, 1e-12);
+    }
+    
+    #[test]
+    fn forward_european_tests() {
+
+        let market_data = sample_market_data();
+        let european = sample_forward_european();
+        let unbumped_price = european.price(&market_data).unwrap();
+
+        // this price looks plausible, but was found simply by running the test
+        assert_approx(unbumped_price, 19.05900177073914, 1e-12);
+
+        // clone the market data so we can modify it and also create an
+        // empty saved data to save state so we can restore it
+        let mut mut_data = market_data.clone();
+        let mut save = SavedData::new();
+          
+        // now bump the spot and price. Note that this equates to quite small delta
+        // which is what we expect for a forward-starting option
+        let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
+        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        assert!(bumped);
+        let bumped_price = european.price(&mut_data).unwrap();
+        assert_approx(bumped_price, 19.264143625005342, 1e-12);
+      
+        // when we restore, it should take the price back
+        mut_data.restore(&save).unwrap();
+        save.clear();
+        let price = european.price(&mut_data).unwrap();
+        assert_approx(price, unbumped_price, 1e-12);
+                
+        // now bump the vol and price. The new price is a bit larger, as
+        // expected. (An atm option has roughly max vega.)
+        let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
+        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        assert!(bumped);
+        let bumped_price = european.price(&mut_data).unwrap();
+        assert_approx(bumped_price, 19.462049109434094, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();

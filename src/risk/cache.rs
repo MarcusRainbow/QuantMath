@@ -231,9 +231,15 @@ impl Bumpable for PricingContextPrefetch {
     fn bump(&mut self, bump: &Bump, any_saved: &mut Saveable)
         -> Result<bool, qm::Error> {
 
-        // delegate to the underlying market data to do the actual bumping
+        // Delegate to the underlying market data to do the actual bumping
+        // except for SpotDate, which raises an error. For SpotDate, just
+        // set the bumped flag according to whether anything needs to be done.
         let saved = to_saved(any_saved)?;
-        let bumped = self.context.bump(bump, &mut saved.saved_data)?;
+        let bumped = if let &Bump::SpotDate(ref bump) = bump {
+            bump.spot_date() != self.spot_date()
+        } else {
+            self.context.bump(bump, &mut saved.saved_data)?
+        };
 
         // we may need to refetch some of the prefetched data
         match bump {
@@ -249,15 +255,24 @@ impl Bumpable for PricingContextPrefetch {
                     self.refetch(&id, bumped, false, saved)?;
                 }
                 Ok(bumped) },
-            &Bump::DiscountDate(_) => Ok(bumped) // nothing to refetch
+            &Bump::DiscountDate(_) => Ok(bumped), // nothing to refetch
+            &Bump::SpotDate(ref bump) => {
+                if bumped {
+                    self.context.bump_spot_date(bump, &self.dependencies)?; 
+                    self.refetch_all()?;
+                } 
+                Ok(bumped) }
         } 
     }
 
-    fn forward_id_by_credit_id(&self, credit_id: &str)
-        -> Result<&[String], qm::Error> {
-        Ok(self.dependencies.forward_id_by_credit_id(credit_id))
+    fn dependencies(&self) -> Result<&DependencyCollector, qm::Error> {
+        Ok(&*self.dependencies)
     }
 
+    fn context(&self) -> &PricingContext {
+        self.as_pricing_context()
+    }
+ 
     fn new_saveable(&self) -> Box<Saveable> {
         Box::new(SavedPrefetch::new())
     }
