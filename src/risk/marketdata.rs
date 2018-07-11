@@ -284,6 +284,7 @@ impl BumpablePricingContext for MarketData {
     fn as_bumpable(&self) -> &Bumpable { self }
     fn as_mut_bumpable(&mut self) -> &mut Bumpable { self }
     fn as_pricing_context(&self) -> &PricingContext { self }
+    fn raw_market_data(&self) -> &MarketData { self }
 }
 
 fn to_saved_data(save: &mut Saveable) -> Result<&mut SavedData, qm::Error> {

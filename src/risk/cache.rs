@@ -300,6 +300,7 @@ impl BumpablePricingContext for PricingContextPrefetch {
     fn as_bumpable(&self) -> &Bumpable { self }
     fn as_mut_bumpable(&mut self) -> &mut Bumpable { self }
     fn as_pricing_context(&self) -> &PricingContext { self }
+    fn raw_market_data(&self) -> &MarketData { &self.context }
 }
 
 fn to_saved(any_saved: &mut Saveable) 

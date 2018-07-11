@@ -6,6 +6,7 @@ pub mod bumptime;
 use core::qm;
 use data::bump::Bump;
 use risk::bumptime::BumpTime;
+use risk::marketdata::MarketData;
 use instruments::PricingContext;
 use risk::dependencies::DependencyCollector;
 use std::any::Any;
@@ -40,6 +41,7 @@ pub trait BumpablePricingContext: Bumpable + PricingContext {
     fn as_bumpable(&self) -> &Bumpable;
     fn as_mut_bumpable(&mut self) -> &mut Bumpable;
     fn as_pricing_context(&self) -> &PricingContext;
+    fn raw_market_data(&self) -> &MarketData;
 }
 
 /// Time bumping is done to calculate theta or time-forward greeks, such as

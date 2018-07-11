@@ -184,6 +184,12 @@ impl Instrument for VanillaOption {
 
     fn dependencies(&self, context: &mut DependencyContext)
         -> SpotRequirement {
+
+        // just one fixing, at expiry
+        context.fixing(self.underlying.id(), self.expiry);
+
+        // this is the yield curve used for discounting the option. The yield
+        // curve for projecting the forward is defined indirectly via forward_curve.
         context.yield_curve(self.credit_id(), self.pay_date);
 
         // this forward dependency needs to be revisited. The underlying may
@@ -265,9 +271,17 @@ impl Instrument for ForwardStartingEuropean {
     fn payoff_currency(&self) -> &Currency { self.vanilla.payoff_currency() }
     fn credit_id(&self) -> &str { self.vanilla.credit_id() }
     fn settlement(&self) -> &Rc<DateRule> { self.vanilla.settlement() }
-    fn dependencies(&self, context: &mut DependencyContext)
-        -> SpotRequirement { self.vanilla.dependencies(context) }
     fn as_priceable(&self) -> Option<&Priceable> { Some(self) }
+    fn as_mc_priceable(&self) -> Option<&MonteCarloPriceable> { Some(self) }
+
+    fn dependencies(&self, context: &mut DependencyContext)
+        -> SpotRequirement {
+
+        // make sure we record the strike fixing before the expiry fixing
+        context.fixing(self.vanilla.underlying.id(), self.strike_date);
+         
+        self.vanilla.dependencies(context) 
+    }
 
     // We cannot delegate fix to the contained vanilla, because it needs
     // to know the strike_fraction and strike date
@@ -345,8 +359,8 @@ impl Priceable for SpotStartingEuropean {
         };
 
         // for helpful debug trace, uncomment the below
-        //println!("df={} F={} K={} sqrt_var={} displacement={} price={}", df,
-        //    f, k, sqrt_var, displacement, price);
+        println!("spot-starting european: df={} F={} K={} sqrt_var={} displacement={} price={}", 
+            df, f, k, sqrt_var, displacement, price);
 
         Ok(price)
     }
@@ -412,7 +426,8 @@ impl Priceable for ForwardStartingEuropean {
         };
 
         // for helpful debug trace, uncomment the below
-        // println!("df={} F={} K={} sqrt_var={} price={}", df, f, k,
+        println!("forward-starting european: df={} F={} K={} sqrt_var={} displacement={} price={}", 
+            df, f, k, sqrt_var, displacement, price);
 
         Ok(price)
     }
@@ -473,6 +488,73 @@ impl MonteCarloPriceable for SpotStartingEuropean {
         {
             let ref mut flow_column = quantities.subview_mut(Axis(1), 0);
             for (spot, flow) in path_column.iter().zip(flow_column.iter_mut()) {
+                let intrinsic = (sign * (spot - strike)).max(0.0);
+                *flow = intrinsic;
+            }
+        }
+
+        // sum and discount the flows
+        context.evaluate_flows(quantities.view())
+    }
+}
+
+impl MonteCarloPriceable for ForwardStartingEuropean {
+    fn as_instrument(&self) -> &Instrument { self }
+
+    fn mc_dependencies(&self, _dates: &[DateDayFraction],
+        output: &mut MonteCarloDependencies) -> Result<(), qm::Error> {
+
+        // two observations, at strike and expiry
+        output.observation(&self.vanilla.underlying, self.strike_time);
+        output.observation(&self.vanilla.underlying, self.vanilla.expiry_time);
+
+        // TODO this feels inefficient and ugly
+        let currency = Rc::new(self.payoff_currency().clone());
+
+        // For the purposes of Monte-Carlo valuation we treat all vanillas as
+        // if they paid cash at the pay date. (Physically settled vanillas pay
+        // stock as well, but that does not affect the price before expiry.)
+        let payment : Rc<Instrument> = Rc::new(
+            ZeroCoupon::new(&format!("{}:Expiry", self.vanilla.id),
+            &self.vanilla.credit_id, currency, self.vanilla.pay_date,
+            self.vanilla.settlement.clone()));
+        output.flow(&payment);
+
+        Ok(())
+    }
+
+    fn start_date(&self) -> Option<DateDayFraction> {
+        Some(self.strike_time)
+    }
+
+    fn mc_price(&self, context: &MonteCarloContext)
+        -> Result<f64, qm::Error> {
+
+        // This is asserting what the context should know from our response
+        // to the mc_dependencies call. No need for proper error handling.
+        let ref paths = context.paths(&self.vanilla.underlying)?;
+        let shape = paths.shape();
+        assert_eq!(shape.len(), 2);
+        let n_paths = shape[0];
+        let n_obs = shape[1];
+        assert_eq!(n_obs, 2);
+  
+        // Create an array to hold the cashflows (one per path). Note that
+        // there is no need to distinguish cash and physically settled options,
+        // as they value the same in the future.
+        let mut quantities = Array2::zeros((n_paths, 1));
+
+        let strike_fraction = self.strike_fraction;
+        let sign = match self.vanilla.put_or_call {
+            PutOrCall::Call => 1.0,
+            PutOrCall::Put => -1.0 };
+
+        // Calculate the quantity of each flow for each path
+        {
+            let ref mut flow_column = quantities.subview_mut(Axis(1), 0);
+            for (path, flow) in paths.axis_iter(Axis(0)).zip(flow_column.iter_mut()) {
+                let strike = strike_fraction * path[0];
+                let spot = path[1];
                 let intrinsic = (sign * (spot - strike)).max(0.0);
                 *flow = intrinsic;
             }
