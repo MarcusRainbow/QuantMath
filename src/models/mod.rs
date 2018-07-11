@@ -9,6 +9,7 @@ use instruments::MonteCarloDependencies;
 use instruments::MonteCarloContext;
 use risk::Bumpable;
 use risk::BumpablePricingContext;
+use risk::marketdata::MarketData;
 use dates::Date;
 use dates::datetime::DateDayFraction;
 
@@ -33,6 +34,8 @@ pub trait MonteCarloModel : MonteCarloContext + Bumpable {
     /// Converts this model to a Bumpable that can be used for risk bumping
     fn as_bumpable(&self) -> &Bumpable;
     fn as_mut_bumpable(&mut self) -> &mut Bumpable;
+
+    fn raw_market_data(&self) -> &MarketData;
 }
 
 /// Timeline, which collects the information about an instrument that a model

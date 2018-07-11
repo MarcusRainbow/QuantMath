@@ -27,23 +27,35 @@ impl BumpTime {
             _ex_from: ex_from }
     }
 
+    /// Applies the bump to the list of instruments. If the list of instruments has not
+    /// changed, it also applies the bump to the model. If the list of instruments has
+    /// changed, the model will need to be completely rebuilt. In that case, the method
+    /// returns true.
     pub fn apply(&self, instruments: &mut Vec<(f64, Rc<Instrument>)>,
-        bumpable: &mut Bumpable) -> Result<(), qm::Error> {
+        bumpable: &mut Bumpable) -> Result<bool, qm::Error> {
 
         // Modify the vector of instruments, if any fixings between the old and new spot dates
-        // affect any of them.
-        self.update_instruments(instruments, bumpable.context(), bumpable.dependencies()?)?;
+        // affect any of them. If any are updated, hold onto the updated list of dependencies.
+        let modified = self.update_instruments(
+            instruments, bumpable.context(), bumpable.dependencies()?)?;
         
         // Now apply a bump to the model, to shift the spot date. We create a saveable area
-        // just to simplify the code. It is not used to actually save anything.
-        let mut saveable = bumpable.new_saveable();
-        let bump = Bump::new_spot_date(self.spot_date_bump.clone());
-        bumpable.bump(&bump, &mut *saveable)?;
-        Ok(())
+        // just to simplify the code. It is not used to actually save anything. If the
+        // instrument list has been modified, things are more serious. We do nothing, and leave
+        // it to the caller to rebuild things from scratch.
+        if !modified {
+            let mut saveable = bumpable.new_saveable();
+            let bump = Bump::new_spot_date(self.spot_date_bump.clone());
+            bumpable.bump(&bump, &mut *saveable)?;
+        }
+        Ok(modified)
     }
 
+    /// Creates a fixing table representing any fixings between the old and new spot dates, and
+    /// applies it to the instruments, modifying the vector if necessary. If any have changed,
+    /// returns true.
     pub fn update_instruments(&self, instruments: &mut Vec<(f64, Rc<Instrument>)>,
-        context: &PricingContext, dependencies: &DependencyCollector) -> Result<(), qm::Error> {
+        context: &PricingContext, dependencies: &DependencyCollector) -> Result<bool, qm::Error> {
 
         // are there any fixings between the old and new spot dates?
         let old_spot_date = context.spot_date();
@@ -76,13 +88,14 @@ impl BumpTime {
         }
 
         // Apply the fixings to each of the instruments, and build up a new vector of them
-        if !fixing_map.is_empty() {
+        let any_changes = !fixing_map.is_empty();
+        if any_changes {
             let fixing_table = FixingTable::from_map(new_spot_date, &fixing_map)?;
             let mut replacement = fix_all(instruments, &fixing_table)?;
             instruments.clear();
             instruments.append(&mut replacement);
         }
 
-        Ok(())
+        Ok(any_changes)
     }
 }

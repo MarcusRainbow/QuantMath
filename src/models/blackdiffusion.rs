@@ -22,6 +22,7 @@ use instruments::RcInstrument;
 use risk::BumpablePricingContext;
 use risk::Bumpable;
 use risk::Saveable;
+use risk::marketdata::MarketData;
 use risk::dependencies::DependencyCollector;
 use data::bump::Bump;
 use models::MonteCarloModel;
@@ -461,6 +462,7 @@ impl MonteCarloModel for BlackDiffusion {
     fn as_mc_context(&self) -> &MonteCarloContext { self }
     fn as_bumpable(&self) -> &Bumpable { self }
     fn as_mut_bumpable(&mut self) -> &mut Bumpable { self }
+    fn raw_market_data(&self) -> &MarketData { self.context.raw_market_data() }
 }
 
 impl MonteCarloContext for BlackDiffusion {
