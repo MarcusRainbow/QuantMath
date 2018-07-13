@@ -46,7 +46,7 @@ impl VolSurface for ConstantExpiryTimeEvolution {
         Ok((vol_time - self.vol_time_offset).max(0.0))
     }
 
-    fn calendar(&self) -> &Calendar {
+    fn calendar(&self) -> &Rc<Calendar> {
         self.base_vol.calendar()
     }
 
@@ -110,7 +110,7 @@ impl VolSurface for RollingExpiryTimeEvolution {
         Ok(vol_time.max(0.0))
     }
 
-    fn calendar(&self) -> &Calendar {
+    fn calendar(&self) -> &Rc<Calendar> {
         self.base_vol.calendar()
     }
 
@@ -163,7 +163,7 @@ impl VolSurface for ParallelBumpVol {
         Ok(vol_time)
     }
 
-    fn calendar(&self) -> &Calendar {
+    fn calendar(&self) -> &Rc<Calendar> {
         self.base_vol.calendar()
     }
 
@@ -222,7 +222,7 @@ impl VolSurface for TimeScaledBumpVol {
         Ok(vol_time)
     }
 
-    fn calendar(&self) -> &Calendar {
+    fn calendar(&self) -> &Rc<Calendar> {
         self.base_vol.calendar()
     }
 
@@ -292,7 +292,7 @@ impl VolSurface for StickyDeltaBumpVol {
         }
     }
 
-    fn calendar(&self) -> &Calendar {
+    fn calendar(&self) -> &Rc<Calendar> {
         self.base_vol.calendar()
     }
 
@@ -338,7 +338,7 @@ mod tests {
     fn sample_vol_surface(base: DateDayFraction)
         -> Rc<VolByProbability<CubicSplineSmile>> {
 
-        let calendar = Box::new(WeekdayCalendar());
+        let calendar = Rc::new(WeekdayCalendar());
         let d = base.date();
 
         let points = [(d, 90.0), (d+30, 90.1), (d+60, 90.2), (d+90, 90.1),

@@ -35,7 +35,7 @@ pub trait VolSurface {
         volatilities: &mut[f64]) -> Result<(f64), qm::Error>;
 
     /// Access to the calendar that defines vol times
-    fn calendar(&self) -> &Calendar;
+    fn calendar(&self) -> &Rc<Calendar>;
 
     /// Access to the base date of this vol surface. (Normally a vol surface
     /// is decorated to bring the base date in line with the spot date, so
@@ -352,7 +352,7 @@ impl VolForwardDynamics {
 /// Flat volatility surface. Volatility is independent of date and strike.
 pub struct FlatVolSurface {
     vol: f64,
-    calendar: Box<Calendar>,
+    calendar: Rc<Calendar>,
     base_date: DateDayFraction
 }
 
@@ -372,8 +372,8 @@ impl VolSurface for FlatVolSurface {
         Ok(self.calendar.year_fraction(self.base_date, date_time))
     }
 
-    fn calendar(&self) -> &Calendar {
-        &*self.calendar
+    fn calendar(&self) -> &Rc<Calendar> {
+        &self.calendar
     }
 
     fn forward(&self) -> Option<&Forward> {
@@ -402,7 +402,7 @@ impl FlatVolSurface {
     /// variance. The variance is calculated as of the base date. If you need
     /// to time evolve the surface, this must be done by cloning and modifying
     /// the surface, or with a decorator.
-    pub fn new(vol: f64, calendar: Box<Calendar>, base_date: DateDayFraction)
+    pub fn new(vol: f64, calendar: Rc<Calendar>, base_date: DateDayFraction)
         -> FlatVolSurface {
 
         FlatVolSurface {
@@ -429,7 +429,7 @@ impl FlatVolSurface {
 
 pub struct VolByProbability<T> where T: VolSmile + Clone {
     smiles: Vec<(DateDayFraction, T)>,
-    calendar: Box<Calendar>,
+    calendar: Rc<Calendar>,
     base_date: DateDayFraction,
     forward: Box<Forward>,
     pillar_forwards: Vec<f64>,
@@ -467,8 +467,8 @@ impl<T: VolSmile + Clone> VolSurface for VolByProbability<T> {
         }
     }
 
-    fn calendar(&self) -> &Calendar {
-        &*self.calendar
+    fn calendar(&self) -> &Rc<Calendar> {
+        &self.calendar
     }
 
     fn forward(&self) -> Option<&Forward> {
@@ -506,7 +506,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
     /// between pillar dates, along lines of normalised moneyness, which
     /// is roughly the same thing as probability.
     pub fn new(smiles: &[(DateDayFraction, T)],
-        calendar: Box<Calendar>,
+        calendar: Rc<Calendar>,
         base_date: DateDayFraction,
         forward: Box<Forward>,
         div_assumptions: DivAssumptions) 
@@ -542,7 +542,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
             
             pillar_forwards.push(f);
             pillar_sqrt_variances.push(variance.sqrt());
-	    pillar_vol_times.push(time);
+	        pillar_vol_times.push(time);
 
             prev_variance = variance;
             prev_date = smile.0;
@@ -703,7 +703,7 @@ mod tests {
 
     #[test]
     fn flat_vol_surface() {
-        let calendar = Box::new(WeekdayCalendar());
+        let calendar = Rc::new(WeekdayCalendar());
         let base_date = Date::from_ymd(2012, 05, 25);
         let base = DateDayFraction::new(base_date, 0.2);
         let expiry = DateDayFraction::new(base_date + 10, 0.9);
@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn vol_by_probability_surface() {
-        let calendar = Box::new(WeekdayCalendar());
+        let calendar = Rc::new(WeekdayCalendar());
         let base_date = Date::from_ymd(2012, 05, 25);
         let base = DateDayFraction::new(base_date, 0.2);
 

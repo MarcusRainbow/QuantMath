@@ -491,7 +491,7 @@ pub mod tests {
     }
 
     pub fn create_sample_flat_vol() -> Rc<VolSurface> {
-        let calendar = Box::new(WeekdayCalendar());
+        let calendar = Rc::new(WeekdayCalendar());
         let base_date = Date::from_ymd(2016, 12, 30);
         let base = DateDayFraction::new(base_date, 0.2);
         Rc::new(FlatVolSurface::new(0.3, calendar, base))
