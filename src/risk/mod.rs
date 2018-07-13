@@ -3,6 +3,7 @@ pub mod dependencies;
 pub mod cache;
 pub mod bumptime;
 pub mod deltagamma;
+pub mod vegavolga;
 
 use core::qm;
 use data::bump::Bump;
