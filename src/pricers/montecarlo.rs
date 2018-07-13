@@ -128,7 +128,7 @@ impl Pricer for MonteCarloPricer {
 }
 
 impl Bumpable for MonteCarloPricer {
-    fn bump(&mut self, bump: &Bump, save: &mut Saveable)
+    fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>)
         -> Result<bool, qm::Error> {
         self.model.bump(bump, save)
     }
@@ -213,7 +213,7 @@ mod tests {
         // now bump the spot and price. Note that this equates to roughly
         // delta of 0.5, which is what we expect for an atm option
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
-        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price - unbumped_price, 0.633187905501792, 0.01);
@@ -227,7 +227,7 @@ mod tests {
         // now bump the vol and price. The new price is a bit larger, as
         // expected. (An atm option has roughly max vega.)
         let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
-        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price - unbumped_price, 0.429105019892687, 0.02);
@@ -241,7 +241,7 @@ mod tests {
         // now bump the divs and price. As expected, this makes the
         // price decrease by a small amount.
         let bump = Bump::new_divs("BP.L", BumpDivs::new_all_relative(0.01));
-        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price - unbumped_price, -0.01968507722361, 0.001);
@@ -255,7 +255,7 @@ mod tests {
         // now bump the yield underlying the equity and price. This
         // increases the forward, so we expect the call price to increase.
         let bump = Bump::new_yield("LSE", BumpYield::new_flat_annualised(0.01));
-        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price - unbumped_price, 0.814646953109683, 0.01);
@@ -268,7 +268,7 @@ mod tests {
 
         // now bump the yield underlying the option and price
         let bump = Bump::new_yield("OPT", BumpYield::new_flat_annualised(0.01));
-        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price - unbumped_price, -0.215250594911648, 0.01);
@@ -307,7 +307,7 @@ mod tests {
         // the skew.
         let mut save = pricer.as_bumpable().new_saveable();
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
-        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price - unbumped_price, 0.20514185426620202, 0.01);
@@ -324,7 +324,7 @@ mod tests {
         assert_approx(bumped_price - unbumped_price, 0.013084492446001406, 0.3);
 
         // again test the delta -- should now be much larger
-        let bumped = pricer.as_mut_bumpable().bump(&bump, &mut *save).unwrap();
+        let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let delta_bumped_price = pricer.price().unwrap();
         assert_approx(delta_bumped_price - bumped_price, 0.6824796398724473, 0.01);

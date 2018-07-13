@@ -186,7 +186,7 @@ impl BlackDiffusion {
 
     /// Refetch a single asset
     pub fn refetch(&mut self, id: &str, bumped: bool,
-        saved: &mut SavedBlackDiffusion) -> Result<bool, qm::Error> {
+        saved_paths: Option<&mut HashMap<usize, Array2<f64>>>) -> Result<bool, qm::Error> {
 
         // if nothing was bumped, there is nothing to do
         if !bumped {
@@ -198,7 +198,9 @@ impl BlackDiffusion {
 
             // save the old path then replace it
             let path = self.paths.subview_mut(Axis(2), *asset);
-            saved.paths.insert(*asset, path.to_owned());
+            if let Some(s) = saved_paths {
+                s.insert(*asset, path.to_owned());
+            }
             fetch_path(self.instruments[*asset].instrument(), 
                 self.context.as_pricing_context(), &self.observations,
                 self.correlated_gaussians.subview(Axis(2), *asset),
@@ -522,26 +524,44 @@ impl MonteCarloContext for BlackDiffusion {
 
 impl Bumpable for BlackDiffusion {
 
-    fn bump(&mut self, bump: &Bump, any_saved: &mut Saveable)
+    fn bump(&mut self, bump: &Bump, any_saved: Option<&mut Saveable>)
         -> Result<bool, qm::Error> {
 
-        // bump the underlying market data (and prefetched content if any)
+        // we have to unpack the option<saveable> into options on all its
+        // components all at the same time, to avoid problems with borrowing.
         let saved = to_saved(any_saved)?;
-        let bumped = self.context.as_mut_bumpable().bump(bump, 
-            &mut *saved.saved_data)?;
+        let (saved_data, saved_paths) 
+            : (Option<&mut Saveable>, Option<&mut HashMap<usize, Array2<f64>>>)
+            = if let Some(s) = saved {
+            (Some(&mut *s.saved_data), Some(&mut s.paths))
+        } else {
+            (None, None)
+        };
+
+        // bump the underlying market data (and prefetched content if any)
+        let bumped = self.context.as_mut_bumpable().bump(bump, saved_data)?;
 
         // refetch any paths that may have changed
         match bump {
-            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, saved),
-            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, saved),
-            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, saved),
-            &Bump::Vol(ref id, _) => self.refetch(&id, bumped, saved),
+            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, saved_paths),
+            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, saved_paths),
+            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, saved_paths),
+            &Bump::Vol(ref id, _) => self.refetch(&id, bumped, saved_paths),
             &Bump::Yield(ref credit_id, _) => {
                 // we have to copy these ids to avoid a tangle with borrowing
                 let v = self.dependencies()?
                     .forward_id_by_credit_id(&credit_id).to_vec();
-                for id in v.iter() {
-                    self.refetch(&id, bumped, saved)?;
+
+                // we also have to unpack then repack saved_paths to clarify borrowing
+                // (is this something the Rust compiler could be cleverer about?)
+                if let Some(s) = saved_paths {
+                    for id in v.iter() {
+                        self.refetch(&id, bumped, Some(s))?;
+                    }
+                } else {
+                    for id in v.iter() {
+                        self.refetch(&id, bumped, None)?;
+                    }
                 }
                 Ok(bumped)
             },
@@ -595,14 +615,17 @@ impl Bumpable for BlackDiffusion {
     }
 }
 
-fn to_saved(saveable: &mut Saveable) 
-    -> Result<&mut SavedBlackDiffusion, qm::Error> {
+fn to_saved(opt_saveable: Option<&mut Saveable>) 
+    -> Result<Option<&mut SavedBlackDiffusion>, qm::Error> {
 
-    if let Some(saved) 
-        = saveable.as_mut_any().downcast_mut::<SavedBlackDiffusion>()  {
-        Ok(saved)
+    if let Some(saveable) = opt_saveable {
+        if let Some(saved) = saveable.as_mut_any().downcast_mut::<SavedBlackDiffusion>() {
+            Ok(Some(saved))
+        } else {
+            Err(qm::Error::new("Mismatching save space for black diffusion"))
+        }
     } else {
-        Err(qm::Error::new("Mismatching save space for black diffusion"))
+        Ok(None)
     }
 }
 

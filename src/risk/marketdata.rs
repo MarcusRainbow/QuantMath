@@ -217,7 +217,7 @@ fn find_market_data<T: Clone>(id: &str, collection: &HashMap<String, T>,
 
 impl Bumpable for MarketData {
 
-    fn bump(&mut self, bump: &Bump, save: &mut Saveable)
+    fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>)
         -> Result<bool, qm::Error> {
         let saved = to_saved_data(save)?;
 
@@ -226,22 +226,25 @@ impl Bumpable for MarketData {
         // this is a compiler bug.
         match bump {
             &Bump::Spot(ref id, ref bump) => apply_bump(&id, bump as &BumpSpot,
-                &mut self.spots, &mut saved.spots),
+                &mut self.spots, saved.map_or(None, |s| Some(&mut s.spots))),
             &Bump::Divs(ref id, ref bump) => apply_bump(&id, bump as &BumpDivs,
-                &mut self.dividends, &mut saved.dividends),
+                &mut self.dividends, saved.map_or(None, |s| Some(&mut s.dividends))),
             &Bump::Borrow(ref id, ref bump) => apply_bump(&id,
                 bump as &BumpYield, &mut self.borrow_curves,
-                &mut saved.borrow_curves),
+                saved.map_or(None, |s| Some(&mut s.borrow_curves))),
             &Bump::Vol(ref id, ref bump) => apply_bump(&id, bump as &BumpVol,
-                &mut self.vol_surfaces, &mut saved.vol_surfaces),
+                &mut self.vol_surfaces, saved.map_or(None, |s| Some(&mut s.vol_surfaces))),
             &Bump::Yield(ref credit_id, ref bump) => apply_bump(&credit_id,
                 bump as &BumpYield, &mut self.yield_curves, 
-                &mut saved.yield_curves),
+                saved.map_or(None, |s| Some(&mut s.yield_curves))),
             &Bump::DiscountDate(replacement) => {
-                saved.discount_date = self.discount_date;
+                if let Some(s) = saved {
+                    s.discount_date = self.discount_date;
+                    s.replaced_discount_date = true;
+                }
+                let changed = self.discount_date != Some(replacement);
                 self.discount_date = Some(replacement);
-                saved.replaced_discount_date = true;
-                Ok(saved.discount_date != self.discount_date) },
+                Ok(changed) },
             &Bump::SpotDate(_) => Err(qm::Error::new("MarketData does not have \
                 enough information to handle spot date bumping on its own. It needs \
                 to be handled by a containing PricingContextPrefetch."))
@@ -287,25 +290,31 @@ impl BumpablePricingContext for MarketData {
     fn raw_market_data(&self) -> &MarketData { self }
 }
 
-fn to_saved_data(save: &mut Saveable) -> Result<&mut SavedData, qm::Error> {
-    if let Some(as_self) = save.as_mut_any().downcast_mut::<SavedData>()  {
-        Ok(as_self)
+fn to_saved_data(opt_save: Option<&mut Saveable>) -> Result<Option<&mut SavedData>, qm::Error> {
+    if let Some(save) = opt_save {
+        if let Some(as_self) = save.as_mut_any().downcast_mut::<SavedData>()  {
+            Ok(Some(as_self))
+        } else {
+            Err(qm::Error::new("Mismatching save space for bump market data"))
+        }
     } else {
-        Err(qm::Error::new("Mismatching save space for bump market data"))
+        Ok(None)
     }
 }
 
 // local helper function to apply a bump and save the old state
 fn apply_bump<T: Clone>(id: &str, bump: &Bumper<T>, 
     to_bump: &mut HashMap<String, T>,
-    to_save: &mut HashMap<String, T>) -> Result<bool, qm::Error> {
+    to_save: Option<&mut HashMap<String, T>>) -> Result<bool, qm::Error> {
 
     // try to find the entry in the map of things to bump
     let key = id.to_string();
     if let Some(entry) = to_bump.get_mut(&key) {
 
-        // save the old value
-        to_save.insert(key, entry.clone());
+        // save the old value if there is anywhere to save it
+        if let Some(save) = to_save {
+            save.insert(key, entry.clone());
+        }
 
         // update the new value and return true to say we changed it
         *entry = bump.apply(entry.clone());
@@ -541,7 +550,7 @@ pub mod tests {
         // now bump the spot and price. Note that this equates to roughly
         // delta of 0.5, which is what we expect for an atm option
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.343905306334765, 1e-12);
@@ -555,7 +564,7 @@ pub mod tests {
         // now bump the vol and price. The new price is a bit larger, as
         // expected. (An atm option has roughly max vega.)
         let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.13982242072566, 1e-12);
@@ -569,7 +578,7 @@ pub mod tests {
         // now bump the divs and price. As expected, this makes the
         // price decrease by a small amount.
         let bump = Bump::new_divs("BP.L", BumpDivs::new_all_relative(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 16.691032323609356, 1e-12);
@@ -583,7 +592,7 @@ pub mod tests {
         // now bump the yield underlying the equity and price. This
         // increases the forward, so we expect the call price to increase.
         let bump = Bump::new_yield("LSE", BumpYield::new_flat_annualised(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.525364353942656, 1e-12);
@@ -596,7 +605,7 @@ pub mod tests {
                 
         // now bump the yield underlying the option and price
         let bump = Bump::new_yield("OPT", BumpYield::new_flat_annualised(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 16.495466805921325, 1e-12);
@@ -626,7 +635,7 @@ pub mod tests {
         // now bump the spot and price. Note that this equates to quite small delta
         // which is what we expect for a forward-starting option
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 19.264143625005342, 1e-12);
@@ -640,7 +649,7 @@ pub mod tests {
         // now bump the vol and price. The new price is a bit larger, as
         // expected. (An atm option has roughly max vega.)
         let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 19.462049109434094, 1e-12);
