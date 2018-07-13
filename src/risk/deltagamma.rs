@@ -89,7 +89,7 @@ impl ReportGenerator for DeltaGammaReportGenerator {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use std::rc::Rc;
     use math::numerics::approx_eq;
