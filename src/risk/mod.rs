@@ -2,6 +2,7 @@ pub mod marketdata;
 pub mod dependencies;
 pub mod cache;
 pub mod bumptime;
+pub mod deltagamma;
 
 use core::qm;
 use data::bump::Bump;
@@ -19,8 +20,8 @@ use std::any::Any;
 pub trait Bumpable {
 
     /// Applies a bump to market data or to anything derived from market data,
-    /// such as a model or a pricer.
-    fn bump(&mut self, bump: &Bump, save: &mut Saveable)
+    /// such as a model or a pricer. Returns true if anything was bumped.
+    fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>)
         -> Result<bool, qm::Error>;
 
     /// Optionally allows access to the dependencies that drive the bumpability.
@@ -76,4 +77,38 @@ pub trait Saveable : Any {
 
     /// Clears the saved state, so a restore operation is a no-op
     fn clear(&mut self);
+}
+
+/// A report is the result of a set of calculations, normally with bumped
+/// time and or market data. For example, a delta-gamma report shows the
+/// first and second differentials to all applicable underliers.
+/// 
+/// Reports are designed to be nested and grouped together, to avoid
+/// unnecessary cloning and bumping.
+pub trait Report : Any {
+    fn as_any(&self) -> &Any;
+}
+
+/// A report generator performs all the calculations needed to produce a
+/// report.
+pub trait ReportGenerator {
+    /// Perform all the calculations, bumping, pricing and possibly cloning
+    /// the input pricer to generate the result. Normally the pricer is left
+    /// in the same state as it started, unless it documents otherwise.
+    /// Similarly, the saveable is normally expected to be initially empty
+    /// and is left empty on exit, unless documented otherwise.
+    fn generate(&self, pricer: &mut Pricer, saveable: &mut Saveable, unbumped: f64)
+        -> Result<Box<Report>, qm::Error>;
+}
+
+/// Useful method for report generators. Bumps a pricer and reprices it if necessary,
+/// returning the bumped price.
+pub fn bumped_price(bump: &Bump, pricer: &mut Pricer, saveable: Option<&mut Saveable>, unbumped: f64)
+    -> Result<f64, qm::Error> {
+
+    if pricer.as_mut_bumpable().bump(bump, saveable)? {
+        pricer.price()
+    } else {
+        Ok(unbumped)
+    }
 }

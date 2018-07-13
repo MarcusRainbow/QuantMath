@@ -1,6 +1,7 @@
 use data::bump::Bumper;
 
 /// Bump that defines all the supported bumps to a spot value
+#[derive(Clone)]
 pub enum BumpSpot {
     Relative { bump: f64 },
     Replace { spot: f64 }

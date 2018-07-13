@@ -95,6 +95,12 @@ impl DependencyCollector {
         self.instruments.insert(
             instrument.id().to_string(), instrument.clone());
     }
+
+    pub fn instruments_clone(&self) -> Vec<String> {
+        // this rather unpleasant syntax forces the ids to be owned
+        // by the resulting vector rather than the original hashmap
+        self.instruments.keys().map(|id|id.to_string()).collect()
+    }
 }
 
 fn get_hwm_by_str(map: &HashMap<String, Date>, id: &str) -> Option<Date> {

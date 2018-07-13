@@ -39,14 +39,12 @@ impl BumpTime {
         let modified = self.update_instruments(
             instruments, bumpable.context(), bumpable.dependencies()?)?;
         
-        // Now apply a bump to the model, to shift the spot date. We create a saveable area
-        // just to simplify the code. It is not used to actually save anything. If the
+        // Now apply a bump to the model, to shift the spot date. If the
         // instrument list has been modified, things are more serious. We do nothing, and leave
         // it to the caller to rebuild things from scratch.
         if !modified {
-            let mut saveable = bumpable.new_saveable();
             let bump = Bump::new_spot_date(self.spot_date_bump.clone());
-            bumpable.bump(&bump, &mut *saveable)?;
+            bumpable.bump(&bump, None)?;
         }
         Ok(modified)
     }

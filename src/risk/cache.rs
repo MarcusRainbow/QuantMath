@@ -69,7 +69,8 @@ impl PricingContextPrefetch {
     pub fn refetch(&mut self, id: &str,
         bumped_forward: bool,
         bumped_vol: bool,
-        saved: &mut SavedPrefetch)
+        saved_forward_curves: Option<&mut HashMap<String, Rc<Forward>>>,
+        saved_vol_surfaces: Option<&mut HashMap<String, Rc<VolSurface>>>)
         -> Result<bool, qm::Error> {
 
         // if nothing was bumped, there is nothing to do (this test included
@@ -87,7 +88,9 @@ impl PricingContextPrefetch {
 
                 // save the old forward if we are about to bump it
                 if bumped_forward {
-                    saved.forward_curves.insert(id.to_string(), fwd.clone());
+                    if let Some(s) = saved_forward_curves {
+                        s.insert(id.to_string(), fwd.clone());
+                    }
 
                     // Refetch forward: requires instrument and high water mark
                     if let Some(hwm) 
@@ -106,7 +109,9 @@ impl PricingContextPrefetch {
                 // save the old vol surface if we are about to bump it
                 if bumped_vol {
                     if let Some(vol) = self.vol_surfaces.get_mut(&id_string) {
-                        saved.vol_surfaces.insert(id_string, vol.clone());
+                        if let Some(s) = saved_vol_surfaces {
+                            s.insert(id_string, vol.clone());
+                        }
 
                         // Refetch vol if required. If vol not found, it may
                         // not be an error if we are responding to a forward
@@ -228,32 +233,65 @@ fn find_cached_data<T: Clone>(id: &str, collection: &HashMap<String, T>,
 
 impl Bumpable for PricingContextPrefetch {
 
-    fn bump(&mut self, bump: &Bump, any_saved: &mut Saveable)
+    fn bump(&mut self, bump: &Bump, any_saved: Option<&mut Saveable>)
         -> Result<bool, qm::Error> {
+
+//    saved_data: SavedData,
+//    forward_curves: HashMap<String, Rc<Forward>>,
+//    vol_surfaces: HashMap<String, Rc<VolSurface>>
+
+        // we have to unpack the option<saveable> into options on all its
+        // components all at the same time, to avoid problems with borrowing.
+        let saved = to_saved(any_saved)?;
+        let (saved_data, saved_forward_curves, saved_vol_surfaces) 
+            : (Option<&mut Saveable>
+            , Option<&mut HashMap<String, Rc<Forward>>>
+            , Option<&mut HashMap<String, Rc<VolSurface>>>)
+            = if let Some(s) = saved {
+            (Some(&mut s.saved_data), Some(&mut s.forward_curves), Some(&mut s.vol_surfaces))
+        } else {
+            (None, None, None)
+        };
 
         // Delegate to the underlying market data to do the actual bumping
         // except for SpotDate, which raises an error. For SpotDate, just
         // set the bumped flag according to whether anything needs to be done.
-        let saved = to_saved(any_saved)?;
         let bumped = if let &Bump::SpotDate(ref bump) = bump {
             bump.spot_date() != self.spot_date()
         } else {
-            self.context.bump(bump, &mut saved.saved_data)?
+            self.context.bump(bump, saved_data)?
         };
 
         // we may need to refetch some of the prefetched data
         match bump {
-            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, false, saved),
-            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, false, saved),
-            &Bump::Vol(ref id, _) => self.refetch(&id, false, bumped, saved),
-            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, false, saved),
+            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, false, saved_forward_curves, saved_vol_surfaces),
+            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, false, saved_forward_curves, saved_vol_surfaces),
+            &Bump::Vol(ref id, _) => self.refetch(&id, false, bumped, saved_forward_curves, saved_vol_surfaces),
+            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, false, saved_forward_curves, saved_vol_surfaces),
             &Bump::Yield(ref credit_id, _) => {
                 // we have to copy these ids to avoid a tangle with borrowing
                 let v = self.dependencies
                     .forward_id_by_credit_id(&credit_id).to_vec();
-                for id in v.iter() {
-                    self.refetch(&id, bumped, false, saved)?;
+
+                // We also have to unpack then repack saved_forward curves 
+                // and saved_vol_surfaces to clarify borrowing. Pretty ugly.
+                // (is this something the Rust compiler could be cleverer about?)
+                let mut done = false;
+                if let Some(sfc) = saved_forward_curves {
+                    if let Some(svs) = saved_vol_surfaces {
+                        done = true;
+                        for id in v.iter() {
+                            self.refetch(&id, bumped, false, Some(sfc), Some(svs))?;
+                        }
+                    }
                 }
+                
+                if !done {
+                    for id in v.iter() {
+                        self.refetch(&id, bumped, false, None, None)?;
+                    }
+                }
+
                 Ok(bumped) },
             &Bump::DiscountDate(_) => Ok(bumped), // nothing to refetch
             &Bump::SpotDate(ref bump) => {
@@ -303,14 +341,17 @@ impl BumpablePricingContext for PricingContextPrefetch {
     fn raw_market_data(&self) -> &MarketData { &self.context }
 }
 
-fn to_saved(any_saved: &mut Saveable) 
-    -> Result<&mut SavedPrefetch, qm::Error> {
+fn to_saved(opt_any_saved: Option<&mut Saveable>) 
+    -> Result<Option<&mut SavedPrefetch>, qm::Error> {
 
-    if let Some(saved) 
-        = any_saved.as_mut_any().downcast_mut::<SavedPrefetch>()  {
-        Ok(saved)
+    if let Some(any_saved) = opt_any_saved {
+        if let Some(saved) = any_saved.as_mut_any().downcast_mut::<SavedPrefetch>()  {
+            Ok(Some(saved))
+        } else {
+            Err(qm::Error::new("Mismatching save space for bumped prefetch"))
+        }
     } else {
-        Err(qm::Error::new("Mismatching save space for bumped prefetch"))
+        Ok(None)
     }
 }
 
@@ -349,7 +390,7 @@ impl Saveable for SavedPrefetch {
 // behave exactly the same way, though potentially rather quicker, as the
 // only effect of prefetching should be to speed things up.
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use std::rc::Rc;
     use instruments::DependencyContext;
@@ -362,7 +403,7 @@ mod tests {
     use data::bumpvol::BumpVol;
     use data::bumpyield::BumpYield;
 
-    fn create_dependencies(instrument: &Rc<Instrument>, spot_date: Date)
+    pub fn create_dependencies(instrument: &Rc<Instrument>, spot_date: Date)
         -> Rc<DependencyCollector> {
 
         let mut collector = DependencyCollector::new(spot_date);
@@ -391,7 +432,7 @@ mod tests {
         // now bump the spot and price. Note that this equates to roughly
         // delta of 0.5, which is what we expect for an atm option
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.343905306334765, 1e-12);
@@ -405,7 +446,7 @@ mod tests {
         // now bump the vol and price. The new price is a bit larger, as
         // expected. (An atm option has roughly max vega.)
         let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.13982242072566, 1e-12);
@@ -419,7 +460,7 @@ mod tests {
         // now bump the divs and price. As expected, this makes the
         // price decrease by a small amount.
         let bump = Bump::new_divs("BP.L", BumpDivs::new_all_relative(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 16.691032323609356, 1e-12);
@@ -433,7 +474,7 @@ mod tests {
         // now bump the yield underlying the equity and price. This
         // increases the forward, so we expect the call price to increase.
         let bump = Bump::new_yield("LSE", BumpYield::new_flat_annualised(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 17.525364353942656, 1e-12);
@@ -446,7 +487,7 @@ mod tests {
 
         // now bump the yield underlying the option and price
         let bump = Bump::new_yield("OPT", BumpYield::new_flat_annualised(0.01));
-        let bumped = mut_data.bump(&bump, &mut save).unwrap();
+        let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data).unwrap();
         assert_approx(bumped_price, 16.495466805921325, 1e-12);
