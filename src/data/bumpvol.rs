@@ -1,5 +1,7 @@
 use std::rc::Rc;
+use std::f64::NAN;
 use data::volsurface::VolSurface;
+use data::volsurface::FlatVolSurface;
 use data::voldecorators::TimeScaledBumpVol;
 use data::voldecorators::ParallelBumpVol;
 use data::bump::Bumper;
@@ -9,7 +11,8 @@ use data::bump::Bumper;
 #[derive(Clone)]
 pub enum BumpVol {
     FlatAdditive { size: f64 },
-    TimeScaled { size: f64, floor: f64 }
+    TimeScaled { size: f64, floor: f64 },
+    Replace { vol: f64 }
 }
 
 impl BumpVol {
@@ -21,10 +24,15 @@ impl BumpVol {
         BumpVol::TimeScaled { size: size, floor: floor }
     }
 
+    pub fn new_replace(vol: f64) -> BumpVol {
+        BumpVol::Replace { vol }
+    }
+
     pub fn bumpsize(&self) -> f64 {
         match self {
             &BumpVol::FlatAdditive { size } => size,
-            &BumpVol::TimeScaled { size, floor: _ } => size
+            &BumpVol::TimeScaled { size, floor: _ } => size,
+            &BumpVol::Replace { vol: _ } => NAN
         }
     }
 
@@ -39,7 +47,9 @@ impl BumpVol {
             &BumpVol::FlatAdditive { size: _ } 
                 => BumpVol::FlatAdditive { size : down_bump },
             &BumpVol::TimeScaled { size: _, floor } 
-                => BumpVol::TimeScaled { size : down_bump, floor: floor }
+                => BumpVol::TimeScaled { size : down_bump, floor: floor },
+            &BumpVol::Replace { vol: _ } 
+                => BumpVol::Replace { vol: NAN }
         }
     }
 }
@@ -52,7 +62,11 @@ impl Bumper<Rc<VolSurface>> for BumpVol {
                 => Rc::new(ParallelBumpVol::new(surface.clone(), size)),
 
             &BumpVol::TimeScaled { size, floor }
-                => Rc::new(TimeScaledBumpVol::new(surface.clone(), size, floor))
+                => Rc::new(TimeScaledBumpVol::new(surface.clone(), size, floor)),
+
+            &BumpVol::Replace { vol }
+                => Rc::new(FlatVolSurface::new(vol, 
+                    surface.calendar().clone(), surface.base_date()))
         }
     }
 }

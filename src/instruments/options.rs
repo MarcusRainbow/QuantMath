@@ -645,7 +645,7 @@ mod tests {
             _forward: Rc<Forward>, _high_water_mark: Date)
             -> Result<Rc<VolSurface>, qm::Error> {
 
-            let calendar = Box::new(WeekdayCalendar());
+            let calendar = Rc::new(WeekdayCalendar());
             let base_date = Date::from_ymd(2018, 05, 30);
             let base = DateDayFraction::new(base_date, 0.2);
             let vol = FlatVolSurface::new(0.3, calendar, base);
