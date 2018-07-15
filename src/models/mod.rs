@@ -1,6 +1,7 @@
 pub mod blackdiffusion;
 
 use std::collections::HashMap;
+use std::clone::Clone;
 use std::rc::Rc;
 use core::qm;
 use instruments::RcInstrument;
@@ -26,7 +27,7 @@ pub trait MonteCarloModelFactory {
 
 /// Interface that must be implemented by a model in order to support
 /// Monte-Carlo pricing.
-pub trait MonteCarloModel : MonteCarloContext + Bumpable {
+pub trait MonteCarloModel : MonteCarloContext + Bumpable + MonteCarloModelClone {
 
     /// Converts this model to a MonteCarloContext that can be used for pricing
     fn as_mc_context(&self) -> &MonteCarloContext;
@@ -36,6 +37,24 @@ pub trait MonteCarloModel : MonteCarloContext + Bumpable {
     fn as_mut_bumpable(&mut self) -> &mut Bumpable;
 
     fn raw_market_data(&self) -> &MarketData;
+}
+
+pub trait MonteCarloModelClone {
+    fn clone_box(&self) -> Box<MonteCarloModel>;
+}
+
+impl<T> MonteCarloModelClone for T
+    where T: 'static + MonteCarloModel + Clone,
+{
+    fn clone_box(&self) -> Box<MonteCarloModel> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<MonteCarloModel> {
+    fn clone(&self) -> Box<MonteCarloModel> {
+        self.clone_box()
+    }
 }
 
 /// Timeline, which collects the information about an instrument that a model

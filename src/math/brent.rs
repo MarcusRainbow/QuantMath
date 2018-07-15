@@ -123,4 +123,31 @@ mod tests {
             assert!(approx_eq(y, expected, tol), "result={} expected={}", v, expected);
         }
     }
+
+    #[test]
+    fn problem_of_the_day() {
+
+        // Stretch a piece of rope around the equator. Now add one meter to the length of
+        // the rope. How tall a tent-pole can you now stand on the equator such that the
+        // rope goes over the top?
+
+        let r = 6.371e6_f64;
+        let min = 0.0;
+        let max = 1e8;
+        let max_iter = 100;
+        let tol = 1e-10;
+
+        // use Brent to find the answer
+        let y = zbrent(min, max, tol, max_iter, &mut |h| 
+            Ok(1.0 + r * (r / (r + h)).acos() - (h * (2.0 * r + h)).sqrt())).unwrap();
+
+        // check the answer against a hard-coded number
+        let expected = 192.80752497643797_f64;
+        assert!(approx_eq(y, expected, tol), "result={} expected={}", y, expected);
+
+        // check that our answer solves the problem
+        let test_expected = 1.0 + r * (r / (r + expected)).acos() 
+            - (expected * (2.0 * r + expected)).sqrt();
+        assert!(approx_eq(test_expected, 0.0, 1e-8), "result={} expected={}", test_expected, 0.0);
+    }
 }

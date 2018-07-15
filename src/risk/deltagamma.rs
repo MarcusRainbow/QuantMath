@@ -96,19 +96,19 @@ pub mod tests {
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
     use risk::Bumpable;
+    use risk::PricerClone;
     use risk::TimeBumpable;
     use risk::bumptime::BumpTime;
     use risk::dependencies::DependencyCollector;
     use risk::cache::PricingContextPrefetch;
-    use instruments::options::SpotStartingEuropean;
     use instruments::PricingContext;
     use instruments::Instrument;
-    use instruments::Priceable;
     use risk::cache::tests::create_dependencies;
 
     // a sample pricer that evaluates european options
+    #[derive(Clone)]
     struct SamplePricer {
-        option: Rc<SpotStartingEuropean>,
+        instruments: Vec<(f64, Rc<Instrument>)>,
         context: PricingContextPrefetch
     }
 
@@ -124,7 +124,7 @@ pub mod tests {
             dependencies).unwrap();
  
         Box::new(SamplePricer {
-            option: european,
+            instruments: vec![(1.0, instrument)],
             context: context
         })
     }
@@ -135,8 +135,14 @@ pub mod tests {
         fn as_mut_time_bumpable(&mut self) -> &mut TimeBumpable { self }
 
         fn price(&self) -> Result<f64, qm::Error> {
-            self.option.price(&self.context)
+            assert!(self.instruments.len() == 1);
+            let instrument = self.instruments[0].1.clone();
+            instrument.as_priceable().unwrap().price(&self.context)
         }
+    }
+
+    impl PricerClone for SamplePricer {
+        fn clone_box(&self) -> Box<Pricer> { Box::new(self.clone()) }
     }
 
     impl Bumpable for SamplePricer {
@@ -158,8 +164,12 @@ pub mod tests {
     }
 
     impl TimeBumpable for SamplePricer {
-        fn bump_time(&mut self, _bump: &BumpTime) -> Result<(), qm::Error> {
-            Err(qm::Error::new("time bumps not supported"))
+        fn bump_time(&mut self, bump: &BumpTime) -> Result<(), qm::Error> {
+            if bump.apply(&mut self.instruments, &mut self.context)? {
+                Err(qm::Error::new("SamplePricer does not support changes to the instruments"))
+            } else {
+                Ok(())
+            }
         }
     }
 

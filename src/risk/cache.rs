@@ -21,7 +21,7 @@ use core::qm;
 /// needed for calculations. Although the module is called cache, the behaviour
 /// is entirely deterministic. We prefetch the data, rather than lazily caching
 /// it.
-
+#[derive(Clone)]
 pub struct PricingContextPrefetch {
     context: MarketData,
     dependencies: Rc<DependencyCollector>,
