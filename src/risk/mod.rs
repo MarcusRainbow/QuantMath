@@ -3,6 +3,7 @@ pub mod dependencies;
 pub mod cache;
 pub mod bumptime;
 pub mod deltagamma;
+pub mod timebumped;
 pub mod vegavolga;
 
 use core::qm;
@@ -39,11 +40,29 @@ pub trait Bumpable {
     fn restore(&mut self, saved: &Saveable) -> Result<(), qm::Error>;
 }
 
-pub trait BumpablePricingContext: Bumpable + PricingContext {
+pub trait BumpablePricingContext: Bumpable + PricingContext + BumpablePricingContextClone {
     fn as_bumpable(&self) -> &Bumpable;
     fn as_mut_bumpable(&mut self) -> &mut Bumpable;
     fn as_pricing_context(&self) -> &PricingContext;
     fn raw_market_data(&self) -> &MarketData;
+}
+
+pub trait BumpablePricingContextClone {
+    fn clone_box(&self) -> Box<BumpablePricingContext>;
+}
+
+impl<T> BumpablePricingContextClone for T
+    where T: 'static + BumpablePricingContext + Clone,
+{
+    fn clone_box(&self) -> Box<BumpablePricingContext> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<BumpablePricingContext> {
+    fn clone(&self) -> Box<BumpablePricingContext> {
+        self.clone_box()
+    }
 }
 
 /// Time bumping is done to calculate theta or time-forward greeks, such as
@@ -51,13 +70,16 @@ pub trait BumpablePricingContext: Bumpable + PricingContext {
 /// greeks, because it may involve changes to the instrument, which may have
 /// fixings before the theta date.
 pub trait TimeBumpable {
+    /// Applies a time bump to this object. The object is modified with no
+    /// save and restore facility, so you probably need to deep_clone the
+    /// object first.
     fn bump_time(&mut self, bump: &BumpTime) -> Result<(), qm::Error>;
 }
 
 /// The basic pricing interface for qm. Returns a price from a pricer or a
 /// priceable instrument. The point of this interface is that it is bumpable,
 /// so it can be used to calculate risks and scenarios.
-pub trait Pricer : Bumpable + TimeBumpable {
+pub trait Pricer : Bumpable + TimeBumpable + PricerClone {
     fn as_bumpable(&self) -> &Bumpable;
     fn as_mut_bumpable(&mut self) -> &mut Bumpable;
     fn as_mut_time_bumpable(&mut self) -> &mut TimeBumpable;
@@ -65,6 +87,14 @@ pub trait Pricer : Bumpable + TimeBumpable {
     /// Returns the present value, discounted to the discount date expressed
     /// in the pricing context.
     fn price(&self) -> Result<f64, qm::Error>;
+}
+
+/// For some reason that I do not understand, the rust compiler runs into an
+/// infinite recursion issue if we try to implement this with generics, the
+/// same as clone_box is implemented elsewhere. Thus you need to implement
+/// this manually in each pricer.
+pub trait PricerClone {
+    fn clone_box(&self) -> Box<Pricer>;
 }
 
 /// Interface that defines how market data or derived data can save itself

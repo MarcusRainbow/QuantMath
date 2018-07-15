@@ -5,6 +5,7 @@ use instruments::PricingContext;
 use instruments::DependencyContext;
 use risk::cache::PricingContextPrefetch;
 use risk::Pricer;
+use risk::PricerClone;
 use risk::dependencies::DependencyCollector;
 use risk::Bumpable;
 use risk::TimeBumpable;
@@ -19,6 +20,7 @@ use risk::marketdata::MarketData;
 /// The SelfPricer calculator uses the Priceable interface of an
 /// instrument to evaluate the instrument . It then exposes this
 /// interface as a Pricer, allowing bumping for risk calculation.
+#[derive(Clone)]
 pub struct SelfPricer {
     instruments: Vec<(f64, Rc<Instrument>)>,
     context: PricingContextPrefetch
@@ -98,6 +100,10 @@ impl Pricer for SelfPricer {
         }
         Ok(total)
     }
+}
+
+impl PricerClone for SelfPricer {
+    fn clone_box(&self) -> Box<Pricer> { Box::new(self.clone()) }
 }
 
 impl Bumpable for SelfPricer {

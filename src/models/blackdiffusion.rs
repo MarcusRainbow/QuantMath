@@ -106,6 +106,7 @@ impl MonteCarloModelFactory for BlackDiffusionFactory {
 /// line up. Where some assets really have more observations than others, we
 /// need fancier handling, either in the maths of the correlation matrix, or
 /// by evolving over the union of the dates, then discarding some. 
+#[derive(Clone)]
 pub struct BlackDiffusion {
     observations: Vec<DateDayFraction>,
     flows: Vec<Rc<Instrument>>,

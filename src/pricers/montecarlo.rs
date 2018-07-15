@@ -5,6 +5,7 @@ use instruments::PricingContext;
 use instruments::DependencyContext;
 use risk::cache::PricingContextPrefetch;
 use risk::Pricer;
+use risk::PricerClone;
 use risk::dependencies::DependencyCollector;
 use risk::Bumpable;
 use risk::TimeBumpable;
@@ -21,6 +22,7 @@ use models::MonteCarloTimeline;
 /// The MonteCarlo calculator uses the MonteCarloPriceable interface of an
 /// instrument to evaluate the instrument . It then exposes this
 /// interface as a Pricer, allowing bumping for risk calculation.
+#[derive(Clone)]
 pub struct MonteCarloPricer {
     model_factory: Rc<MonteCarloModelFactory>,
     instruments: Vec<(f64, Rc<Instrument>)>,
@@ -127,6 +129,10 @@ impl Pricer for MonteCarloPricer {
     }
 }
 
+impl PricerClone for MonteCarloPricer {
+    fn clone_box(&self) -> Box<Pricer> { Box::new(self.clone()) }
+}
+
 impl Bumpable for MonteCarloPricer {
     fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>)
         -> Result<bool, qm::Error> {
@@ -216,7 +222,7 @@ mod tests {
         let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
-        assert_approx(bumped_price - unbumped_price, 0.633187905501792, 0.01);
+        assert_approx(bumped_price - unbumped_price, 0.633187905501792, 0.02);
 
         // when we restore, it should take the price back
         pricer.as_mut_bumpable().restore(&*save).unwrap();
