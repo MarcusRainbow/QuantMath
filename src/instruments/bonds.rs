@@ -10,6 +10,7 @@ use instruments::DependencyContext;
 use instruments::SpotRequirement;
 use instruments::assets::Currency;
 use dates::Date;
+use dates::datetime::DateTime;
 use dates::rules::DateRule;
 use core::qm;
 
@@ -20,6 +21,7 @@ pub struct ZeroCoupon {
     id: String,
     credit_id: String,
     currency: Rc<Currency>,
+    ex_date: DateTime,
     payment_date: Date,
     settlement: Rc<DateRule>
 }
@@ -33,10 +35,10 @@ impl ZeroCoupon {
     /// to discount to. Normally, the settlement rule should be that of
     /// the instrument that span off the zero coupon.
     pub fn new(id: &str, credit_id: &str, currency: Rc<Currency>,
-        payment_date: Date, settlement: Rc<DateRule>) -> ZeroCoupon {
+        ex_date: DateTime, payment_date: Date, settlement: Rc<DateRule>) -> ZeroCoupon {
 
         ZeroCoupon { id: id.to_string(), credit_id: credit_id.to_string(),
-            currency: currency, payment_date: payment_date,
+            currency: currency, ex_date: ex_date, payment_date: payment_date,
             settlement: settlement }
     }
 }
@@ -105,21 +107,23 @@ impl Priceable for ZeroCoupon {
 
     /// Currency is worth one currency unit, but only if we are discounting
     /// to the date which is when we would receive the currency.
-    fn price(&self, context: &PricingContext) -> Result<f64, qm::Error> {
+    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64])
+        -> Result<(), qm::Error> {
+        assert_eq!(dates.len(), out.len());
 
-        let discount_date = match context.discount_date() {
-            None => {
-                let spot_date = context.spot_date();
-                self.settlement().apply(spot_date) },
-            Some(discount_date) => discount_date };
+        let yc = context.yield_curve(&self.credit_id, self.payment_date)?;
 
-        if discount_date == self.payment_date {
-            Ok(1.0)
-        } else {
-            let yc = context.yield_curve(self.credit_id(),
-                discount_date.max(self.payment_date))?;
-            yc.df(self.payment_date, discount_date)
+        for (date, output) in dates.iter().zip(out.iter_mut()) {
+            *output = if *date <= self.ex_date {
+                let settlement_date = self.settlement().apply(date.date());
+                yc.df(self.payment_date, settlement_date)?
+            } else {
+                0.0
+            };
         }
+
+
+        Ok(())  
     }
 }
 
@@ -135,6 +139,7 @@ mod tests {
     use dates::calendar::WeekdayCalendar;
     use dates::rules::BusinessDays;
     use dates::Date;
+    use dates::datetime::TimeOfDay;
 
     fn sample_currency(step: u32) -> Currency {
         let calendar = Rc::new(WeekdayCalendar::new());
@@ -146,20 +151,16 @@ mod tests {
         let calendar = Rc::new(WeekdayCalendar::new());
         let settlement = Rc::new(BusinessDays::new_step(calendar, step));
         ZeroCoupon::new("GBP.2018-07-05", "OPT", currency,
+            DateTime::new(Date::from_ymd(2018, 07, 03), TimeOfDay::Open),
             Date::from_ymd(2018, 07, 05), settlement)
     }
 
     struct SamplePricingContext { 
-        discount_date: Option<Date>
     }
 
     impl PricingContext for SamplePricingContext {
         fn spot_date(&self) -> Date {
             Date::from_ymd(2018, 06, 01)
-        }
-
-        fn discount_date(&self) -> Option<Date> {
-            self.discount_date
         }
 
         fn yield_curve(&self, _credit_id: &str,
@@ -193,28 +194,19 @@ mod tests {
         }
     }
 
-    fn sample_pricing_context(discount_date: Option<Date>)
+    fn sample_pricing_context()
         -> SamplePricingContext {
-        SamplePricingContext { discount_date }
+        SamplePricingContext { }
     }
 
     #[test]
-    fn zero_coupon_with_discount_date() {
-        let discount_date = Some(Date::from_ymd(2018, 06, 05));
+    fn zero_coupon() {
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 05), TimeOfDay::Open);
         let currency = Rc::new(sample_currency(2));
         let zero = sample_zero_coupon(currency, 2);
-        let context = sample_pricing_context(discount_date);
-        let price = zero.price(&context).unwrap();
-        assert_approx(price, 0.9926533426860358);
-    }
-
-    #[test]
-    fn zero_coupon_without_discount_date() {
-        let currency = Rc::new(sample_currency(2));
-        let zero = sample_zero_coupon(currency, 2);
-        let context = sample_pricing_context(None);
-        let price = zero.price(&context).unwrap();
-        assert_approx(price, 0.9926533426860358);
+        let context = sample_pricing_context();
+        let price = zero.price(&context, val_date).unwrap();
+        assert_approx(price, 0.9930885737840461);
     }
 
     fn assert_approx(value: f64, expected: f64) {

@@ -128,7 +128,7 @@ impl RateCurve for AnnualisedFlatBump {
         //
         // Bumping the annualised yield gives
         // exp(rt_bumped) = (y + dy)^t = (exp(rt)^(1/t) + dy)^t
-        //
+        //  
         // Thus rt_bumped = log((exp(rt)^(1/t) + dy)^t) 
         //                = t * log(exp(rt)^(1/t) + dy)
         //                = t * log(exp(r) + dy)

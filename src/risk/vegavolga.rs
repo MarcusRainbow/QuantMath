@@ -119,8 +119,8 @@ mod tests {
         let results = report.as_any().downcast_ref::<VegaVolgaReport>().unwrap().results();
         assert!(results.len() == 1);
         let vega_volga = results.get("BP.L").unwrap();
-        assert_approx(vega_volga.vega(), 42.90462273386808, 1e-12);
-        assert_approx(vega_volga.volga(), 86.34909463012264, 1e-12);
+        assert_approx(vega_volga.vega(), 42.904622733885844, 1e-12);
+        assert_approx(vega_volga.volga(), 86.34909534066537, 1e-12);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

@@ -180,11 +180,6 @@ impl PricingContext for PricingContextPrefetch {
         self.context.spot_date()
     }
 
-    fn discount_date(&self) -> Option<Date> {
-        // no point caching this
-        self.context.discount_date()
-    }
-
     fn yield_curve(&self, credit_id: &str, high_water_mark: Date)
         -> Result<Rc<RateCurve>, qm::Error> {
         // Currently there is no work in fetching a yield curve, so we do
@@ -293,7 +288,6 @@ impl Bumpable for PricingContextPrefetch {
                 }
 
                 Ok(bumped) },
-            &Bump::DiscountDate(_) => Ok(bumped), // nothing to refetch
             &Bump::SpotDate(ref bump) => {
                 if bumped {
                     self.context.bump_spot_date(bump, &self.dependencies)?; 
@@ -402,6 +396,8 @@ pub mod tests {
     use data::bumpdivs::BumpDivs;
     use data::bumpvol::BumpVol;
     use data::bumpyield::BumpYield;
+    use dates::datetime::DateTime;
+    use dates::datetime::TimeOfDay;
 
     pub fn create_dependencies(instrument: &Rc<Instrument>, spot_date: Date)
         -> Rc<DependencyCollector> {
@@ -416,7 +412,8 @@ pub mod tests {
 
         let market_data = sample_market_data();
         let european = sample_european();
-        let unbumped_price = european.price(&market_data).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2017, 01, 02), TimeOfDay::Open);
+        let unbumped_price = european.price(&market_data, val_date).unwrap();
 
         // Create a prefetch object, which internally clones the market data
         // so we can modify it and also create an
@@ -434,13 +431,13 @@ pub mod tests {
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
         assert_approx(bumped_price, 17.343905306334765, 1e-12);
 
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
 
         // now bump the vol and price. The new price is a bit larger, as
@@ -448,13 +445,13 @@ pub mod tests {
         let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
         assert_approx(bumped_price, 17.13982242072566, 1e-12);
 
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
 
         // now bump the divs and price. As expected, this makes the
@@ -462,13 +459,13 @@ pub mod tests {
         let bump = Bump::new_divs("BP.L", BumpDivs::new_all_relative(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
         assert_approx(bumped_price, 16.691032323609356, 1e-12);
 
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
 
         // now bump the yield underlying the equity and price. This
@@ -476,26 +473,26 @@ pub mod tests {
         let bump = Bump::new_yield("LSE", BumpYield::new_flat_annualised(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
-        assert_approx(bumped_price, 17.525364353942656, 1e-12);
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
+        assert_approx(bumped_price, 17.299620299229513, 1e-12);
 
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
 
         // now bump the yield underlying the option and price
         let bump = Bump::new_yield("OPT", BumpYield::new_flat_annualised(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
-        assert_approx(bumped_price, 16.495466805921325, 1e-12);
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
+        assert_approx(bumped_price, 16.710717400832973, 1e-12);
 
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
     }
 

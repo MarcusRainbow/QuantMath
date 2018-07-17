@@ -12,6 +12,7 @@ use risk::bumptime::BumpTime;
 use risk::marketdata::MarketData;
 use instruments::PricingContext;
 use risk::dependencies::DependencyCollector;
+//use dates::Date;
 use std::any::Any;
 
 /// Interface that defines all bumps of simple underlying market data. This
@@ -84,9 +85,17 @@ pub trait Pricer : Bumpable + TimeBumpable + PricerClone {
     fn as_mut_bumpable(&mut self) -> &mut Bumpable;
     fn as_mut_time_bumpable(&mut self) -> &mut TimeBumpable;
     
-    /// Returns the present value, discounted to the discount date expressed
-    /// in the pricing context.
-    fn price(&self) -> Result<f64, qm::Error>;
+    /// Returns the present value. If no discount date is supplied, the value
+    /// is discounted to the settlement date of the instrument being priced.
+    /// This means that every listed instrument should give a price equal to
+    /// the current screen price. If you supply a discount date, the value is
+    /// discounted to that date. This allows you to view prices that are
+    /// consistent across different exchanges, but it is not possible to choose
+    /// a discount date such that all values equal their screen prices, unless
+    /// all underlyings have the same settlement date.
+    /// 
+    /// Discount date is currently disabled.
+    fn price(&self /*, discount_date: Option<Date>*/) -> Result<f64, qm::Error>;
 }
 
 /// For some reason that I do not understand, the rust compiler runs into an

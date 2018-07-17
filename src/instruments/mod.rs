@@ -18,6 +18,7 @@ use std::rc::Rc;
 use std::hash::Hash;
 use std::cmp::Ordering;
 use std::hash::Hasher;
+use std::f64::NAN;
 use ndarray::ArrayView2;
 
 /// There are a few controversial design decisions here. The first is to do
@@ -281,9 +282,28 @@ pub trait Dated {
 /// Priceable interface. More exotic instruments do not.
 
 pub trait Priceable : Instrument {
-    /// Allow an instrument to price itself
-    fn price(&self, context: &PricingContext) -> Result<f64, qm::Error>;
+    /// Allow an instrument to price itself. This method can be left as the
+    /// default implementation, which delegates to prices. The price returned
+    /// is the expected screen price which will be seen on Bloomberg terminals
+    /// etc on the val_date. For example, if the val_date is the spot date,
+    /// the price of an equity is the spot. Discounting is done to the instrument's
+    /// own settlement period added to the val_date. You can determine this by
+    /// invoking settlement.apply(val_date.date())
+    fn price(&self, context: &PricingContext, val_date: DateTime) -> Result<f64, qm::Error> {
 
+        let dates = [val_date];
+        let mut prices = [NAN];
+        self.prices(context, &dates, &mut prices)?;
+        Ok(prices[0])
+    }
+
+    /// Batch version of the price method, which fetches the price at a number
+    /// of dates. This is much more efficient than fetching the price independently,
+    /// especially for priceables such as ETFs that iterate over some day-by-day
+    /// algorithm to manage their state.
+    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64])
+        -> Result<(), qm::Error>;
+ 
     /// Return this object as an instrument. (There is a proposal in Rust to
     /// handle this sort of coercion, but it is not yet part of the language.)
     fn as_instrument(&self) -> &Instrument;
@@ -299,11 +319,6 @@ pub trait PricingContext {
     /// financial data suppliers exist), not when the payment is made.
     /// Typically, payment of the spot amount happens after T+2.
     fn spot_date(&self) -> Date;
-
-    /// Gets the date to which we should discount all prices. If this returns
-    /// None, we should use the spot date plus the instrument's own settlement
-    /// period.
-    fn discount_date(&self) -> Option<Date>;
 
     /// Gets a yield curve, given an instrument to define the discounting.
     fn yield_curve(&self, credit_id: &str, high_water_mark: Date)

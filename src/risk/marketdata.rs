@@ -38,7 +38,6 @@ use risk::dependencies::DependencyCollector;
 #[derive(Clone)]
 pub struct MarketData {
     spot_date: Date, 
-    discount_date: Option<Date>, 
     spots: HashMap<String, f64>,
     yield_curves: HashMap<String, Rc<RateCurve>>,
     borrow_curves: HashMap<String, Rc<RateCurve>>,
@@ -56,12 +55,6 @@ impl MarketData {
     /// the market has opened to give liquid option prices etc.
     ///
     /// * 'spot_date'      - The date of all the spot values. Normally today
-    /// * 'discount_date'  - The date to which all valuation should be 
-    ///                      discounted. If it is supplied, it is normally
-    ///                      T + 2. If not supplied, all instruments are
-    ///                      discounted to their own settlement date, which
-    ///                      means they match their screen prices, but are
-    ///                      not necessarily mutually consistent.
     /// * 'spots'          - Values of any numeric screen prices, keyed by the
     ///                      id of the instrument, such as an equity
     /// * 'yield_curves'   - Precooked yield curves, keyed by credit id
@@ -73,7 +66,6 @@ impl MarketData {
     ///                      will be supplied as a separate entry.
     pub fn new(
         spot_date: Date, 
-        discount_date: Option<Date>, 
         spots: HashMap<String, f64>,
         yield_curves: HashMap<String, Rc<RateCurve>>,
         borrow_curves: HashMap<String, Rc<RateCurve>>,
@@ -82,7 +74,6 @@ impl MarketData {
 
         MarketData {
             spot_date: spot_date, 
-            discount_date: discount_date,
             spots: spots,
             yield_curves: yield_curves,
             borrow_curves: borrow_curves,
@@ -145,10 +136,6 @@ impl PricingContext for MarketData {
 
     fn spot_date(&self) -> Date {
         self.spot_date
-    }
-
-    fn discount_date(&self) -> Option<Date> {
-        self.discount_date
     }
 
     fn yield_curve(&self, credit_id: &str, _high_water_mark: Date)
@@ -237,15 +224,7 @@ impl Bumpable for MarketData {
             &Bump::Yield(ref credit_id, ref bump) => apply_bump(&credit_id,
                 bump as &BumpYield, &mut self.yield_curves, 
                 saved.map_or(None, |s| Some(&mut s.yield_curves))),
-            &Bump::DiscountDate(replacement) => {
-                if let Some(s) = saved {
-                    s.discount_date = self.discount_date;
-                    s.replaced_discount_date = true;
-                }
-                let changed = self.discount_date != Some(replacement);
-                self.discount_date = Some(replacement);
-                Ok(changed) },
-            &Bump::SpotDate(_) => Err(qm::Error::new("MarketData does not have \
+             &Bump::SpotDate(_) => Err(qm::Error::new("MarketData does not have \
                 enough information to handle spot date bumping on its own. It needs \
                 to be handled by a containing PricingContextPrefetch."))
         }
@@ -266,10 +245,6 @@ impl Bumpable for MarketData {
     fn restore(&mut self, any_saved: &Saveable) -> Result<(), qm::Error> {
         
         if let Some(saved) = any_saved.as_any().downcast_ref::<SavedData>()  {
-
-            if saved.replaced_discount_date {
-                self.discount_date = saved.discount_date;
-            }
             copy_from_saved(&mut self.spots, &saved.spots);
             copy_from_saved(&mut self.yield_curves, &saved.yield_curves);
             copy_from_saved(&mut self.borrow_curves, &saved.borrow_curves);
@@ -335,8 +310,6 @@ pub fn copy_from_saved<T: Clone>(to_restore: &mut HashMap<String, T>,
 }
 
 pub struct SavedData {
-    discount_date: Option<Date>,
-    replaced_discount_date: bool,
     spots: HashMap<String, f64>,
     yield_curves: HashMap<String, Rc<RateCurve>>,
     borrow_curves: HashMap<String, Rc<RateCurve>>,
@@ -350,8 +323,6 @@ impl SavedData {
     /// so it can be restored after a bump
     pub fn new() -> SavedData {
         SavedData {
-            discount_date: None,
-            replaced_discount_date: false,
             spots: HashMap::new(),
             yield_curves: HashMap::new(),
             borrow_curves: HashMap::new(),
@@ -365,8 +336,6 @@ impl Saveable for SavedData {
     fn as_mut_any(&mut self) -> &mut Any { self }
 
     fn clear(&mut self) {
-        self.discount_date = None;
-        self.replaced_discount_date = false;
         self.spots.clear();
         self.yield_curves.clear();
         self.borrow_curves.clear();
@@ -520,7 +489,7 @@ pub mod tests {
         vol_surfaces.insert("BP.L".to_string(), create_sample_flat_vol());
         vol_surfaces.insert("GSK.L".to_string(), create_sample_flat_vol());
 
-        MarketData::new(spot_date, None, spots, yield_curves,
+        MarketData::new(spot_date, spots, yield_curves,
             borrow_curves, dividends, vol_surfaces)
     }
 
@@ -529,7 +498,8 @@ pub mod tests {
 
         let market_data = sample_market_data();
         let european = sample_european();
-        let price = european.price(&market_data).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2017, 01, 02), TimeOfDay::Open);
+        let price = european.price(&market_data, val_date).unwrap();
 
         // this price looks plausible, but was found simply by running the test
         assert_approx(price, 16.710717400832973, 1e-12);
@@ -540,7 +510,8 @@ pub mod tests {
 
         let market_data = sample_market_data();
         let european = sample_european();
-        let unbumped_price = european.price(&market_data).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2017, 01, 02), TimeOfDay::Open);
+        let unbumped_price = european.price(&market_data, val_date).unwrap();
 
         // clone the market data so we can modify it and also create an
         // empty saved data to save state so we can restore it
@@ -552,13 +523,13 @@ pub mod tests {
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
         assert_approx(bumped_price, 17.343905306334765, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
                 
         // now bump the vol and price. The new price is a bit larger, as
@@ -566,13 +537,13 @@ pub mod tests {
         let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
         assert_approx(bumped_price, 17.13982242072566, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
                 
         // now bump the divs and price. As expected, this makes the
@@ -580,13 +551,13 @@ pub mod tests {
         let bump = Bump::new_divs("BP.L", BumpDivs::new_all_relative(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
         assert_approx(bumped_price, 16.691032323609356, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
                 
         // now bump the yield underlying the equity and price. This
@@ -594,26 +565,26 @@ pub mod tests {
         let bump = Bump::new_yield("LSE", BumpYield::new_flat_annualised(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
-        assert_approx(bumped_price, 17.525364353942656, 1e-12);
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
+        assert_approx(bumped_price, 17.299620299229513, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
                 
         // now bump the yield underlying the option and price
         let bump = Bump::new_yield("OPT", BumpYield::new_flat_annualised(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
-        assert_approx(bumped_price, 16.495466805921325, 1e-12);
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
+        assert_approx(bumped_price, 16.710717400832973, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
     }
     
@@ -622,10 +593,11 @@ pub mod tests {
 
         let market_data = sample_market_data();
         let european = sample_forward_european();
-        let unbumped_price = european.price(&market_data).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2017, 01, 02), TimeOfDay::Open);
+        let unbumped_price = european.price(&market_data, val_date).unwrap();
 
         // this price looks plausible, but was found simply by running the test
-        assert_approx(unbumped_price, 19.05900177073914, 1e-12);
+        assert_approx(unbumped_price, 19.072086263185145, 1e-12);
 
         // clone the market data so we can modify it and also create an
         // empty saved data to save state so we can restore it
@@ -637,13 +609,13 @@ pub mod tests {
         let bump = Bump::new_spot("BP.L", BumpSpot::new_relative(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
-        assert_approx(bumped_price, 19.264143625005342, 1e-12);
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
+        assert_approx(bumped_price, 19.277357762746444, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
                 
         // now bump the vol and price. The new price is a bit larger, as
@@ -651,13 +623,13 @@ pub mod tests {
         let bump = Bump::new_vol("BP.L", BumpVol::new_flat_additive(0.01));
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
-        let bumped_price = european.price(&mut_data).unwrap();
-        assert_approx(bumped_price, 19.462049109434094, 1e-12);
+        let bumped_price = european.price(&mut_data, val_date).unwrap();
+        assert_approx(bumped_price, 19.475602301749383, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
         save.clear();
-        let price = european.price(&mut_data).unwrap();
+        let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
     }
 
