@@ -11,6 +11,7 @@ use instruments::MonteCarloDependencies;
 use instruments::MonteCarloContext;
 use math::optionpricing::Black76;
 use data::fixings::FixingTable;
+use data::forward::Forward;
 use dates::Date;
 use dates::rules::DateRule;
 use dates::datetime::DateTime;
@@ -66,6 +67,82 @@ impl VanillaOption {
             cash_or_physical: cash_or_physical,
             expiry_time: expiry_time,
             pay_date: pay_date })
+    }
+
+    /// Prices this option with a range of val dates, and given a closure that
+    /// calculates the strike
+    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64], 
+        vol_from: DateDayFraction,  strike_fn: &Fn(&Forward) -> Result<f64, qm::Error>) 
+        -> Result<(), qm::Error> {
+        
+        assert_eq!(dates.len(), out.len());
+        if dates.is_empty() {
+            return Ok(())  // nothing to do
+        }
+
+        // fetch the market data we need
+        let expiry_date = self.expiry.date();
+        let yc = context.yield_curve(self.underlying.credit_id(), self.pay_date)?;
+        let fwd = context.forward_curve(&*self.underlying, expiry_date)?;
+        let vol = context.vol_surface(&*self.underlying, fwd.clone(), expiry_date)?;
+
+        // Calculate the parameters for the BlackScholes formula. We discount to
+        // the base date of the discount curve. (Any date would do so long as we
+        // are consistent.) 
+        let strike = strike_fn(&*fwd)?;
+        let df_from_base = (-yc.rt(self.pay_date)?).exp();
+        let forward = fwd.forward(self.expiry.date())?;
+ 
+        // For some div assumptions, we must displace the forward and strike.
+        // (This errors for JumpDivs, which we do not currently handle.)
+        let displacement = vol.displacement(self.expiry.date())?;
+        let k = strike + displacement;
+        let f = forward - displacement;
+        if f < 0.0 {
+            return Err(qm::Error::new("Negative forward"));
+        }
+
+        // price the option using the Black76 formula
+        let black76 = Black76::new()?;
+
+        // All the prices are the same, except that they are discounted to a different date,
+        // and if the date is after the ex time, they are zero.
+        // We assume the option goes ex just after its expiry date/time
+        let ex_date = self.expiry;
+        for (date, output) in dates.iter().zip(out.iter_mut()) {
+            *output = if *date <= ex_date {
+                let settlement_date = self.settlement().apply(date.date());
+                let df = df_from_base * yc.rt(settlement_date)?.exp();
+
+                let val_date = self.underlying.time_to_day_fraction(*date)?;
+                let from_date = vol_from.min(val_date);
+                let variance = vol.forward_variance(from_date, self.expiry_time, strike)?;
+                if variance < 0.0 {
+                    return Err(qm::Error::new("Negative variance"));
+                }
+                let sqrt_var = variance.sqrt();
+
+                // What we calculate here is the expected value of an option on the 
+                // val date. This means that we ignore any time value or volatility
+                // between now and the val date. Whether this is the right thing to
+                // do depends on how forward valuation will be used. The first real
+                // use case should drive the behaviour.
+                let price = match self.put_or_call {
+                    PutOrCall::Put => black76.put_price(df, f, k, sqrt_var),
+                    PutOrCall::Call => black76.call_price(df, f, k, sqrt_var)
+                };
+
+                // for helpful debug trace, uncomment the below
+                //println!("forward-starting european: df={} F={} K={} sqrt_var={} displacement={} spot_date={} expiry={:?} price={}", 
+                //     df, f, k, sqrt_var, displacement, context.spot_date(), self.expiry_time, price);
+
+                price
+            } else {
+                0.0
+            };
+        }
+
+        Ok(())
     }
 }
 
@@ -241,7 +318,8 @@ impl Instrument for SpotStartingEuropean {
                     if payment > 0.0 {
                         decomp.push((payment, Rc::new(ZeroCoupon::new(
                             &payment_id, self.credit_id(), 
-                            Rc::new(self.payoff_currency().clone()), 
+                            Rc::new(self.payoff_currency().clone()),
+                            self.vanilla.expiry, 
                             self.vanilla.pay_date,
                             self.vanilla.settlement.clone()))));
                     }
@@ -252,6 +330,7 @@ impl Instrument for SpotStartingEuropean {
                         decomp.push((-strike * sign, Rc::new(ZeroCoupon::new(
                             &payment_id, self.credit_id(), 
                             Rc::new(self.payoff_currency().clone()), 
+                            self.vanilla.expiry,
                             self.vanilla.pay_date,
                             self.vanilla.settlement.clone()))));
                         decomp.push((sign, self.vanilla.underlying.clone()));
@@ -316,53 +395,11 @@ impl Priceable for SpotStartingEuropean {
     fn as_instrument(&self) -> &Instrument { self }
 
     // Values the European Option using the analytic formula Black 76
-    fn price(&self, context: &PricingContext) -> Result<f64, qm::Error> {
+    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64])
+        -> Result<(), qm::Error> {
 
-        // fetch the market data we need
-        let expiry_date = self.vanilla.expiry.date();
-        let yc = context.yield_curve(self.vanilla.credit_id(),
-            self.vanilla.pay_date)?;
-        let fwd = context.forward_curve(&*self.vanilla.underlying, 
-            expiry_date)?;
-        let vol = context.vol_surface(&*self.vanilla.underlying, fwd.clone(),
-            expiry_date)?;
-
-        // what is the date we want to discount to?
-        let discount_date = match context.discount_date() {
-            None => self.vanilla.settlement.apply(context.spot_date()),
-            Some(date) => date };
-
-        // calculate the parameters for the BlackScholes formula
-        let strike = self.strike;
-        let df = yc.df(self.vanilla.pay_date, discount_date)?;
-        let forward = fwd.forward(self.vanilla.expiry.date())?;
-        let variance = vol.variance(self.vanilla.expiry_time, strike)?;
-        if variance < 0.0 {
-            return Err(qm::Error::new("Negative variance"));
-        }
-        let sqrt_var = variance.sqrt();
-
-        // For some div assumptions, we must displace the forward and strike.
-        // (This errors for JumpDivs, which we do not currently handle.)
-        let displacement = vol.displacement(self.vanilla.expiry.date())?;
-        let k = strike + displacement;
-        let f = forward - displacement;
-        if f < 0.0 {
-            return Err(qm::Error::new("Negative forward"));
-        }
-
-        // price the option using the Black76 formula
-        let black76 = Black76::new()?;
-        let price = match self.vanilla.put_or_call {
-            PutOrCall::Put => black76.put_price(df, f, k, sqrt_var),
-            PutOrCall::Call => black76.call_price(df, f, k, sqrt_var)
-        };
-
-        // for helpful debug trace, uncomment the below
-        println!("spot-starting european: df={} F={} K={} sqrt_var={} displacement={} price={}", 
-            df, f, k, sqrt_var, displacement, price);
-
-        Ok(price)
+        let before_time = DateDayFraction::new(Date::from_nil(), 0.0);
+        self.vanilla.prices(context, dates, out, before_time, &|_| Ok(self.strike))
     }
 }
 
@@ -372,10 +409,8 @@ impl Priceable for ForwardStartingEuropean {
     /// The valuation of a forward-starting option is the same as a spot-
     /// starting one, except that the strike is calculated from the forward,
     /// and we use forward vol from the strike date to expiry.
-    fn price(&self, context: &PricingContext) -> Result<f64, qm::Error> {
-
-        // TODO consider common coding some of this with the spot-starting
-        // pricer, which is very similar
+    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64])
+        -> Result<(), qm::Error> {
 
         // it is an error if the option has already started
         if context.spot_date() > self.strike_date.date() {
@@ -383,53 +418,8 @@ impl Priceable for ForwardStartingEuropean {
                 pricing it, so it does not forward-start in the past"))
         }
 
-        // fetch the market data we need
-        let expiry_date = self.vanilla.expiry.date();
-        let yc = context.yield_curve(self.vanilla.underlying.credit_id(),
-            self.vanilla.pay_date)?;
-        let fwd = context.forward_curve(&*self.vanilla.underlying, 
-            expiry_date)?;
-        let vol = context.vol_surface(&*self.vanilla.underlying, fwd.clone(),
-            expiry_date)?;
-
-        // what is the date we want to discount to?
-        let discount_date = match context.discount_date() {
-            None => self.vanilla.settlement.apply(context.spot_date()),
-            Some(date) => date };
-
-        // calculate the parameters for the BlackScholes formula
-        let strike_forward = fwd.forward(self.strike_date.date())?;
-        let strike = self.strike_fraction * strike_forward;
-        let df = yc.df(self.vanilla.pay_date, discount_date)?;
-        let forward = fwd.forward(self.vanilla.expiry.date())?;
-        let variance = vol.forward_variance(self.strike_time,
-            self.vanilla.expiry_time, strike)?;
-        if variance < 0.0 {
-            return Err(qm::Error::new("Negative variance"));
-        }
-        let sqrt_var = variance.sqrt();
-
-        // For some div assumptions, we must displace the forward and strike.
-        // (This errors for JumpDivs, which we do not currently handle.)
-        let displacement = vol.displacement(self.vanilla.expiry.date())?;
-        let k = strike + displacement;
-        let f = forward - displacement;
-        if f < 0.0 {
-            return Err(qm::Error::new("Negative forward"));
-        }
-
-        // price the option using the Black76 formula
-        let black76 = Black76::new()?;
-        let price = match self.vanilla.put_or_call {
-            PutOrCall::Put => black76.put_price(df, f, k, sqrt_var),
-            PutOrCall::Call => black76.call_price(df, f, k, sqrt_var)
-        };
-
-        // for helpful debug trace, uncomment the below
-        println!("forward-starting european: df={} F={} K={} sqrt_var={} displacement={} price={}", 
-            df, f, k, sqrt_var, displacement, price);
-
-        Ok(price)
+        self.vanilla.prices(context, dates, out, self.strike_time, &|fwd : &Forward| 
+            Ok(self.strike_fraction * fwd.forward(self.strike_date.date())?))
     }
 }
 
@@ -450,7 +440,7 @@ impl MonteCarloPriceable for SpotStartingEuropean {
         // stock as well, but that does not affect the price before expiry.)
         let payment : Rc<Instrument> = Rc::new(
             ZeroCoupon::new(&format!("{}:Expiry", self.vanilla.id),
-            &self.vanilla.credit_id, currency, self.vanilla.pay_date,
+            &self.vanilla.credit_id, currency, self.vanilla.expiry, self.vanilla.pay_date,
             self.vanilla.settlement.clone()));
         output.flow(&payment);
 
@@ -516,7 +506,7 @@ impl MonteCarloPriceable for ForwardStartingEuropean {
         // stock as well, but that does not affect the price before expiry.)
         let payment : Rc<Instrument> = Rc::new(
             ZeroCoupon::new(&format!("{}:Expiry", self.vanilla.id),
-            &self.vanilla.credit_id, currency, self.vanilla.pay_date,
+            &self.vanilla.credit_id, currency, self.vanilla.expiry, self.vanilla.pay_date,
             self.vanilla.settlement.clone()));
         output.flow(&payment);
 
@@ -608,10 +598,6 @@ mod tests {
             Date::from_ymd(2018, 06, 01)
         }
 
-        fn discount_date(&self) -> Option<Date> {
-            Some(Date::from_ymd(2018, 06, 05))
-        }
-
         fn yield_curve(&self, _credit_id: &str, _high_water_mark: Date)
                 -> Result<Rc<RateCurve>, qm::Error> {
 
@@ -675,11 +661,9 @@ mod tests {
 
         let spot = 123.4;
         let strike = 100.0;
-        let expiry = DateTime::new(
-            Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
+        let expiry = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
 
-        check_european_value(spot, strike, expiry, PutOrCall::Call,
-            spot - strike);
+        check_european_value(spot, strike, expiry, PutOrCall::Call, spot - strike);
     }
 
     #[test]
@@ -687,11 +671,9 @@ mod tests {
         
         let spot = 123.4;
         let strike = 150.0;
-        let expiry = DateTime::new(
-            Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
+        let expiry = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
 
-        check_european_value(spot, strike, expiry, PutOrCall::Put,
-            strike - spot);
+        check_european_value(spot, strike, expiry, PutOrCall::Put, strike - spot);
     }
 
     #[test]
@@ -703,7 +685,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_european_value(spot, strike, expiry, PutOrCall::Call,
-            9.576591266363513);
+            9.576591266363515);
     }
 
     #[test]
@@ -729,7 +711,7 @@ mod tests {
             Date::from_ymd(2018, 07, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 31.83308979193512);
+            PutOrCall::Call, 31.833102506026655);
     }
 
     #[test]
@@ -743,7 +725,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 9.482747427099154);
+            PutOrCall::Call, 9.511722618202752);
     }
 
     #[test]
@@ -757,7 +739,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Put, 9.482747427099161);
+            PutOrCall::Put, 9.511722618202759);
     }
 
     #[test]
@@ -771,7 +753,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_fixed_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 9.576591266363513);
+            PutOrCall::Call, 9.576591266363515);
     }
 
     #[test]
@@ -799,7 +781,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 8.639339890285822);
+            PutOrCall::Call, 8.852491467318078);
     }
 
     #[test]
@@ -813,7 +795,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Put, 10.121695405560875);
+            PutOrCall::Put, 10.334846982593138);
     }
 
     fn check_european_value(spot: f64, strike: f64, expiry: DateTime,
@@ -826,9 +808,10 @@ mod tests {
         let european = SpotStartingEuropean::new("SampleEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike, put_or_call, cash_or_physical).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
 
         let context = sample_pricing_context(spot);
-        let price = european.price(&context).unwrap();
+        let price = european.price(&context, val_date).unwrap();
         assert_approx(price, expected, 1e-8);
     }
 
@@ -843,9 +826,10 @@ mod tests {
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
             equity.clone(), settlement, expiry, strike_fraction,
             strike_date, put_or_call, cash_or_physical).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
 
         let context = sample_pricing_context(spot);
-        let price = european.price(&context).unwrap();
+        let price = european.price(&context, val_date).unwrap();
         assert_approx(price, expected, 1e-8);
     }
 
@@ -860,6 +844,7 @@ mod tests {
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
             equity.clone(), settlement, expiry, strike_fraction,
             strike_date, put_or_call, cash_or_physical).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
 
         let fixing_table = sample_fixings();
         let fix_result = european.fix(&fixing_table).unwrap();
@@ -870,7 +855,7 @@ mod tests {
             if let Some(fixed_european) = instrument.as_priceable() {
 
                 let context = sample_pricing_context(spot);
-                let price = fixed_european.price(&context).unwrap();
+                let price = fixed_european.price(&context, val_date).unwrap();
                 assert_approx(price, expected, 1e-8);
             } else {
                 assert!(false, "failed to fix into a priceable");

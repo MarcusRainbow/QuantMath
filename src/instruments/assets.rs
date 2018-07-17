@@ -100,33 +100,17 @@ impl Priceable for Currency {
     fn as_instrument(&self) -> &Instrument { self }
 
     /// Currency is worth one currency unit, but only if we are discounting
-    /// to the date which is when we would receive the currency.
-    fn price(&self, context: &PricingContext) -> Result<f64, qm::Error> {
-        discount_from_spot(self, context)
-    }
-}
+    /// to the date which is when we would receive the currency. This is done
+    /// outside of this function, which always discounts to the internal
+    /// settlement date.
+    fn prices(&self, _context: &PricingContext, dates: &[DateTime], out: &mut [f64])
+        -> Result<(), qm::Error> {
+        assert_eq!(dates.len(), out.len());
 
-/// Simple assets are worth the screen price, but only if the date we want
-/// to discount to is the same as the date when the spot price is paid.
-///
-/// This method calculates the discount to apply to a spot price. 
-
-pub fn discount_from_spot(instrument: &Instrument, context: &PricingContext)
-    -> Result<f64, qm::Error> {
-
-    match context.discount_date() {
-        None => Ok(1.0),
-        Some(discount_date) => {
-            let spot_date = context.spot_date();
-            let pay_date = instrument.settlement().apply(spot_date);
-            if discount_date == pay_date {
-                Ok(1.0)
-            } else {
-                let yc = context.yield_curve(instrument.credit_id(),
-                    discount_date.max(pay_date))?;
-                yc.df(pay_date, discount_date)
-            }
+        for output in out.iter_mut() {
+            *output = 1.0;
         }
+        Ok(())
     }
 }
 
@@ -236,12 +220,30 @@ impl Hash for Equity {
 impl Priceable for Equity {
     fn as_instrument(&self) -> &Instrument { self }
 
-    /// The price of an equity is the current spot, but only if the date we
-    /// are discounting to is the same as the spot would be paid.
-    fn price(&self, context: &PricingContext) -> Result<f64, qm::Error> {
-        let df = discount_from_spot(self, context)?;
-        let spot = context.spot(&self.id)?;
-        Ok(spot * df)
+    /// The price of an equity is the current spot, but only if the val_date is
+    /// the spot date. Otherwise we need to use the forward curve.
+    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64])
+        -> Result<(), qm::Error> {
+        let n_dates = dates.len();
+        assert_eq!(n_dates, out.len());
+
+        if n_dates == 0 {
+            // nothing to do if no dates
+            Ok(())
+        } else if dates.len() == 1 && dates[0].date() == context.spot_date() {
+            // avoid touching the forward curve if all we need is spot
+            out[0] = context.spot(&self.id)?;
+            Ok(())
+        } else {
+            // otherwise we need to use the forward curve. Assume the dates are
+            // in order.
+            let fc = context.forward_curve(self, dates.last().unwrap().date())?;
+
+            for (date, output) in dates.iter().zip(out.iter_mut()) {
+                *output = fc.forward(date.date())?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -329,8 +331,13 @@ impl Priceable for CreditEntity {
 
     /// A credit entity is worth one currency unit, but only if we are
     /// discounting to the date which is when we would receive the currency.
-    fn price(&self, context: &PricingContext) -> Result<f64, qm::Error> {
-        discount_from_spot(self, context)
+   fn prices(&self, _context: &PricingContext, dates: &[DateTime], out: &mut [f64])
+        -> Result<(), qm::Error> {
+        assert_eq!(dates.len(), out.len());
+        for output in out.iter_mut() {
+            *output = 1.0;
+        }
+        Ok(())
     }
 }
 
@@ -346,6 +353,8 @@ mod tests {
     use dates::calendar::WeekdayCalendar;
     use dates::rules::BusinessDays;
     use dates::Date;
+    use data::forward::DriftlessForward;
+    use std::rc::Rc;
 
     fn sample_currency(step: u32) -> Currency {
         let calendar = Rc::new(WeekdayCalendar::new());
@@ -369,10 +378,6 @@ mod tests {
             Date::from_ymd(2018, 06, 01)
         }
 
-        fn discount_date(&self) -> Option<Date> {
-            Some(Date::from_ymd(2018, 06, 05))
-        }
-
         fn yield_curve(&self, _credit_id: &str,
             _high_water_mark: Date) -> Result<Rc<RateCurve>, qm::Error> {
 
@@ -390,7 +395,7 @@ mod tests {
 
         fn forward_curve(&self, _instrument: &Instrument, 
             _high_water_mark: Date) -> Result<Rc<Forward>, qm::Error> {
-            Err(qm::Error::new("unsupported"))
+            Ok(Rc::new(DriftlessForward::new(self.spot)))
         }
 
         fn vol_surface(&self, _instrument: &Instrument, _forward: Rc<Forward>,
@@ -414,7 +419,8 @@ mod tests {
         let currency = Rc::new(sample_currency(2));
         let equity = sample_equity(currency, 2);
         let context = sample_pricing_context(spot);
-        let price = equity.price(&context).unwrap();
+        let val_date = DateTime::new(context.spot_date(), TimeOfDay::Open);
+        let price = equity.price(&context, val_date).unwrap();
         assert_approx(price, spot);
      }
 
@@ -422,7 +428,8 @@ mod tests {
     fn test_currency_price_on_spot() {
         let currency = sample_currency(2);
         let context = sample_pricing_context(123.4);
-        let price = currency.price(&context).unwrap();
+        let val_date = DateTime::new(context.spot_date(), TimeOfDay::Open);
+        let price = currency.price(&context, val_date).unwrap();
         assert_approx(price, 1.0);
     }
 
@@ -432,20 +439,20 @@ mod tests {
         let currency = Rc::new(sample_currency(3));
         let equity = sample_equity(currency, 3);
         let context = sample_pricing_context(spot);
-        let price = equity.price(&context).unwrap();
+        let val_date = DateTime::new(context.spot_date() + 3, TimeOfDay::Open);
+        let price = equity.price(&context, val_date).unwrap();
 
-        let df = 0.9997867155076675;
-        assert_approx(price, spot * df);
+        assert_approx(price, spot);
      }
 
     #[test]
     fn test_currency_price_mismatching_dates() {
         let currency = sample_currency(3);
         let context = sample_pricing_context(123.4);
-        let price = currency.price(&context).unwrap();
+        let val_date = DateTime::new(context.spot_date() + 3, TimeOfDay::Open);
+        let price = currency.price(&context, val_date).unwrap();
 
-        let df = 0.9997867155076675;
-        assert_approx(price, df);
+        assert_approx(price, 1.0);
     }
 
     fn assert_approx(value: f64, expected: f64) {

@@ -3,7 +3,6 @@ use data::bumpdivs::BumpDivs;
 use data::bumpvol::BumpVol;
 use data::bumpyield::BumpYield;
 use data::bumpspotdate::BumpSpotDate;
-use dates::Date;
 
 /// Enumeration spanning all bumps of market data
 pub enum Bump {
@@ -12,7 +11,6 @@ pub enum Bump {
     Borrow ( String, BumpYield ),
     Vol ( String, BumpVol ),
     Yield ( String, BumpYield ),
-    DiscountDate ( Date ),
     SpotDate ( BumpSpotDate )
 }
 
@@ -35,10 +33,6 @@ impl Bump {
 
     pub fn new_yield(credit_id: &str, bump: BumpYield) -> Bump {
         Bump::Yield ( credit_id.to_string(), bump )
-    }
-
-    pub fn new_discount_date(replacement: Date) -> Bump {
-        Bump::DiscountDate ( replacement )
     }
 
     pub fn new_spot_date(bump: BumpSpotDate) -> Bump {

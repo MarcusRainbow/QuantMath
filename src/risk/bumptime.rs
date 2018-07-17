@@ -39,13 +39,14 @@ impl BumpTime {
         let modified = self.update_instruments(
             instruments, bumpable.context(), bumpable.dependencies()?)?;
         
-        // Now apply a bump to the model, to shift the spot date. If the
-        // instrument list has been modified, things are more serious. We do nothing, and leave
-        // it to the caller to rebuild things from scratch.
-        if !modified {
-            let bump = Bump::new_spot_date(self.spot_date_bump.clone());
-            bumpable.bump(&bump, None)?;
-        }
+        // Now apply a bump to the model, to shift the spot date. (TODO it may be inefficient to
+        // completely refetch all dependent data if the model will need rebuilding anyway. Maybe
+        // pass the modified flag into the new_spot_date bump so the model knows not to do the
+        // work.)
+        let bump = Bump::new_spot_date(self.spot_date_bump.clone());
+        bumpable.bump(&bump, None)?;
+
+        // If the instruments have been modified, we may need to rebuild the model from scratch
         Ok(modified)
     }
 

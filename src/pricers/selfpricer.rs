@@ -16,6 +16,8 @@ use data::fixings::FixingTable;
 use data::bump::Bump;
 use risk::bumptime::BumpTime;
 use risk::marketdata::MarketData;
+use dates::datetime::DateTime;
+use dates::datetime::TimeOfDay;
 
 /// The SelfPricer calculator uses the Priceable interface of an
 /// instrument to evaluate the instrument . It then exposes this
@@ -92,10 +94,13 @@ impl Pricer for SelfPricer {
         // Note that we have already verified that all components are priceable
         // so here we simply skip any that are not.
 
+        // for now, always value as of the spot date at the open
+        let val_date = DateTime::new(self.context.as_pricing_context().spot_date(), TimeOfDay::Open);
+
         let mut total = 0.0;
         for &(weight, ref instrument) in self.instruments.iter() {
             if let Some(priceable) = instrument.as_priceable() {
-                total += weight * priceable.price(&self.context)?;
+                total += weight * priceable.price(&self.context, val_date)?;
             }
         }
         Ok(total)
@@ -225,7 +230,7 @@ mod tests {
         let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
-        assert_approx(bumped_price, 17.525364353942656, 1e-12);
+        assert_approx(bumped_price, 17.299620299229513, 1e-12);
 
         // when we restore, it should take the price back
         pricer.as_mut_bumpable().restore(&*save).unwrap();
@@ -238,7 +243,7 @@ mod tests {
         let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
-        assert_approx(bumped_price, 16.495466805921325, 1e-12);
+        assert_approx(bumped_price, 16.710717400832973, 1e-12);
 
         // when we restore, it should take the price back
         pricer.as_mut_bumpable().restore(&*save).unwrap();
@@ -258,7 +263,7 @@ mod tests {
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
 
         let unbumped_price = pricer.price().unwrap();
-        assert_approx(unbumped_price, 19.05900177073914, 1e-12);
+        assert_approx(unbumped_price, 19.072086263185145, 1e-12);
 
         // delta bump. We expect this delta to be fairly small, as it only comes from
         // the skew.
@@ -267,23 +272,23 @@ mod tests {
         let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
-        assert_approx(bumped_price - unbumped_price, 0.20514185426620202, 1e-12);
+        assert_approx(bumped_price - unbumped_price, 0.20527149956129875, 1e-12);
         pricer.as_mut_bumpable().restore(&*save).unwrap();
         save.clear();
 
-        // bump past the strike date. Should result in a small theta.
+        // bump past the strike date. Should result in a small negative theta.
         let spot_date = Date::from_ymd(2017, 01, 02);
         let dynamics = SpotDynamics::StickyForward;
         let time_bump = BumpTime::new(spot_date + 1, spot_date, dynamics);
         pricer.as_mut_time_bumpable().bump_time(&time_bump).unwrap();
         let bumped_price = pricer.price().unwrap();
-        assert_approx(bumped_price - unbumped_price, 0.013084492446001406, 1e-12);
+        assert_approx(bumped_price - unbumped_price, -0.012516292441407728, 1e-12);
 
         // again test the delta -- should now be much larger
         let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let delta_bumped_price = pricer.price().unwrap();
-        assert_approx(delta_bumped_price - bumped_price, 0.6824796398724473, 1e-12);
+        assert_approx(delta_bumped_price - bumped_price, 0.6826928935788708, 1e-12);
         pricer.as_mut_bumpable().restore(&*save).unwrap();
         save.clear();
 

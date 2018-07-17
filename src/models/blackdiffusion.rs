@@ -29,6 +29,8 @@ use models::MonteCarloModel;
 use models::MonteCarloTimeline;
 use models::MonteCarloModelFactory;
 use dates::datetime::DateDayFraction;
+use dates::datetime::DateTime;
+use dates::datetime::TimeOfDay;
 
 /// The BlackDiffusionFactory is able to create a BlackDiffusion model, given
 /// the timeline of the product(s) to value, and the market data to value it
@@ -489,6 +491,10 @@ impl MonteCarloContext for BlackDiffusion {
         assert_eq!(flows_shape[0], n_paths);
         assert_eq!(flows_shape[1], self.flows.len());
 
+        // For now, always value as of the spot date at the open. (We may want to relax this
+        // restriction later, by passing a slice of date-times into the method.)
+        let val_date = DateTime::new(self.context.as_pricing_context().spot_date(), TimeOfDay::Open);
+
         // weighted sum of all of the flows
         let mut total = 0.0;
         for (flow, quantity) in self.flows.iter().zip(
@@ -502,7 +508,7 @@ impl MonteCarloContext for BlackDiffusion {
                 let average = quantity.scalar_sum() / n_paths_f64;
                 let pricer = flow.as_priceable().ok_or_else(|| qm::Error::new(
                     "All pure-rates flows must be priceable"))?;
-                let value = pricer.price(self.context.as_pricing_context())?;
+                let value = pricer.price(self.context.as_pricing_context(), val_date)?;
                 total += average * value;
 
                 //println!("BlackDiffusion::evaluate_flows value={} average={} \
@@ -566,7 +572,6 @@ impl Bumpable for BlackDiffusion {
                 }
                 Ok(bumped)
             },
-            &Bump::DiscountDate(_) => Ok(bumped), // does not affect paths
             &Bump::SpotDate(_) => {
                 if bumped {
                     // Theta bumping in Monte-Carlo is a difficult compromise. We want to

@@ -104,6 +104,8 @@ pub mod tests {
     use instruments::PricingContext;
     use instruments::Instrument;
     use risk::cache::tests::create_dependencies;
+    use dates::datetime::DateTime;
+    use dates::datetime::TimeOfDay;
 
     // a sample pricer that evaluates european options
     #[derive(Clone)]
@@ -137,7 +139,8 @@ pub mod tests {
         fn price(&self) -> Result<f64, qm::Error> {
             assert!(self.instruments.len() == 1);
             let instrument = self.instruments[0].1.clone();
-            instrument.as_priceable().unwrap().price(&self.context)
+            let val_date = DateTime::new(self.context.spot_date(), TimeOfDay::Open);
+            instrument.as_priceable().unwrap().price(&self.context, val_date)
         }
     }
 
@@ -199,7 +202,7 @@ pub mod tests {
         assert!(results.len() == 1);
         let delta_gamma = results.get("BP.L").unwrap();
         assert_approx(delta_gamma.delta(), 0.6281335819139144, 1e-12);
-        assert_approx(delta_gamma.gamma(), 0.010179072518212706, 1e-12);
+        assert_approx(delta_gamma.gamma(), 0.01017907258926698, 1e-12);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

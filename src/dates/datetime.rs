@@ -110,6 +110,14 @@ impl AddAssign<i32> for DateDayFraction {
     }
 }
 
+impl Ord for DateDayFraction {
+    fn cmp(&self, other: &DateDayFraction) -> Ordering {
+        self.partial_cmp(&other).expect("Non-orderable day fraction found in DateDayFraction")
+    }
+}
+
+impl Eq for DateDayFraction {}
+
 /// Do not implement Sub and SubAssign, as the result of these operations is
 /// unlikely to make sense. Note that the DayFraction is a measure of vol time,
 /// but the subtraction of the dates would give a measure of calendar time.
