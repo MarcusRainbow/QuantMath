@@ -342,7 +342,7 @@ impl Priceable for CreditEntity {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use math::numerics::approx_eq;
     use math::interpolation::Extrap;
@@ -356,17 +356,16 @@ mod tests {
     use data::forward::DriftlessForward;
     use std::rc::Rc;
 
-    fn sample_currency(step: u32) -> Currency {
+    pub fn sample_currency(step: u32) -> Currency {
         let calendar = Rc::new(WeekdayCalendar::new());
         let settlement = Rc::new(BusinessDays::new_step(calendar, step));
         Currency::new("GBP", settlement)
     }
 
-    fn sample_equity(currency: Rc<Currency>,
-        step: u32) -> Equity {
+    pub fn sample_equity(currency: Rc<Currency>, name: &str, step: u32) -> Equity {
         let calendar = Rc::new(WeekdayCalendar::new());
         let settlement = Rc::new(BusinessDays::new_step(calendar, step));
-        Equity::new("BP.L", "LSE", currency, settlement)
+        Equity::new(name, "LSE", currency, settlement)
     }
 
     struct SamplePricingContext { 
@@ -398,8 +397,9 @@ mod tests {
             Ok(Rc::new(DriftlessForward::new(self.spot)))
         }
 
-        fn vol_surface(&self, _instrument: &Instrument, _forward: Rc<Forward>,
-            _high_water_mark: Date) -> Result<Rc<VolSurface>, qm::Error> {
+        fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
+            _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+            -> Result<Rc<VolSurface>, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }
 
@@ -417,7 +417,7 @@ mod tests {
     fn test_equity_price_on_spot() {
         let spot = 123.4;
         let currency = Rc::new(sample_currency(2));
-        let equity = sample_equity(currency, 2);
+        let equity = sample_equity(currency, "BP.L", 2);
         let context = sample_pricing_context(spot);
         let val_date = DateTime::new(context.spot_date(), TimeOfDay::Open);
         let price = equity.price(&context, val_date).unwrap();
@@ -437,7 +437,7 @@ mod tests {
     fn test_equity_price_mismatching_dates() {
         let spot = 123.4;
         let currency = Rc::new(sample_currency(3));
-        let equity = sample_equity(currency, 3);
+        let equity = sample_equity(currency, "BP.L", 3);
         let context = sample_pricing_context(spot);
         let val_date = DateTime::new(context.spot_date() + 3, TimeOfDay::Open);
         let price = equity.price(&context, val_date).unwrap();

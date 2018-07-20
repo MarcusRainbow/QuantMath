@@ -307,7 +307,8 @@ pub enum VolForwardDynamics {
 impl VolForwardDynamics {
     /// Decorate or modify a vol surface to cope with a change from the forward
     /// when the surface was calibrated to the forward now.
-    pub fn modify(&self, surface: &mut Rc<VolSurface>, forward: Rc<Forward>)
+    pub fn modify(&self, surface: &mut Rc<VolSurface>, 
+        forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
         -> Result<(), qm::Error> {
 
         // Sticky strike surfaces are unaffected by changes to the forward.
@@ -315,29 +316,32 @@ impl VolForwardDynamics {
             return Ok(())   // no need for change
         }
 
-        // if the old forward matches the new one, there is no need to change
-        // TODO we need to check more dates than this, but without going
-        // past the last date of interest.
-        if let Some(vol_forward) = surface.forward() {
-            let base_date = surface.base_date().date();
-            let spot = forward.forward(base_date)?;
-            let vol_spot = vol_forward.forward(base_date)?;
-            if approx_eq(vol_spot, spot, vol_spot * 1e-12) {
-                return Ok(())  // no need for change if no change to spot
+        let forward;
+
+        match surface.forward() {
+            // if there is no surface forward, then no need for change
+            None => return Ok(()),
+            Some(vol_forward) => {
+
+                // otherwise we are going to need a forward curve. (The reason we pass in a function
+                // is because the result is often not needed.)
+                forward = forward_fn()?;
+    
+                // if the old forward matches the new one, there is no need to change
+                // TODO we need to check more dates than this, but without going
+                // past the last date of interest.
+                let base_date = surface.base_date().date();
+                let spot = forward.forward(base_date)?;
+                let vol_spot = vol_forward.forward(base_date)?;
+                if approx_eq(vol_spot, spot, vol_spot * 1e-12) {
+                    return Ok(())  // no need for change if no change to spot
+                }
             }
         }
 
         // decorator for sticky delta or other non-sticky-strike needed
-        match self {
-            &VolForwardDynamics::StickyStrike => {
-                // nothing to do. code should never reach here
-            }
-            &VolForwardDynamics::StickyDelta => {
-                *surface = Rc::new(StickyDeltaBumpVol::new(
-                    surface.clone(), forward));
-            }
-        };
-
+        *surface = Rc::new(StickyDeltaBumpVol::new(surface.clone(), forward));
+ 
         Ok(())
     }
 
