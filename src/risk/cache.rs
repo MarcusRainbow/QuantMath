@@ -118,8 +118,8 @@ impl PricingContextPrefetch {
                         // bump, but that code is not implemented yet.
                         if let Some(vol_hwm) = 
                             self.dependencies.vol_surface_hwm(inst) {
-                            *vol = self.context.vol_surface(instrument,
-                                fwd.clone(), vol_hwm)?;
+                            *vol = self.context.vol_surface(instrument, vol_hwm,
+                                &|| Ok(fwd.clone()))?;
                         } else {
                             return Err(qm::Error::new("Cannot find vol"))
                         }
@@ -146,10 +146,6 @@ fn walk_dependencies(
     let forward_dependencies = dependencies.forward_curves();
     let vol_dependencies = dependencies.vol_surfaces();
 
-    println!("Walk dependencies. forwards={} vols={}",
-        forward_dependencies.len(),
-        vol_dependencies.len());
-
     for (rc_instrument, high_water_mark) in &*forward_dependencies {
 
         // fetch the forward curve
@@ -157,15 +153,10 @@ fn walk_dependencies(
         let id = instrument.id().to_string();
         let forward = context.forward_curve(instrument, *high_water_mark)?;
 
-        println!("Prefetch forward for {}", id);
-
         // if there is an associated vol surface, fetch that
         if let Some(vol_hwd) = vol_dependencies.get(rc_instrument) {
-            let vol = context.vol_surface(instrument, forward.clone(),
-                *vol_hwd)?;
+            let vol = context.vol_surface(instrument, *vol_hwd, &|| Ok(forward.clone()))?;
             vol_surfaces.insert(id.clone(), vol);
-
-            println!("Prefetch vol for {}", id);
         }
 
         forward_curves.insert(id, forward);
@@ -201,8 +192,9 @@ impl PricingContext for PricingContextPrefetch {
     /// Gets a Vol Surface, given any instrument, for example an equity.  Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
-    fn vol_surface(&self, instrument: &Instrument, _forward: Rc<Forward>,
-        _high_water_mark: Date) -> Result<Rc<VolSurface>, qm::Error> {
+    fn vol_surface(&self, instrument: &Instrument, _high_water_mark: Date,
+        _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+        -> Result<Rc<VolSurface>, qm::Error> {
         find_cached_data(instrument.id(), &self.vol_surfaces, "Vol Surface")
     }
 

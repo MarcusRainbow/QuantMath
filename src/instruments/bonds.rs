@@ -183,8 +183,9 @@ mod tests {
             Err(qm::Error::new("Forward not supported"))
         }
 
-        fn vol_surface(&self, _instrument: &Instrument, _forward: Rc<Forward>,
-            _high_water_mark: Date) -> Result<Rc<VolSurface>, qm::Error> {
+        fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
+            _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+            -> Result<Rc<VolSurface>, qm::Error> {
             Err(qm::Error::new("VolSurface not supported"))
         }
 

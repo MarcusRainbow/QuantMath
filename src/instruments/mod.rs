@@ -1,7 +1,9 @@
 pub mod assets;
 pub mod bonds;
 pub mod options;
+pub mod basket;
 
+use dates::datetime::TimeOfDay;
 use instruments::assets::Currency;
 use dates::Date;
 use dates::rules::DateRule;
@@ -118,23 +120,44 @@ pub trait Instrument {
 
 /// Utility method to fix all instruments in a vector, returning them as a weighted vector.
 /// Currently we do not attempt to net instruments of the same type, though we could do so.
-/// If there are no changes to any instruments, we return a copy of the original vector.
+/// If there are no changes to any instruments, we return None.
 pub fn fix_all(instruments: &Vec<(f64, Rc<Instrument>)>, fixing_table: &FixingTable)
-    -> Result<Vec<(f64, Rc<Instrument>)>, qm::Error> {
+    -> Result<Option<Vec<(f64, Rc<Instrument>)>>, qm::Error> {
 
-    let mut result = Vec::<(f64, Rc<Instrument>)>::new();
+    // optional modified basket, in case anything changed
+    let mut basket : Vec<(f64, Rc<Instrument>)> = Vec::new();
+    let mut uncopied = 0;
+    let mut modified = false;
+
     for &(weight, ref instrument) in instruments.iter() {
-        if let Some(decomposition) = instrument.fix(&fixing_table)? {
-            for &(weight2, ref instrument) in decomposition.iter() {
-                result.push((weight * weight2, instrument.clone()));
+        if let Some(decomposition) = instrument.fix(fixing_table)? {
+
+            // create a new basket and copy all the previous elements into it
+            if !modified {
+                for &(prev_weight, ref prev_instrument) in instruments.iter().take(uncopied) {
+                    basket.push((prev_weight, prev_instrument.clone()));
+                }
+                uncopied = 0;
+                modified = true;
             }
+
+            // decompose the present element into the next few items in the basket
+            for &(weight2, ref instrument) in decomposition.iter() {
+                basket.push((weight * weight2, instrument.clone()));
+            }
+        } else if modified {
+            // once we've started copying, we have to copy everything
+            basket.push((weight, instrument.clone()));
         } else {
-            // this instrument is unchanged, just copy it over
-            result.push((weight, instrument.clone()));
+            uncopied += 1;
         }
     }
 
-    Ok(result)
+    if modified {
+        Ok(Some(basket))
+    } else {
+        Ok(None)
+    }
 }
 
 /// When making hash maps or sets of instruments, we only key by the id, which
@@ -309,6 +332,28 @@ pub trait Priceable : Instrument {
     fn as_instrument(&self) -> &Instrument;
 }
 
+/// Sometimes it is useful to treat a priceable as if it were a forward curve.
+/// The only issue is that a priceable takes a DateTime and a forward takes a date.
+/// We require the user to pass in a time of day, so we can convert.
+pub struct ForwardFromPriceable<'a> {
+    priceable: &'a Priceable,
+    context: &'a PricingContext,
+    time_of_day: TimeOfDay
+}
+
+impl<'a> ForwardFromPriceable<'a> {
+    pub fn new(priceable: &'a Priceable, context: &'a PricingContext, time_of_day: TimeOfDay)
+        -> ForwardFromPriceable<'a> {
+        ForwardFromPriceable { priceable, context, time_of_day }
+    }
+}
+
+impl<'a> Forward for ForwardFromPriceable<'a> {
+    fn forward(&self, date: Date) -> Result<f64, qm::Error> {
+        self.priceable.price(self.context, DateTime::new(date, self.time_of_day))
+    }
+}
+
 /// A pricing context contains the market data needed for an instrument to
 /// price itself. As we add new types of market data, we can add new methods to
 /// this interface.
@@ -336,8 +381,9 @@ pub trait PricingContext {
     /// Gets a Vol Surface, given any instrument, for example an equity.  Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
-    fn vol_surface(&self, instrument: &Instrument, forward: Rc<Forward>,
-         high_water_mark: Date) -> Result<Rc<VolSurface>, qm::Error>;
+    fn vol_surface(&self, instrument: &Instrument, high_water_mark: Date,
+        forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+         -> Result<Rc<VolSurface>, qm::Error>;
 
     /// Gets an instantaneous correlation between two instruments. At present,
     /// we consider this to be constant. (A datetime parameter could be added

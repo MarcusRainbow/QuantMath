@@ -254,7 +254,7 @@ pub fn calculate_substepping(
 
         let instr = instrument.instrument();
         let fwd = context.forward_curve(instr, hwm)?;
-        let surface = context.vol_surface(instr, fwd.clone(), hwm)?;
+        let surface = context.vol_surface(instr, hwm, &|| Ok(fwd.clone()))?;
 
         let mut prev_var = 0.0;
 
@@ -405,9 +405,8 @@ pub fn fetch_path(instrument: &Instrument, context: &PricingContext,
     // Fetch the market data we need
     let hwm = observations.last().unwrap().date();
     let forward_curve = context.forward_curve(instrument, hwm)?;
-    let vol_surface = context.vol_surface(instrument, forward_curve.clone(),
-        hwm)?;
-
+    let vol_surface = context.vol_surface(instrument, hwm, &|| Ok(forward_curve.clone()))?;
+    
     // Fetch the forwards and variances on each observation date
     // We use the at the forward variances, using the live forward curve
     // (consider optionally using the forwards in the vol surface).

@@ -263,7 +263,7 @@ mod tests {
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
 
         let unbumped_price = pricer.price().unwrap();
-        assert_approx(unbumped_price, 19.072086263185145, 1e-12);
+        assert_approx(unbumped_price, 19.059001770739144, 1e-12);
 
         // delta bump. We expect this delta to be fairly small, as it only comes from
         // the skew.
@@ -272,17 +272,17 @@ mod tests {
         let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();
         assert!(bumped);
         let bumped_price = pricer.price().unwrap();
-        assert_approx(bumped_price - unbumped_price, 0.20527149956129875, 1e-12);
+        assert_approx(bumped_price - unbumped_price, 0.20514185426620202, 1e-12);
         pricer.as_mut_bumpable().restore(&*save).unwrap();
         save.clear();
 
-        // bump past the strike date. Should result in a small negative theta.
+        // bump past the strike date. Should result in a small theta.
         let spot_date = Date::from_ymd(2017, 01, 02);
         let dynamics = SpotDynamics::StickyForward;
         let time_bump = BumpTime::new(spot_date + 1, spot_date, dynamics);
         pricer.as_mut_time_bumpable().bump_time(&time_bump).unwrap();
         let bumped_price = pricer.price().unwrap();
-        assert_approx(bumped_price - unbumped_price, -0.012516292441407728, 1e-12);
+        assert_approx(bumped_price - unbumped_price, 0.0005682000045936775, 1e-12);
 
         // again test the delta -- should now be much larger
         let bumped = pricer.as_mut_bumpable().bump(&bump, Some(&mut *save)).unwrap();

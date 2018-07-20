@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::f64::NAN;
 use instruments::Instrument;
 use instruments::Priceable;
 use instruments::PricingContext;
@@ -11,7 +12,6 @@ use instruments::MonteCarloDependencies;
 use instruments::MonteCarloContext;
 use math::optionpricing::Black76;
 use data::fixings::FixingTable;
-use data::forward::Forward;
 use dates::Date;
 use dates::rules::DateRule;
 use dates::datetime::DateTime;
@@ -72,7 +72,8 @@ impl VanillaOption {
     /// Prices this option with a range of val dates, and given a closure that
     /// calculates the strike
     fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64], 
-        vol_from: DateDayFraction,  strike_fn: &Fn(&Forward) -> Result<f64, qm::Error>) 
+        vol_from: DateDayFraction,  
+        strike_and_forward: &Fn(&Priceable) -> Result<(f64, f64), qm::Error>) 
         -> Result<(), qm::Error> {
         
         assert_eq!(dates.len(), out.len());
@@ -80,18 +81,21 @@ impl VanillaOption {
             return Ok(())  // nothing to do
         }
 
-        // fetch the market data we need
+        // fetch the market data we need. Note that the forward curve is only fetched if
+        // sticky delta dynamics forces it. Otherwise, there is nothing to stop the underlying
+        // being calculated rather than supplied directly as a forward curve.
         let expiry_date = self.expiry.date();
         let yc = context.yield_curve(self.underlying.credit_id(), self.pay_date)?;
-        let fwd = context.forward_curve(&*self.underlying, expiry_date)?;
-        let vol = context.vol_surface(&*self.underlying, fwd.clone(), expiry_date)?;
+        let vol = context.vol_surface(&*self.underlying, expiry_date, 
+            &|| context.forward_curve(&*self.underlying, expiry_date))?;
 
         // Calculate the parameters for the BlackScholes formula. We discount to
         // the base date of the discount curve. (Any date would do so long as we
-        // are consistent.) 
-        let strike = strike_fn(&*fwd)?;
+        // are consistent.)
+        let underlying = self.underlying.as_priceable().ok_or_else(|| qm::Error::new(
+            "The underlying of an option must itself be priceable"))?;
+        let (strike, forward) = strike_and_forward(underlying)?;
         let df_from_base = (-yc.rt(self.pay_date)?).exp();
-        let forward = fwd.forward(self.expiry.date())?;
  
         // For some div assumptions, we must displace the forward and strike.
         // (This errors for JumpDivs, which we do not currently handle.)
@@ -115,7 +119,7 @@ impl VanillaOption {
                 let df = df_from_base * yc.rt(settlement_date)?.exp();
 
                 let val_date = self.underlying.time_to_day_fraction(*date)?;
-                let from_date = vol_from.min(val_date);
+                let from_date = vol_from.max(val_date);
                 let variance = vol.forward_variance(from_date, self.expiry_time, strike)?;
                 if variance < 0.0 {
                     return Err(qm::Error::new("Negative variance"));
@@ -399,7 +403,8 @@ impl Priceable for SpotStartingEuropean {
         -> Result<(), qm::Error> {
 
         let before_time = DateDayFraction::new(Date::from_nil(), 0.0);
-        self.vanilla.prices(context, dates, out, before_time, &|_| Ok(self.strike))
+        self.vanilla.prices(context, dates, out, before_time, 
+            &|underlying| Ok((self.strike, underlying.price(context, self.vanilla.expiry)?)))
     }
 }
 
@@ -418,8 +423,12 @@ impl Priceable for ForwardStartingEuropean {
                 pricing it, so it does not forward-start in the past"))
         }
 
-        self.vanilla.prices(context, dates, out, self.strike_time, &|fwd : &Forward| 
-            Ok(self.strike_fraction * fwd.forward(self.strike_date.date())?))
+        self.vanilla.prices(context, dates, out, self.strike_time, &|underlying| {
+            let mut values = vec![NAN, NAN];
+            let dates = vec![self.strike_date, self.vanilla.expiry];
+            underlying.prices(context, &dates, &mut values)?;
+            Ok((values[0] * self.strike_fraction, values[1]))
+        })
     }
 }
 
@@ -568,26 +577,11 @@ mod tests {
     use data::forward::InterpolatedForward;
     use data::volsurface::FlatVolSurface;
     use dates::calendar::WeekdayCalendar;
-    use dates::rules::BusinessDays;
-    use dates::datetime::TimeOfDay;
     use dates::Date;
-    use instruments::assets::Equity;
-
-    fn sample_currency(step: u32) -> Currency {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        let settlement = Rc::new(BusinessDays::new_step(calendar, step));
-        Currency::new("GBP", settlement)
-    }
-
-    fn sample_settlement(step: u32) -> Rc<DateRule> {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        Rc::new(BusinessDays::new_step(calendar, step))
-    }
-
-    fn sample_equity(currency: Rc<Currency>, step: u32) -> Equity {
-        let settlement = sample_settlement(step);
-        Equity::new("BP.L", "LSE", currency, settlement)
-    }
+    use dates::datetime::TimeOfDay;
+    use instruments::basket::Basket;
+    use instruments::assets::tests::sample_currency;
+    use instruments::assets::tests::sample_equity;
 
     struct SamplePricingContext { 
         spot: f64
@@ -609,12 +603,15 @@ mod tests {
             Ok(Rc::new(c))
         }
 
-        fn spot(&self, _id: &str) -> Result<f64, qm::Error> {
+        fn spot(&self, id: &str) -> Result<f64, qm::Error> {
+            print!("spot for {}", id);
             Ok(self.spot)
         }
 
-        fn forward_curve(&self, _instrument: &Instrument, 
+        fn forward_curve(&self, instrument: &Instrument, 
             _high_water_mark: Date) -> Result<Rc<Forward>, qm::Error> {
+ 
+            print!("forward for {}", instrument.id());
 
             let d = Date::from_ymd(2018, 06, 01);
 
@@ -627,8 +624,8 @@ mod tests {
             Ok(Rc::new(fwd))
         }
 
-        fn vol_surface(&self, _instrument: &Instrument,
-            _forward: Rc<Forward>, _high_water_mark: Date)
+        fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
+            _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
             -> Result<Rc<VolSurface>, qm::Error> {
 
             let calendar = Rc::new(WeekdayCalendar());
@@ -685,7 +682,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_european_value(spot, strike, expiry, PutOrCall::Call,
-            9.576591266363515);
+            9.511722618202752);
     }
 
     #[test]
@@ -697,7 +694,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_european_value(spot, strike, expiry, PutOrCall::Put,
-            9.576591266363534);
+            9.511722618202759);
     }
 
     #[test]
@@ -711,7 +708,7 @@ mod tests {
             Date::from_ymd(2018, 07, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 31.833102506026655);
+            PutOrCall::Call, 31.833089791935123);
     }
 
     #[test]
@@ -725,7 +722,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 9.511722618202752);
+            PutOrCall::Call, 9.482747427099154);
     }
 
     #[test]
@@ -739,7 +736,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Put, 9.511722618202759);
+            PutOrCall::Put, 9.482747427099161);
     }
 
     #[test]
@@ -753,7 +750,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_fixed_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 9.576591266363515);
+            PutOrCall::Call, 9.511722618202752);
     }
 
     #[test]
@@ -767,7 +764,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_fixed_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Put, 9.576591266363534);
+            PutOrCall::Put, 9.511722618202759);
     }
 
     #[test]
@@ -781,7 +778,7 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Call, 8.852491467318078);
+            PutOrCall::Call, 8.639339890285823);
     }
 
     #[test]
@@ -795,18 +792,65 @@ mod tests {
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
 
         check_forward_european_value(spot, strike_fraction, strike_date, expiry,
-            PutOrCall::Put, 10.334846982593138);
+            PutOrCall::Put, 10.121695405560876);
+    }
+
+    #[test]
+    fn basket_european_put() {
+
+        let spot = 100.0;
+        let strike = 115.170375;
+        let expiry = DateTime::new(
+            Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
+
+        check_basket_european_value(spot, strike, expiry, PutOrCall::Call,
+            9.511722618202752);
+    }
+
+    #[test]
+    fn basket_forward_european_put() {
+
+        let spot = 100.0;
+        let strike_fraction = 1.15170375;
+        let strike_date = DateTime::new(
+            Date::from_ymd(2018, 06, 08), TimeOfDay::Close);
+        let expiry = DateTime::new(
+            Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
+
+        check_basket_forward_european_value(spot, strike_fraction, strike_date, expiry,
+            PutOrCall::Put, 10.121695405560876);
     }
 
     fn check_european_value(spot: f64, strike: f64, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
         let currency = Rc::new(sample_currency(2));
-        let settlement = sample_settlement(2);
-        let equity = Rc::new(sample_equity(currency, 2));
+        let equity = Rc::new(sample_equity(currency, "BP.L", 2));
+        let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = SpotStartingEuropean::new("SampleEuropean", "OPT",
             equity.clone(), settlement, expiry,
+            strike, put_or_call, cash_or_physical).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
+
+        let context = sample_pricing_context(spot);
+        let price = european.price(&context, val_date).unwrap();
+        assert_approx(price, expected, 1e-8);
+    }
+
+    fn check_basket_european_value(spot: f64, strike: f64, expiry: DateTime,
+        put_or_call: PutOrCall, expected: f64) {
+
+        let currency = Rc::new(sample_currency(2));
+        let az : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "AZ.L", 2));
+        let bp : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "BP.L", 2));
+        let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
+        let ul : Rc<Instrument> = Rc::new(Basket::new(
+            "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap());
+        let settlement = ul.settlement().clone();
+        let cash_or_physical = OptionSettlement::Cash;
+        let european = SpotStartingEuropean::new("SampleBasketEuropean", "OPT",
+            ul.clone(), settlement, expiry,
             strike, put_or_call, cash_or_physical).unwrap();
         let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
 
@@ -820,11 +864,33 @@ mod tests {
         put_or_call: PutOrCall, expected: f64) {
 
         let currency = Rc::new(sample_currency(2));
-        let settlement = sample_settlement(2);
-        let equity = Rc::new(sample_equity(currency, 2));
+        let equity = Rc::new(sample_equity(currency, "BP.L", 2));
+        let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
             equity.clone(), settlement, expiry, strike_fraction,
+            strike_date, put_or_call, cash_or_physical).unwrap();
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
+
+        let context = sample_pricing_context(spot);
+        let price = european.price(&context, val_date).unwrap();
+        assert_approx(price, expected, 1e-8);
+    }
+
+    fn check_basket_forward_european_value(spot: f64, strike_fraction: f64,
+        strike_date: DateTime, expiry: DateTime,
+        put_or_call: PutOrCall, expected: f64) {
+
+        let currency = Rc::new(sample_currency(2));
+        let az : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "AZ.L", 2));
+        let bp : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "BP.L", 2));
+        let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
+        let ul : Rc<Instrument> = Rc::new(Basket::new(
+            "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap());
+        let settlement = ul.settlement().clone();
+        let cash_or_physical = OptionSettlement::Cash;
+        let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
+            ul.clone(), settlement, expiry, strike_fraction,
             strike_date, put_or_call, cash_or_physical).unwrap();
         let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
 
@@ -838,8 +904,8 @@ mod tests {
         put_or_call: PutOrCall, expected: f64) {
 
         let currency = Rc::new(sample_currency(2));
-        let settlement = sample_settlement(2);
-        let equity = Rc::new(sample_equity(currency, 2));
+        let equity = Rc::new(sample_equity(currency, "BP.L", 2));
+        let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
             equity.clone(), settlement, expiry, strike_fraction,

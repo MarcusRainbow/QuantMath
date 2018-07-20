@@ -174,15 +174,16 @@ impl PricingContext for MarketData {
     /// Gets a Vol Surface, given any instrument, for example an equity.  Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
-    fn vol_surface(&self, instrument: &Instrument, forward: Rc<Forward>,
-        _high_water_mark: Date) -> Result<Rc<VolSurface>, qm::Error> {
+    fn vol_surface(&self, instrument: &Instrument, _high_water_mark: Date,
+        forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+         -> Result<Rc<VolSurface>, qm::Error> {
 
         let id = instrument.id();
         let mut vol = find_market_data(id, &self.vol_surfaces, "Vol surface")?;
 
         // decorate or modify the surface to cope with any time or forward shift
         instrument.vol_time_dynamics().modify(&mut vol, self.spot_date)?; 
-        instrument.vol_forward_dynamics().modify(&mut vol, forward)?;
+        instrument.vol_forward_dynamics().modify(&mut vol, forward_fn)?;
         Ok(vol)
     }
 
@@ -597,7 +598,7 @@ pub mod tests {
         let unbumped_price = european.price(&market_data, val_date).unwrap();
 
         // this price looks plausible, but was found simply by running the test
-        assert_approx(unbumped_price, 19.072086263185145, 1e-12);
+        assert_approx(unbumped_price, 19.059001770739144, 1e-12);
 
         // clone the market data so we can modify it and also create an
         // empty saved data to save state so we can restore it
@@ -610,7 +611,7 @@ pub mod tests {
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data, val_date).unwrap();
-        assert_approx(bumped_price, 19.277357762746444, 1e-12);
+        assert_approx(bumped_price, 19.264143625005346, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();
@@ -624,7 +625,7 @@ pub mod tests {
         let bumped = mut_data.bump(&bump, Some(&mut save)).unwrap();
         assert!(bumped);
         let bumped_price = european.price(&mut_data, val_date).unwrap();
-        assert_approx(bumped_price, 19.475602301749383, 1e-12);
+        assert_approx(bumped_price, 19.462049109434098, 1e-12);
       
         // when we restore, it should take the price back
         mut_data.restore(&save).unwrap();

@@ -18,7 +18,7 @@ use std::fmt;
 /// We do assume an ordering of the enums here, matching the order they are
 /// expressed. If other values are added, such as LiborFixingTime, we may
 /// need to implement comparison functions manually, using Ord and PartialOrd.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TimeOfDay {
     Open,
     EDSP,
@@ -37,7 +37,7 @@ impl Display for TimeOfDay {
 
 /// Convenience struct that groups a date and a time of day. For example, this
 /// represents the time of a fixing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DateTime {
     date: Date,
     time_of_day: TimeOfDay

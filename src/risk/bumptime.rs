@@ -87,12 +87,15 @@ impl BumpTime {
         }
 
         // Apply the fixings to each of the instruments, and build up a new vector of them
-        let any_changes = !fixing_map.is_empty();
+        let mut any_changes = !fixing_map.is_empty();
         if any_changes {
             let fixing_table = FixingTable::from_map(new_spot_date, &fixing_map)?;
-            let mut replacement = fix_all(instruments, &fixing_table)?;
-            instruments.clear();
-            instruments.append(&mut replacement);
+            if let Some(ref mut replacement) = fix_all(instruments, &fixing_table)? {
+                instruments.clear();
+                instruments.append(replacement);
+            } else {
+                any_changes = false;
+            }
         }
 
         Ok(any_changes)
