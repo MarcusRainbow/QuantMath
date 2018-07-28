@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::any::Any;
 use data::volsurface::VolSurface;
 use data::forward::Forward;
-use data::curves::RateCurve;
+use data::curves::RcRateCurve;
 use data::bump::Bump;
 use dates::Date;
 use instruments::Instrument;
@@ -172,7 +172,7 @@ impl PricingContext for PricingContextPrefetch {
     }
 
     fn yield_curve(&self, credit_id: &str, high_water_mark: Date)
-        -> Result<Rc<RateCurve>, qm::Error> {
+        -> Result<RcRateCurve, qm::Error> {
         // Currently there is no work in fetching a yield curve, so we do
         // not cache this. If yield curves were to be cooked internally, this
         // would change.

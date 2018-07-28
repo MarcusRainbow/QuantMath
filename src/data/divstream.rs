@@ -1,4 +1,5 @@
 use dates::Date;
+use data::curves::RcRateCurve;
 use data::curves::RateCurve;
 use data::curves::RelativeBump;
 use data::forward::log_discount_with_borrow;
@@ -32,7 +33,7 @@ use std::f64::NAN;
 /// currency need not be supplied. The currency is required for foreign
 /// currency dividends. (For example, BP is a GBP-based equity, but pays
 /// its dividends in USD.)
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Dividend {
     // currency: Option<Currency>,
     cash: f64,
@@ -72,14 +73,15 @@ impl Dividend {
 ///
 /// When dividends are not known explicitly, a dividend yield may be added
 /// to ensure that Futures and equity swaps are matched correctly.
+//#[derive(Serialize, Deserialize)]
 pub struct DividendStream {
     dividends: Vec<Dividend>,
-    div_yield: Rc<RateCurve>,
+    div_yield: RcRateCurve,
     last_cash_ex_date: Date
 }
 
 impl DividendStream {
-    pub fn new(dividends: &[Dividend], div_yield: Rc<RateCurve>) 
+    pub fn new(dividends: &[Dividend], div_yield: RcRateCurve) 
         -> DividendStream {
 
         // the last cash ex date is important for volatility models such as
@@ -108,7 +110,7 @@ impl DividendStream {
            div.bump_all_relative(one_plus_bump);
         }
 
-        let bumped_yield = Rc::new(RelativeBump::new(divs.div_yield(), bump)); 
+        let bumped_yield = RcRateCurve::new(Rc::new(RelativeBump::new(divs.div_yield(), bump))); 
 
         DividendStream {
             dividends: bumped_divs,
@@ -117,7 +119,7 @@ impl DividendStream {
     }
 
     pub fn dividends(&self) -> &[Dividend] { &self.dividends }
-    pub fn div_yield(&self) -> Rc<RateCurve> { Rc::clone(&self.div_yield) }
+    pub fn div_yield(&self) -> RcRateCurve { self.div_yield.clone() }
     pub fn last_cash_ex_date(&self) -> Date { self.last_cash_ex_date }
 }
 
@@ -446,7 +448,7 @@ mod tests {
             (d + 365 * 5, 0.01), (d + 365 * 10, 0.015)];
         let curve = RateCurveAct365::new(d + 365 * 2, &points,
             Extrap::Zero, Extrap::Flat).unwrap();
-        let div_yield = Rc::new(curve);
+        let div_yield = RcRateCurve::new(Rc::new(curve));
 
         DividendStream::new(&divs, div_yield) 
     }

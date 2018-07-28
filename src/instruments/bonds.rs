@@ -133,7 +133,7 @@ mod tests {
     use math::numerics::approx_eq;
     use math::interpolation::Extrap;
     use data::curves::RateCurveAct365;
-    use data::curves::RateCurve;
+    use data::curves::RcRateCurve;
     use data::forward::Forward;
     use data::volsurface::VolSurface;
     use dates::calendar::WeekdayCalendar;
@@ -164,14 +164,14 @@ mod tests {
         }
 
         fn yield_curve(&self, _credit_id: &str,
-            _high_water_mark: Date) -> Result<Rc<RateCurve>, qm::Error> {
+            _high_water_mark: Date) -> Result<RcRateCurve, qm::Error> {
 
             let d = Date::from_ymd(2018, 05, 30);
             let points = [(d, 0.05), (d + 14, 0.08), (d + 56, 0.09),
                 (d + 112, 0.085), (d + 224, 0.082)];
             let c = RateCurveAct365::new(d, &points,
                 Extrap::Flat, Extrap::Flat)?;
-            Ok(Rc::new(c))
+            Ok(RcRateCurve::new(Rc::new(c)))
         }
 
         fn spot(&self, _id: &str) -> Result<f64, qm::Error> {

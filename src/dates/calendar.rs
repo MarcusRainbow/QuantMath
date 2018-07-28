@@ -72,6 +72,7 @@ pub trait Calendar {
 
 /// An every-day calendar assumes that all days are business days, including
 /// weekends.
+#[derive(Serialize, Deserialize)]
 pub struct EveryDayCalendar();
 
 impl Calendar for EveryDayCalendar {
@@ -112,6 +113,7 @@ impl Calendar for EveryDayCalendar {
 
 /// A weekday calendar assumes that Monday to Friday are business days, and
 /// Saturday and Sunday are not.
+#[derive(Serialize, Deserialize)]
 pub struct WeekdayCalendar();
 
 impl WeekdayCalendar {
@@ -224,10 +226,11 @@ fn slip_to_next_weekday(from: Date, slip_forward: bool) -> Date {
 /// A calendar that assumes that Saturday and Sunday are not business days,
 /// together with a specified list of business holidays. In general this list
 /// is read from a file.
+#[derive(Serialize, Deserialize)]
 pub struct WeekdayAndHolidayCalendar {
     name: String,
     holidays: Vec<Date>		// must be in date order, with no duplicates
-                                // and no weekend dates
+                            // and no weekend dates
 }
 
 impl WeekdayAndHolidayCalendar {
@@ -405,6 +408,7 @@ impl Calendar for WeekdayAndHolidayCalendar {
 /// corresponding spot model, and this is achieved by calling the step
 /// function. We may end up trying to roll by non-integer numbers of days.
 /// In that case, we round to the nearest integer.
+//#[derive(Serialize, Deserialize)]
 pub struct VolatilityCalendar {
     name: String,
     calendar: Box<Calendar>,

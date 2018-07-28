@@ -354,6 +354,7 @@ impl VolForwardDynamics {
 }
 
 /// Flat volatility surface. Volatility is independent of date and strike.
+//#[derive(Clone, Serialize, Deserialize)]
 pub struct FlatVolSurface {
     vol: f64,
     calendar: Rc<Calendar>,
