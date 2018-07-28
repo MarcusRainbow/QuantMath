@@ -2,6 +2,11 @@ pub mod calendar;
 pub mod rules;
 pub mod datetime;
 
+use serde::Serializer;
+use serde::Serialize;
+use serde::Deserializer;
+use serde::Deserialize;
+use serde::de::Error;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Sub;
@@ -121,19 +126,30 @@ impl FromStr for Date {
     }
 }
 
-// We do not need to implement ToString because Display does that for us
-/*
-impl ToString for Date {
-    /// Writes a date as an ISO format string
-    fn to_string(&self) -> String {
-        let (y, m, d) = self.ymd();
-        let mut buf = String::with_capacity(10);
-        write!(&mut buf, "{:04}-{:02}-{:02}", y, m, d).unwrap();
-        assert!(buf.capacity() == 10);
-        buf
+impl Serialize for Date {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer {
+
+        // TODO try to find a way of serializing that does not involve
+        // unnecessarily constructing a string
+        let s = format!("{}", self);
+        serializer.serialize_str(&s)
     }
 }
-*/
+
+impl<'de> Deserialize<'de> for Date {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: Deserializer<'de> {
+
+        // TODO try to find a way of deserializing that does not involve
+        // unnecessarily constructing a string
+        let s = String::deserialize(deserializer)?;
+        match Date::from_str(&s) {
+            Ok(date) => Ok(date),
+            Err(e) => Err(Error::custom(e.to_string()))
+        }
+    }
+}
 
 /// We always display dates as ISO format.
 impl Display for Date {
@@ -258,6 +274,7 @@ mod tests {
     use math::interpolation::Linear;
     use math::interpolation::Extrap;
     use math::interpolation::Interpolate;
+    use serde_json;
 
     #[test]
     fn date_creation_and_access() {
@@ -440,5 +457,43 @@ mod tests {
 
         let y7 = interp.interpolate(d + 8);
         assert!(approx_eq(y7.unwrap(), 10.0, tol));
+    }
+
+    #[test]
+    fn date_serde() {
+    
+        // a struct with dates in it
+        let date = Date::from_ymd(2018, 05, 10);
+
+        // Convert the date to a JSON string.
+        let serialized = serde_json::to_string(&date).unwrap();
+        assert_eq!(serialized, r#""2018-05-10""#);
+
+        // Convert the JSON string back to a date.
+        let deserialized: Date = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, date);
+    }
+
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    struct Foo {
+        start: Date,
+        end: Date
+    }
+
+    #[test]
+    fn contained_date_serde() {
+    
+        // a struct with dates in it
+        let start = Date::from_ymd(2018, 05, 10);
+        let end = start + 10;
+        let foo = Foo { start, end };
+
+        // Convert the struct to a JSON string.
+        let serialized = serde_json::to_string(&foo).unwrap();
+        assert_eq!(serialized, r#"{"start":"2018-05-10","end":"2018-05-20"}"#);
+
+        // Convert the JSON struct back to a date.
+        let deserialized: Foo = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, foo);
     }
 }

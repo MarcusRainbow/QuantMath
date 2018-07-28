@@ -64,7 +64,7 @@ pub trait Interpolate<T> where T : Interpolable<T> {
 }
 
 /// Extrapolation methods
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Extrap {
     Flat,
     Natural,
@@ -216,7 +216,7 @@ impl<T : Interpolable<T> + Copy> FlyweightInterpolate<T>
 
 /// Non-flyweight linear interpolation. In this interpolator, the data is
 /// kept internally, and passed into the constructor.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Linear<T> where T : Interpolable<T> {
     left: Extrap,
     right: Extrap,
@@ -396,6 +396,7 @@ fn nr_splint<T : Interpolable<T> + Copy>(
 mod tests {
     use super::*;
     use math::numerics::approx_eq;
+    use serde_json;
 
     #[test]
     fn test_lerp() {
@@ -521,6 +522,29 @@ mod tests {
 
         assert!(approx_eq(deriv, expected, 1e-12),
             "x={} precomputed={} expected={}", x, y2, expected);
+    }
+
+    #[test]
+    fn linear_interp_serde() {
+
+        // an interpolator with some points  
+        let points = [(0, 0.0), (2, 3.0), (4, 8.0)];
+        let interp = Linear::<i32>::new(&points, Extrap::Flat, Extrap::Flat)
+            .unwrap();
+
+        // Convert the interpolator to a JSON string.
+        let serialized = serde_json::to_string(&interp).unwrap();
+        assert_eq!(serialized, r#"{"left":"Flat","right":"Flat","points":[[0,0.0],[2,3.0],[4,8.0]]}"#);
+
+        // Convert the JSON string back to an interpolator.
+        let deserialized: Linear<i32> = serde_json::from_str(&serialized).unwrap();
+
+        // make sure it matches at the pillars and beyond
+        assert_match(deserialized.interpolate(-1), 0.0);
+        assert_match(deserialized.interpolate(0), 0.0);
+        assert_match(deserialized.interpolate(2), 3.0);
+        assert_match(deserialized.interpolate(4), 8.0);
+        assert_match(deserialized.interpolate(5), 8.0);
     }
 }
 

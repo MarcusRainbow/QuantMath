@@ -9,7 +9,7 @@ use dates::Date;
 use dates::rules::DateRule;
 use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
-use data::curves::RateCurve;
+use data::curves::RcRateCurve;
 use data::forward::Forward;
 use data::volsurface::VolSurface;
 use data::volsurface::VolTimeDynamics;
@@ -367,7 +367,7 @@ pub trait PricingContext {
 
     /// Gets a yield curve, given an instrument to define the discounting.
     fn yield_curve(&self, credit_id: &str, high_water_mark: Date)
-        -> Result<Rc<RateCurve>, qm::Error>;
+        -> Result<RcRateCurve, qm::Error>;
 
     /// Gets a spot value, given the id of any instrument
     fn spot(&self, id: &str) -> Result<f64, qm::Error>;

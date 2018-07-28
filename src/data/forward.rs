@@ -3,6 +3,7 @@ use dates::rules::DateRule;
 use math::interpolation::Interpolate;
 use data::divstream::DividendBootstrap;
 use data::divstream::DividendStream;
+use data::curves::RcRateCurve;
 use data::curves::RateCurve;
 use core::qm;
 use std::rc::Rc;
@@ -67,9 +68,9 @@ impl InterpolatedForward {
 /// borrow, defines the rate of growth, plus a dividend stream.
 pub struct EquityForward {
     settlement: Rc<DateRule>,
-    rate: Rc<RateCurve>,
-    borrow: Rc<RateCurve>,
-    div_yield: Rc<RateCurve>,
+    rate: RcRateCurve,
+    borrow: RcRateCurve,
+    div_yield: RcRateCurve,
     bootstrap: DividendBootstrap,
     reference_spot: f64,
     base_log_discount: f64
@@ -104,8 +105,8 @@ impl EquityForward {
         base_date: Date,
         spot: f64,
         settlement: Rc<DateRule>,
-        rate: Rc<RateCurve>,
-        borrow: Rc<RateCurve>,
+        rate: RcRateCurve,
+        borrow: RcRateCurve,
         divs: &DividendStream,
         high_water_mark: Date) -> Result<EquityForward, qm::Error> {
 
@@ -252,25 +253,25 @@ mod tests {
             (d + 365 * 5, 0.01), (d + 365 * 10, 0.015)];
         let curve = RateCurveAct365::new(d + 365 * 2, &points,
             Extrap::Zero, Extrap::Flat).unwrap();
-        let div_yield = Rc::new(curve);
+        let div_yield = RcRateCurve::new(Rc::new(curve));
 
         DividendStream::new(&divs, div_yield)
     }
 
-    fn create_sample_rate() -> Rc<RateCurve> {
+    fn create_sample_rate() -> RcRateCurve {
         let d = Date::from_ymd(2016, 12, 30);
         let rate_points = [(d, 0.05), (d + 14, 0.08), (d + 182, 0.09),
             (d + 364, 0.085), (d + 728, 0.082)];
-        Rc::new(RateCurveAct365::new(d, &rate_points,
-            Extrap::Flat, Extrap::Flat).unwrap())
+        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &rate_points,
+            Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
-    fn create_sample_borrow() -> Rc<RateCurve> {
+    fn create_sample_borrow() -> RcRateCurve {
         let d = Date::from_ymd(2016, 12, 30);
         let borrow_points = [(d, 0.01), (d + 196, 0.012),
             (d + 364, 0.0125), (d + 728, 0.012)];
-        Rc::new(RateCurveAct365::new(d, &borrow_points,
-            Extrap::Flat, Extrap::Flat).unwrap())
+        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &borrow_points,
+            Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
     fn assert_match(result: Result<f64, qm::Error>, expected: f64) {

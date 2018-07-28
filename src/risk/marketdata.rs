@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::any::Any;
 use core::qm;
 use dates::Date;
-use data::curves::RateCurve;
+use data::curves::RcRateCurve;
 use data::divstream::DividendStream;
 use data::volsurface::VolSurface;
 use data::forward::Forward;
@@ -35,12 +35,13 @@ use risk::dependencies::DependencyCollector;
 /// As new forms of market data are required, they should be added to this
 /// struct. They may also need to be added to PricingContext, so they can be
 /// accessed during pricing.
+//#[derive(Clone, Serialize, Deserialize)]
 #[derive(Clone)]
 pub struct MarketData {
     spot_date: Date, 
     spots: HashMap<String, f64>,
-    yield_curves: HashMap<String, Rc<RateCurve>>,
-    borrow_curves: HashMap<String, Rc<RateCurve>>,
+    yield_curves: HashMap<String, RcRateCurve>,
+    borrow_curves: HashMap<String, RcRateCurve>,
     dividends: HashMap<String, Rc<DividendStream>>,
     vol_surfaces: HashMap<String, Rc<VolSurface>>
 }
@@ -67,8 +68,8 @@ impl MarketData {
     pub fn new(
         spot_date: Date, 
         spots: HashMap<String, f64>,
-        yield_curves: HashMap<String, Rc<RateCurve>>,
-        borrow_curves: HashMap<String, Rc<RateCurve>>,
+        yield_curves: HashMap<String, RcRateCurve>,
+        borrow_curves: HashMap<String, RcRateCurve>,
         dividends: HashMap<String, Rc<DividendStream>>,
         vol_surfaces: HashMap<String, Rc<VolSurface>>) -> MarketData {
 
@@ -139,7 +140,7 @@ impl PricingContext for MarketData {
     }
 
     fn yield_curve(&self, credit_id: &str, _high_water_mark: Date)
-            -> Result<Rc<RateCurve>, qm::Error> {
+            -> Result<RcRateCurve, qm::Error> {
         find_market_data(credit_id, &self.yield_curves, "Yield curve")
     }
 
@@ -312,8 +313,8 @@ pub fn copy_from_saved<T: Clone>(to_restore: &mut HashMap<String, T>,
 
 pub struct SavedData {
     spots: HashMap<String, f64>,
-    yield_curves: HashMap<String, Rc<RateCurve>>,
-    borrow_curves: HashMap<String, Rc<RateCurve>>,
+    yield_curves: HashMap<String, RcRateCurve>,
+    borrow_curves: HashMap<String, RcRateCurve>,
     dividends: HashMap<String, Rc<DividendStream>>,
     vol_surfaces: HashMap<String, Rc<VolSurface>>
 }
@@ -363,7 +364,6 @@ pub mod tests {
     use instruments::Priceable;
     use data::divstream::DividendStream;
     use data::divstream::Dividend;
-    use data::curves::RateCurve;
     use data::curves::RateCurveAct365;
     use data::volsurface::VolSurface;
     use data::volsurface::FlatVolSurface;
@@ -439,25 +439,25 @@ pub mod tests {
             (d + 365 * 5, 0.01), (d + 365 * 10, 0.015)];
         let curve = RateCurveAct365::new(d + 365 * 2, &points,
             Extrap::Zero, Extrap::Flat).unwrap();
-        let div_yield = Rc::new(curve);
+        let div_yield = RcRateCurve::new(Rc::new(curve));
 
         Rc::new(DividendStream::new(&divs, div_yield))
     }
 
-    pub fn create_sample_rate() -> Rc<RateCurve> {
+    pub fn create_sample_rate() -> RcRateCurve {
         let d = Date::from_ymd(2016, 12, 30);
         let rate_points = [(d, 0.05), (d + 14, 0.08), (d + 182, 0.09),
             (d + 364, 0.085), (d + 728, 0.082)];
-        Rc::new(RateCurveAct365::new(d, &rate_points,
-            Extrap::Flat, Extrap::Flat).unwrap())
+        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &rate_points,
+            Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
-    pub fn create_sample_borrow() -> Rc<RateCurve> {
+    pub fn create_sample_borrow() -> RcRateCurve {
         let d = Date::from_ymd(2016, 12, 30);
         let borrow_points = [(d, 0.01), (d + 196, 0.012),
             (d + 364, 0.0125), (d + 728, 0.012)];
-        Rc::new(RateCurveAct365::new(d, &borrow_points,
-            Extrap::Flat, Extrap::Flat).unwrap())
+        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &borrow_points,
+            Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
     pub fn create_sample_flat_vol() -> Rc<VolSurface> {
