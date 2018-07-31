@@ -11,11 +11,12 @@ use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
 use data::curves::RcRateCurve;
 use data::forward::Forward;
-use data::volsurface::VolSurface;
+use data::volsurface::RcVolSurface;
 use data::volsurface::VolTimeDynamics;
 use data::volsurface::VolForwardDynamics;
 use data::fixings::FixingTable;
 use core::qm;
+use math::interpolation::Interpolate;
 use std::rc::Rc;
 use std::hash::Hash;
 use std::cmp::Ordering;
@@ -349,6 +350,8 @@ impl<'a> ForwardFromPriceable<'a> {
 }
 
 impl<'a> Forward for ForwardFromPriceable<'a> {
+    fn as_interp(&self) -> &Interpolate<Date> { self }
+
     fn forward(&self, date: Date) -> Result<f64, qm::Error> {
         self.priceable.price(self.context, DateTime::new(date, self.time_of_day))
     }
@@ -383,7 +386,7 @@ pub trait PricingContext {
     /// vols.
     fn vol_surface(&self, instrument: &Instrument, high_water_mark: Date,
         forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
-         -> Result<Rc<VolSurface>, qm::Error>;
+         -> Result<RcVolSurface, qm::Error>;
 
     /// Gets an instantaneous correlation between two instruments. At present,
     /// we consider this to be constant. (A datetime parameter could be added

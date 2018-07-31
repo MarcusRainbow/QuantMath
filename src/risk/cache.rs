@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use std::collections::HashMap;
 use std::any::Any;
-use data::volsurface::VolSurface;
+use data::volsurface::RcVolSurface;
 use data::forward::Forward;
 use data::curves::RcRateCurve;
 use data::bump::Bump;
@@ -26,7 +26,7 @@ pub struct PricingContextPrefetch {
     context: MarketData,
     dependencies: Rc<DependencyCollector>,
     forward_curves: HashMap<String, Rc<Forward>>,
-    vol_surfaces: HashMap<String, Rc<VolSurface>>,
+    vol_surfaces: HashMap<String, RcVolSurface>,
 }
 
 impl PricingContextPrefetch {
@@ -70,7 +70,7 @@ impl PricingContextPrefetch {
         bumped_forward: bool,
         bumped_vol: bool,
         saved_forward_curves: Option<&mut HashMap<String, Rc<Forward>>>,
-        saved_vol_surfaces: Option<&mut HashMap<String, Rc<VolSurface>>>)
+        saved_vol_surfaces: Option<&mut HashMap<String, RcVolSurface>>)
         -> Result<bool, qm::Error> {
 
         // if nothing was bumped, there is nothing to do (this test included
@@ -140,7 +140,7 @@ fn walk_dependencies(
     context: &MarketData,
     dependencies: &Rc<DependencyCollector>,
     forward_curves: &mut HashMap<String, Rc<Forward>>,
-    vol_surfaces: &mut HashMap<String, Rc<VolSurface>>)
+    vol_surfaces: &mut HashMap<String, RcVolSurface>)
     -> Result<(), qm::Error> {
 
     let forward_dependencies = dependencies.forward_curves();
@@ -194,7 +194,7 @@ impl PricingContext for PricingContextPrefetch {
     /// vols.
     fn vol_surface(&self, instrument: &Instrument, _high_water_mark: Date,
         _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
-        -> Result<Rc<VolSurface>, qm::Error> {
+        -> Result<RcVolSurface, qm::Error> {
         find_cached_data(instrument.id(), &self.vol_surfaces, "Vol Surface")
     }
 
@@ -225,7 +225,7 @@ impl Bumpable for PricingContextPrefetch {
 
 //    saved_data: SavedData,
 //    forward_curves: HashMap<String, Rc<Forward>>,
-//    vol_surfaces: HashMap<String, Rc<VolSurface>>
+//    vol_surfaces: HashMap<String, RcVolSurface>
 
         // we have to unpack the option<saveable> into options on all its
         // components all at the same time, to avoid problems with borrowing.
@@ -233,7 +233,7 @@ impl Bumpable for PricingContextPrefetch {
         let (saved_data, saved_forward_curves, saved_vol_surfaces) 
             : (Option<&mut Saveable>
             , Option<&mut HashMap<String, Rc<Forward>>>
-            , Option<&mut HashMap<String, Rc<VolSurface>>>)
+            , Option<&mut HashMap<String, RcVolSurface>>)
             = if let Some(s) = saved {
             (Some(&mut s.saved_data), Some(&mut s.forward_curves), Some(&mut s.vol_surfaces))
         } else {
@@ -346,7 +346,7 @@ fn to_saved(opt_any_saved: Option<&mut Saveable>)
 pub struct SavedPrefetch {
     saved_data: SavedData,
     forward_curves: HashMap<String, Rc<Forward>>,
-    vol_surfaces: HashMap<String, Rc<VolSurface>>
+    vol_surfaces: HashMap<String, RcVolSurface>
 }
 
 impl SavedPrefetch {

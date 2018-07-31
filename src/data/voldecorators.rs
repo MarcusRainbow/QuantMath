@@ -1,30 +1,46 @@
 use std::rc::Rc;
 use data::volsurface::VolSurface;
+use data::volsurface::RcVolSurface;
 use data::forward::Forward;
 use data::volsurface::DivAssumptions;
 use dates::datetime::DateDayFraction;
-use dates::calendar::Calendar;
+use dates::calendar::RcCalendar;
 use dates::Date;
+use math::interpolation::Interpolate;
 use core::qm;
+use core::factories::TypeId;
+use core::factories::Qrc;
+use std::fmt;
+use serde::Deserialize;
+use erased_serde as esd;
 
 /// Time evolve a vol surface such that volatilities at all expiries
 /// remain constant, even between pillars. This is the evolution to use if
 /// you believe that term-structure changes to vol are caused by anticipated
 /// events, such as payroll figures and profit announcements.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ConstantExpiryTimeEvolution {
-    base_vol: Rc<VolSurface>,
+    base_vol: RcVolSurface,
     vol_time_offset: f64,
     base_date: DateDayFraction
 }
 
 impl ConstantExpiryTimeEvolution {
-    pub fn new(base_vol: Rc<VolSurface>, vol_time_offset: f64,
+    pub fn new(base_vol: RcVolSurface, vol_time_offset: f64,
         base_date: DateDayFraction) -> ConstantExpiryTimeEvolution {
 
         ConstantExpiryTimeEvolution { 
             base_vol: base_vol, vol_time_offset: vol_time_offset,
             base_date: base_date }
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+        Ok(Qrc::new(Rc::new(ConstantExpiryTimeEvolution::deserialize(de)?)))
+    }
+}
+
+impl TypeId for ConstantExpiryTimeEvolution {
+    fn type_id(&self) -> &'static str { "ConstantExpiryTimeEvolution" }
 }
 
 impl VolSurface for ConstantExpiryTimeEvolution {
@@ -46,11 +62,11 @@ impl VolSurface for ConstantExpiryTimeEvolution {
         Ok((vol_time - self.vol_time_offset).max(0.0))
     }
 
-    fn calendar(&self) -> &Rc<Calendar> {
+    fn calendar(&self) -> &RcCalendar {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Forward> {
+    fn forward(&self) -> Option<&Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -71,18 +87,27 @@ impl VolSurface for ConstantExpiryTimeEvolution {
 /// forward. It is not possible to do this exactly in all cases. For example,
 /// if there is fractional vol time at weekends, it may not be possible to
 /// roll expiries to exact date times that match the unrolled vol time.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RollingExpiryTimeEvolution {
-    base_vol: Rc<VolSurface>,
+    base_vol: RcVolSurface,
     vol_time_offset: f64,
     base_date: DateDayFraction
 }
 
+impl TypeId for RollingExpiryTimeEvolution {
+    fn type_id(&self) -> &'static str { "RollingExpiryTimeEvolution" }
+}
+
 impl RollingExpiryTimeEvolution {
-    pub fn new(base_vol: Rc<VolSurface>, vol_time_offset: f64,
+    pub fn new(base_vol: RcVolSurface, vol_time_offset: f64,
         base_date: DateDayFraction) -> RollingExpiryTimeEvolution {
         RollingExpiryTimeEvolution { 
             base_vol: base_vol, vol_time_offset: vol_time_offset,
             base_date: base_date }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+        Ok(Qrc::new(Rc::new(RollingExpiryTimeEvolution::deserialize(de)?)))
     }
 }
 
@@ -95,11 +120,15 @@ impl VolSurface for RollingExpiryTimeEvolution {
         strikes: &[f64],
         out: &mut[f64]) -> Result<(f64), qm::Error> {
 
+        //print!("RollingExpiryTimeEvolution: date_time={:?} strikes={:?}\n", date_time, strikes);
+
         let calendar = self.calendar();
         let vol_time_offset = -self.vol_time_offset * calendar.standard_basis();
         let adj_date = calendar.step_partial(date_time.date(),
             vol_time_offset, vol_time_offset >= 0.0);
         let rolled = DateDayFraction::new(adj_date, date_time.day_fraction());
+
+        //print!("   rolled={:?}\n", rolled);
 
         // TODO this vol time may be inaccurate if the step_partial above was
         // only approximate. Get step_partial to also return an amount by
@@ -110,11 +139,11 @@ impl VolSurface for RollingExpiryTimeEvolution {
         Ok(vol_time.max(0.0))
     }
 
-    fn calendar(&self) -> &Rc<Calendar> {
+    fn calendar(&self) -> &RcCalendar {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Forward> {
+    fn forward(&self) -> Option<&Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -135,14 +164,23 @@ impl VolSurface for RollingExpiryTimeEvolution {
 /// all strikes and expiries. If the bump size is negative, vols are floored at
 /// zero. The vols that are bumped are those natural to the vol surface --
 /// business day if the vol surface has a business day calendar.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ParallelBumpVol {
-    base_vol: Rc<VolSurface>,
+    base_vol: RcVolSurface,
     bump: f64
 }
 
+impl TypeId for ParallelBumpVol {
+    fn type_id(&self) -> &'static str { "ParallelBumpVol" }
+}
+
 impl ParallelBumpVol {
-    pub fn new(base_vol: Rc<VolSurface>, bump: f64) -> ParallelBumpVol {
+    pub fn new(base_vol: RcVolSurface, bump: f64) -> ParallelBumpVol {
         ParallelBumpVol { base_vol: base_vol, bump: bump }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+        Ok(Qrc::new(Rc::new(ParallelBumpVol::deserialize(de)?)))
     }
 }
 
@@ -163,11 +201,11 @@ impl VolSurface for ParallelBumpVol {
         Ok(vol_time)
     }
 
-    fn calendar(&self) -> &Rc<Calendar> {
+    fn calendar(&self) -> &RcCalendar {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Forward> {
+    fn forward(&self) -> Option<&Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -189,18 +227,27 @@ impl VolSurface for ParallelBumpVol {
 /// Taylor series. Cut off the bump size at
 /// some vol time, to avoid infinite vols at low T. Before this vol time,
 /// the vols are flat bumped. Typically use one month for the cutoff.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TimeScaledBumpVol {
-    base_vol: Rc<VolSurface>,
+    base_vol: RcVolSurface,
     bump: f64,
     vol_time_floor: f64
 }
 
+impl TypeId for TimeScaledBumpVol {
+    fn type_id(&self) -> &'static str { "TimeScaledBumpVol" }
+}
+
 impl TimeScaledBumpVol {
-    pub fn new(base_vol: Rc<VolSurface>, bump: f64, vol_time_floor: f64)
+    pub fn new(base_vol: RcVolSurface, bump: f64, vol_time_floor: f64)
         -> TimeScaledBumpVol {
 
         TimeScaledBumpVol { base_vol: base_vol, bump: bump,
             vol_time_floor: vol_time_floor }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+        Ok(Qrc::new(Rc::new(TimeScaledBumpVol::deserialize(de)?)))
     }
 }
 
@@ -222,11 +269,11 @@ impl VolSurface for TimeScaledBumpVol {
         Ok(vol_time)
     }
 
-    fn calendar(&self) -> &Rc<Calendar> {
+    fn calendar(&self) -> &RcCalendar {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Forward> {
+    fn forward(&self) -> Option<&Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -246,16 +293,31 @@ impl VolSurface for TimeScaledBumpVol {
 /// Apply a shift in the strike direction between two forwards to a vol
 /// surface. This may be done for sticky delta risk calculation or evolution,
 /// or it may be done for benchmarking one vol surface from another.
+///
+/// No deserialize for sticky delta bump. We cannot currently deserialize a Forward,
+/// and this bump is only used temporarily anyway.
+#[derive(Serialize)]
 pub struct StickyDeltaBumpVol {
-    base_vol: Rc<VolSurface>,
+    base_vol: RcVolSurface,
+    #[serde(skip)]
     bumped_forward: Rc<Forward>
 }
 
+impl TypeId for StickyDeltaBumpVol {
+    fn type_id(&self) -> &'static str { "StickyDeltaBumpVol" }
+}
+
 impl StickyDeltaBumpVol {
-    pub fn new(base_vol: Rc<VolSurface>, bumped_forward: Rc<Forward>)
+    pub fn new(base_vol: RcVolSurface, bumped_forward: Rc<Forward>)
         -> StickyDeltaBumpVol {
         StickyDeltaBumpVol { base_vol: base_vol, 
             bumped_forward: bumped_forward }
+    }
+}
+
+impl fmt::Debug for StickyDeltaBumpVol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "StickyDeltaBumpVol {{ base_vol: {:?}, bumped_forward: <not representablel> }}", self.base_vol)
     }
 }
 
@@ -281,7 +343,7 @@ impl VolSurface for StickyDeltaBumpVol {
                 let mut adj_strikes = strikes.to_vec();
                 let date = date_time.date();
                 let new_forward = self.bumped_forward.forward(date)?;
-                let old_forward = fwd.forward(date)?;
+                let old_forward = fwd.interpolate(date)?;
                 let adjustment = old_forward / new_forward;
                 for i in 0..n {
                     adj_strikes[i] *= adjustment;
@@ -292,13 +354,13 @@ impl VolSurface for StickyDeltaBumpVol {
         }
     }
 
-    fn calendar(&self) -> &Rc<Calendar> {
+    fn calendar(&self) -> &RcCalendar {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Forward> {
+    fn forward(&self) -> Option<&Interpolate<Date>> {
         // as a result of this bump, the forward for the vol surface changes
-        Some(&*self.bumped_forward)
+        Some(&*self.bumped_forward.as_interp())
     }
 
     fn base_date(&self) -> DateDayFraction {
@@ -322,58 +384,24 @@ impl VolSurface for StickyDeltaBumpVol {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use math::numerics::approx_eq;
     use dates::Date;
-    use dates::calendar::WeekdayCalendar;
-    use data::volsmile::CubicSplineSmile;
     use data::forward::InterpolatedForward;
-    use data::volsurface::VolByProbability;
     use data::volsurface::VolTimeDynamics;
+    use data::volsurface::tests::sample_vol_surface;
+    use data::volsurface::RcVolSurface;
     use math::interpolation::Extrap;
-    use math::interpolation::CubicSpline;
-
-    fn sample_vol_surface(base: DateDayFraction)
-        -> Rc<VolByProbability<CubicSplineSmile>> {
-
-        let calendar = Rc::new(WeekdayCalendar());
-        let d = base.date();
-
-        let points = [(d, 90.0), (d+30, 90.1), (d+60, 90.2), (d+90, 90.1),
-            (d+120, 90.0), (d+240, 89.9), (d+480, 89.8), (d+960, 89.8)];
-        let cs = Box::new(CubicSpline::new(&points,
-            Extrap::Natural, Extrap::Natural).unwrap());
-        let fwd = Box::new(InterpolatedForward::new(cs));
-
-        let mut smiles = Vec::<(DateDayFraction, CubicSplineSmile)>::new();
-
-        let points = [(80.0, 0.39), (85.0, 0.3), (90.0, 0.22), (95.0, 0.24)];
-        smiles.push((DateDayFraction::new(d + 7, 0.7),
-            CubicSplineSmile::new(&points).unwrap()));
-
-        let points = [(70.0, 0.4), (80.0, 0.3), (90.0, 0.23), (100.0, 0.25)];
-        smiles.push((DateDayFraction::new(d + 28, 0.7),
-            CubicSplineSmile::new(&points).unwrap()));
-
-        let points = [(50.0, 0.43), (70.0, 0.32), (90.0, 0.24), (110.0, 0.27)];
-        smiles.push((DateDayFraction::new(d + 112, 0.7),
-            CubicSplineSmile::new(&points).unwrap()));
-
-        let points = [(10.0, 0.42), (50.0, 0.31), (90.0, 0.23), (150.0, 0.26)];
-        smiles.push((DateDayFraction::new(d + 364, 0.7),
-            CubicSplineSmile::new(&points).unwrap()));
-
-        Rc::new(VolByProbability::new(&smiles, calendar, base, fwd,
-            DivAssumptions::NoCashDivs).unwrap())
-    }
+    use math::interpolation::Linear;
 
     #[test]
     fn constant_expiry_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = sample_vol_surface(base_date);
+        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
         let bump = 2.0 / 252.0;
         let bumped_base = base_date + 2;
         let bumped = ConstantExpiryTimeEvolution::new(unbumped.clone(), bump,
@@ -401,7 +429,7 @@ mod tests {
         // to do the modification. Note that we add four days because 
         // 2012-05-25 is a Friday and we want to add two business days.
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped: Rc<VolSurface> = sample_vol_surface(base_date);
+        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
         let dynamics = VolTimeDynamics::ConstantExpiry;
         let mut bumped = unbumped.clone();
         dynamics.modify(&mut bumped, base_date.date() + 4).unwrap();
@@ -428,32 +456,30 @@ mod tests {
     #[test]
     fn rolling_expiry_vol_surface() {
 
-        let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = sample_vol_surface(base_date);
-        let bump = 2.0 / 252.0;
+        let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
+        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let bump = 5.0 / 252.0;
         let bumped = RollingExpiryTimeEvolution::new(unbumped.clone(), bump,
-            base_date + 4);
+            base_date + 7);
 
         // Manually roll the vol surface by creating a sample with a different
-        // base date. Two business days after Friday 25 is Tuesday 29
-        let rolled_base_date = base_date + 4;
+        // base date. Five business days after Friday 25 is Friday 1
+        let rolled_base_date = base_date + 7;
         let rolled = sample_vol_surface(rolled_base_date);
 
         let strikes = vec![85.0, 95.0, 105.0, 115.0];
         let mut rolled_variances = vec![0.0; strikes.len()];
         let mut bumped_variances = vec![0.0; strikes.len()];
 
-        let expiry = DateDayFraction::new(base_date.date() + 14, 0.7);
+        let expiry = DateDayFraction::new(base_date.date() + 10, 0.7);
         rolled.variances(expiry, &strikes, &mut rolled_variances).unwrap();
         bumped.variances(expiry, &strikes, &mut bumped_variances).unwrap();
 
         let mut unbumped_variances = vec![0.0; strikes.len()];
         unbumped.variances(expiry, &strikes, &mut unbumped_variances).unwrap();
 
-        // we need much wider tolerances for this test, because the method of
-        // rolling is only approximate (see comments in its implementation)
         for i in 0..strikes.len() {
-            assert_approx(bumped_variances[i], rolled_variances[i], 1e-4);
+            assert_approx(bumped_variances[i], rolled_variances[i], 1e-12);
         }
     }
 
@@ -462,32 +488,30 @@ mod tests {
 
         // same as the previous test, but this time we use the dynamics enum
         // to do the modification
-        let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped: Rc<VolSurface> = sample_vol_surface(base_date);
+        let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
+        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
         let dynamics = VolTimeDynamics::RollingExpiry;
         let mut bumped = unbumped.clone();
-        dynamics.modify(&mut bumped, base_date.date() + 4).unwrap();
+        dynamics.modify(&mut bumped, base_date.date() + 7).unwrap();
 
         // Manually roll the vol surface by creating a sample with a different
-        // base date. Two business days after Friday 25 is Tuesday 29
-        let rolled_base_date = DateDayFraction::new(base_date.date() + 4, 0.0);
+        // base date. Five business days after Friday 25 is Friday 1
+        let rolled_base_date = DateDayFraction::new(base_date.date() + 7, 0.0);
         let rolled = sample_vol_surface(rolled_base_date);
 
-        let strikes = vec![85.0, 95.0, 105.0, 115.0];
+        let strikes = vec![88.0, 89.0, 90.0, 91.0, 92.0];
         let mut rolled_variances = vec![0.0; strikes.len()];
         let mut bumped_variances = vec![0.0; strikes.len()];
 
-        let expiry = DateDayFraction::new(base_date.date() + 14, 0.7);
+        let expiry = DateDayFraction::new(base_date.date() + 10, 0.7);
         rolled.variances(expiry, &strikes, &mut rolled_variances).unwrap();
         bumped.variances(expiry, &strikes, &mut bumped_variances).unwrap();
 
         let mut unbumped_variances = vec![0.0; strikes.len()];
         unbumped.variances(expiry, &strikes, &mut unbumped_variances).unwrap();
 
-        // we need much wider tolerances for this test, because the method of
-        // rolling is only approximate (see comments in its implementation)
         for i in 0..strikes.len() {
-            assert_approx(bumped_variances[i], rolled_variances[i], 1e-4);
+            assert_approx(bumped_variances[i], rolled_variances[i], 1e-12);
         }
     }
 
@@ -495,7 +519,7 @@ mod tests {
     fn parallel_bumped_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = sample_vol_surface(base_date);
+        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
         let bump = 0.01;
         let bumped = ParallelBumpVol::new(unbumped.clone(), bump);
 
@@ -516,7 +540,7 @@ mod tests {
     fn scaled_bumped_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = sample_vol_surface(base_date);
+        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
         let bump = 0.01;
         let floor = 1.0 / 12.0;
         let bumped = TimeScaledBumpVol::new(unbumped.clone(), bump, floor);
@@ -538,14 +562,14 @@ mod tests {
     #[test]
     fn sticky_delta_bumped_vol_surface() {
 
-        let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = sample_vol_surface(base_date);
-
+        let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
+        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+    
         // these points are 10% larger than those in the sample surface
         let d = base_date.date();
         let points = [(d, 99.0), (d+30, 99.11), (d+60, 99.22), (d+90, 99.11),
             (d+120, 99.0), (d+240, 98.89), (d+480, 98.78), (d+960, 98.78)];
-        let cs = Box::new(CubicSpline::new(&points,
+        let cs = Box::new(Linear::new(&points,
             Extrap::Natural, Extrap::Natural).unwrap());
         let fwd = Rc::new(InterpolatedForward::new(cs));
 

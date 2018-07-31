@@ -3,10 +3,12 @@ use math::interpolation::Interpolate;
 use math::interpolation::Extrap;
 use core::qm;
 use std::f64::NAN;
+use std::fmt::Debug;
+use serde::Serialize;
 
 /// A VolSmile is a curve of volatilities by strike, all for a specific date.
 
-pub trait VolSmile {
+pub trait VolSmile : Serialize + Clone + Debug {
 
     /// These volatilities must be converted to variances by squaring and
     /// multiplying by some t. The t to use depends on the vol surface. We
@@ -30,7 +32,7 @@ pub trait VolSmile {
 
 /// A flat smile, where the vol is the same for all strikes. (It may be
 /// different at other dates.)
-
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatSmile {
     vol: f64
 }
@@ -61,7 +63,7 @@ impl FlatSmile {
 }
 
 /// A simple implementation of a VolSmile in terms of a cubic spline.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CubicSplineSmile {
     smile: CubicSpline<f64>
 }

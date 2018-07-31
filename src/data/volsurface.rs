@@ -1,17 +1,34 @@
 use dates::datetime::DateDayFraction;
-use dates::calendar::Calendar;
+use dates::calendar::RcCalendar;
 use dates::Date;
 use data::volsmile::VolSmile;
+use data::volsmile::FlatSmile;
+use data::volsmile::CubicSplineSmile;
 use data::forward::Forward;
 use data::voldecorators::ConstantExpiryTimeEvolution;
 use data::voldecorators::RollingExpiryTimeEvolution;
+use data::voldecorators::ParallelBumpVol;
+use data::voldecorators::TimeScaledBumpVol;
 use data::voldecorators::StickyDeltaBumpVol;
 use math::interpolation::lerp;
 use math::interpolation::Interpolable;
+use math::interpolation::Interpolate;
+use math::interpolation::Linear;
 use math::numerics::approx_eq;
 use core::qm;
-use std::f64::NAN;
+use core::factories::TypeId;
+use core::factories::Registry;
+use core::factories::Qrc;
 use std::rc::Rc;
+use std::fmt::Debug;
+use std::error::Error as stdError;
+use std::f64::NAN;
+use erased_serde as esd;
+use serde as sd;
+use serde_tagged as sdt;
+use serde_tagged::de::BoxFnSeed;
+use serde::Deserialize;
+use serde::de::Error as Error;
 
 /// The low-level representation of a vol surface, as supplied in the input
 /// market data. We always return variances rather than vols, because vols
@@ -19,7 +36,7 @@ use std::rc::Rc;
 /// to the vol surface. (For example, it may differ from underlier to 
 /// underlier.)
 
-pub trait VolSurface {
+pub trait VolSurface : esd::Serialize + TypeId + Debug {
 
     /// This is the call that implementers of VolSurface must implement to
     /// supply variances, and which decorator patterns should wrap. It has
@@ -35,7 +52,7 @@ pub trait VolSurface {
         volatilities: &mut[f64]) -> Result<(f64), qm::Error>;
 
     /// Access to the calendar that defines vol times
-    fn calendar(&self) -> &Rc<Calendar>;
+    fn calendar(&self) -> &RcCalendar;
 
     /// Access to the base date of this vol surface. (Normally a vol surface
     /// is decorated to bring the base date in line with the spot date, so
@@ -45,7 +62,7 @@ pub trait VolSurface {
     /// For vol surfaces that have a smile, gives access to the forward
     /// curve that centres the smile. For vol surfaces with no smile, returns
     /// None.
-    fn forward(&self) -> Option<&Forward>;
+    fn forward(&self) -> Option<&Interpolate<Date>>;
 
     /// Fetch the business day time, which is multiplied by the volatility
     /// squared to give the variance. This is the same as calling volatilities
@@ -122,8 +139,8 @@ pub trait VolSurface {
 
             // If there is a forward, use it to find the at the money variance
             // at the from and to dates
-            let from_forward = forward.forward(from.date())?;
-            let to_forward = forward.forward(to.date())?;
+            let from_forward = forward.interpolate(from.date())?;
+            let to_forward = forward.interpolate(to.date())?;
             let from_var = self.variance(from, to_forward)?;
             let to_var = self.variance(from, from_forward)?;
             let fwd_atm_var = to_var - from_var;
@@ -135,7 +152,7 @@ pub trait VolSurface {
             // base date as the to date is after the from date, and use it
             // to correct the smiles
             let smile_date = self.find_smile_date(from, to);
-            let smile_forward = forward.forward(smile_date.date())?;
+            let smile_forward = forward.interpolate(smile_date.date())?;
             let atm_smile_var = self.variance(smile_date, smile_forward)?;
             self.variances(smile_date, strikes, variances)?;
 
@@ -212,9 +229,41 @@ pub trait VolSurface {
     fn displacement(&self, date: Date) -> Result<f64, qm::Error>;
 }
 
+// Get serialization to work recursively for rate curves by using the
+// technology defined in core/factories. RcRateCurve is a container
+// class holding an RcRateCurve
+pub type RcVolSurface = Qrc<VolSurface>;
+pub type TypeRegistry = Registry<BoxFnSeed<RcVolSurface>>;
+
+/// Implement deserialization for subclasses of the type
+impl<'de> sd::Deserialize<'de> for RcVolSurface {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de>
+    {
+        sdt::de::external::deserialize(deserializer, get_registry())
+    }
+}
+
+/// Return the type registry required for deserialization.
+pub fn get_registry() -> &'static TypeRegistry {
+    lazy_static! {
+        static ref REG: TypeRegistry = {
+            let mut reg = TypeRegistry::new();
+            reg.insert("FlatVolSurface", BoxFnSeed::new(FlatVolSurface::from_serial));
+            reg.insert("VolByProbabilityCubicSplineSmile", BoxFnSeed::new(VolByProbabilityCubicSplineSmile::from_serial));
+            reg.insert("ConstantExpiryTimeEvolution", BoxFnSeed::new(ConstantExpiryTimeEvolution::from_serial));
+            reg.insert("RollingExpiryTimeEvolution", BoxFnSeed::new(RollingExpiryTimeEvolution::from_serial));
+            reg.insert("ParallelBumpVol", BoxFnSeed::new(ParallelBumpVol::from_serial));
+            reg.insert("TimeScaledBumpVol", BoxFnSeed::new(TimeScaledBumpVol::from_serial));
+            reg
+        };
+    }
+    &REG
+}
+
 /// Enum which defines what assumptions were made about dividends when the vol
 /// surface was calibrated.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum DivAssumptions {
     /// We only need to worry at all if there are cash dividends. Vol surfaces
     /// for FX, Commodities and non-cash-div-paying stock have no problem.
@@ -260,7 +309,7 @@ pub enum VolTimeDynamics {
 impl VolTimeDynamics {
     /// Decorate or modify a vol surface to cope with a change from the base
     /// date when the surface was calibrated to the spot date now.
-    pub fn modify(&self, surface: &mut Rc<VolSurface>, spot_date: Date)
+    pub fn modify(&self, surface: &mut RcVolSurface, spot_date: Date)
         -> Result<(), qm::Error> {
 
         let base_date = surface.base_date();
@@ -282,12 +331,12 @@ impl VolTimeDynamics {
 
         match self {
             &VolTimeDynamics::ConstantExpiry => {
-                *surface = Rc::new(ConstantExpiryTimeEvolution::new(
-                    surface.clone(), year_fraction, target));
+                *surface = Qrc::new(Rc::new(ConstantExpiryTimeEvolution::new(
+                    surface.clone(), year_fraction, target)));
             }
             &VolTimeDynamics::RollingExpiry => {
-                *surface = Rc::new(RollingExpiryTimeEvolution::new(
-                    surface.clone(), year_fraction, target));
+                *surface = Qrc::new(Rc::new(RollingExpiryTimeEvolution::new(
+                    surface.clone(), year_fraction, target)));
             }
         };
         Ok(())
@@ -307,7 +356,7 @@ pub enum VolForwardDynamics {
 impl VolForwardDynamics {
     /// Decorate or modify a vol surface to cope with a change from the forward
     /// when the surface was calibrated to the forward now.
-    pub fn modify(&self, surface: &mut Rc<VolSurface>, 
+    pub fn modify(&self, surface: &mut RcVolSurface, 
         forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
         -> Result<(), qm::Error> {
 
@@ -332,7 +381,7 @@ impl VolForwardDynamics {
                 // past the last date of interest.
                 let base_date = surface.base_date().date();
                 let spot = forward.forward(base_date)?;
-                let vol_spot = vol_forward.forward(base_date)?;
+                let vol_spot = vol_forward.interpolate(base_date)?;
                 if approx_eq(vol_spot, spot, vol_spot * 1e-12) {
                     return Ok(())  // no need for change if no change to spot
                 }
@@ -340,7 +389,7 @@ impl VolForwardDynamics {
         }
 
         // decorator for sticky delta or other non-sticky-strike needed
-        *surface = Rc::new(StickyDeltaBumpVol::new(surface.clone(), forward));
+        *surface = Qrc::new(Rc::new(StickyDeltaBumpVol::new(surface.clone(), forward)));
  
         Ok(())
     }
@@ -354,11 +403,15 @@ impl VolForwardDynamics {
 }
 
 /// Flat volatility surface. Volatility is independent of date and strike.
-//#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FlatVolSurface {
     vol: f64,
-    calendar: Rc<Calendar>,
+    calendar: RcCalendar,
     base_date: DateDayFraction
+}
+
+impl TypeId for FlatVolSurface {
+    fn type_id(&self) -> &'static str { "FlatVolSurface" }
 }
 
 impl VolSurface for FlatVolSurface {
@@ -377,11 +430,11 @@ impl VolSurface for FlatVolSurface {
         Ok(self.calendar.year_fraction(self.base_date, date_time))
     }
 
-    fn calendar(&self) -> &Rc<Calendar> {
+    fn calendar(&self) -> &RcCalendar {
         &self.calendar
     }
 
-    fn forward(&self) -> Option<&Forward> {
+    fn forward(&self) -> Option<&Interpolate<Date>> {
         None
     }
 
@@ -407,7 +460,7 @@ impl FlatVolSurface {
     /// variance. The variance is calculated as of the base date. If you need
     /// to time evolve the surface, this must be done by cloning and modifying
     /// the surface, or with a decorator.
-    pub fn new(vol: f64, calendar: Rc<Calendar>, base_date: DateDayFraction)
+    pub fn new(vol: f64, calendar: RcCalendar, base_date: DateDayFraction)
         -> FlatVolSurface {
 
         FlatVolSurface {
@@ -415,6 +468,10 @@ impl FlatVolSurface {
             calendar: calendar,
             base_date: base_date
         }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+        Ok(Qrc::new(Rc::new(FlatVolSurface::deserialize(de)?)))
     }
 }
 
@@ -431,33 +488,76 @@ impl FlatVolSurface {
 /// In particular, we store a DateDayFraction rather than a DateTime, because
 /// we need to exactly round-trip the variance, even if the time of day
 /// mapping has changed.
-
-pub struct VolByProbability<T> where T: VolSmile + Clone {
-    smiles: Vec<(DateDayFraction, T)>,
-    calendar: Rc<Calendar>,
-    base_date: DateDayFraction,
-    forward: Box<Forward>,
+#[derive(Debug)]
+struct VolByProbability<T> where T: VolSmile + Clone + Debug {
+    input: VolByProbabilityInput<T>,
     pillar_forwards: Vec<f64>,
     pillar_sqrt_variances: Vec<f64>,
     pillar_vol_times: Vec<f64>,
+}
+
+impl<T> sd::Serialize for VolByProbability<T> where T : VolSmile + Clone + Debug + sd::Serialize {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer {
+        self.input.serialize(serializer)
+    }
+}
+
+// struct containing the user-input fields of VolByProbability so we can
+// auto-generate the deserialization code
+#[derive(Serialize, Deserialize, Debug)]
+struct VolByProbabilityInput<T> where T: VolSmile + Clone + Debug {
+    smiles: Vec<(DateDayFraction, T)>,
+    calendar: RcCalendar,
+    base_date: DateDayFraction,
+    forward: Linear<Date>,
+    fixed_divs_after: Linear<Date>,
     div_assumptions: DivAssumptions
 }
 
-impl<T: VolSmile + Clone> VolSurface for VolByProbability<T> {
+impl<T> VolByProbabilityInput<T> where T: VolSmile + Clone + Debug {
+    fn new(smiles: &[(DateDayFraction, T)],
+        calendar: RcCalendar,
+        base_date: DateDayFraction,
+        forward: Linear<Date>,
+        fixed_divs_after: Linear<Date>,
+        div_assumptions: DivAssumptions) 
+        -> VolByProbabilityInput<T> {
+
+        VolByProbabilityInput {
+            smiles: smiles.to_vec(),
+            calendar: calendar,
+            base_date: base_date,
+            forward: forward,
+            fixed_divs_after: fixed_divs_after,
+            div_assumptions: div_assumptions }
+    }
+}
+
+impl<T> TypeId for VolByProbability<T> where T: VolSmile + Clone {
+    fn type_id(&self) -> &'static str {
+        panic!("TypeId should never be invoked for VolByProbability<T>")
+    }
+}
+
+impl<T: VolSmile + Clone + Debug> VolSurface for VolByProbability<T> {
 
     fn volatilities(&self,
         date_time: DateDayFraction,
         strikes: &[f64],
         mut out: &mut[f64]) -> Result<f64, qm::Error> {
 
-        let n = self.smiles.len();
+        //print!("volatilities: base_date={:?} date_time={:?} strikes={:?}\n", self.base_date(), date_time, strikes);
+
+        let n = self.input.smiles.len();
 
         // binary chop to find our element.
-        let found = self.smiles.binary_search_by(|p| p.0.interp_cmp(date_time));
+        let found = self.input.smiles.binary_search_by(|p| p.0.interp_cmp(date_time));
         match found {
             // If we find it, return the vols and vol time on that pillar
             Ok(i) => {
-                self.smiles[i].1.volatilities(&strikes, &mut out)?;
+                self.input.smiles[i].1.volatilities(&strikes, &mut out)?;
+                //print!("at pillar: out={:?} vol_time={}\n", out, self.pillar_vol_times[i]);
                 Ok(self.pillar_vol_times[i]) 
             },
 
@@ -472,27 +572,27 @@ impl<T: VolSmile + Clone> VolSurface for VolByProbability<T> {
         }
     }
 
-    fn calendar(&self) -> &Rc<Calendar> {
-        &self.calendar
+    fn calendar(&self) -> &RcCalendar {
+        &self.input.calendar
     }
 
-    fn forward(&self) -> Option<&Forward> {
-        Some(&*self.forward)
+    fn forward(&self) -> Option<&Interpolate<Date>> {
+        Some(&self.input.forward)
     }
 
     fn base_date(&self) -> DateDayFraction {
-        self.base_date
+        self.input.base_date
     }
 
     fn div_assumptions(&self) -> DivAssumptions {
-        self.div_assumptions
+        self.input.div_assumptions
     }
 
     fn displacement(&self, date: Date) -> Result<f64, qm::Error> {
-        match self.div_assumptions {
+        match self.input.div_assumptions {
             DivAssumptions::NoCashDivs => Ok(0.0),
             DivAssumptions::IndependentLogNormals => Ok(0.0),
-            DivAssumptions::FixedDivs => self.forward.fixed_divs_after(date),
+            DivAssumptions::FixedDivs => self.input.fixed_divs_after.interpolate(date),
             DivAssumptions::JumpDivs => Err(qm::Error::new(
                 "You should not invoke displacement for a JumpDivs vol \
                 surface. This needs more careful handling."))
@@ -510,17 +610,13 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
     /// It also requires a forward curve, which is used for interpolating
     /// between pillar dates, along lines of normalised moneyness, which
     /// is roughly the same thing as probability.
-    pub fn new(smiles: &[(DateDayFraction, T)],
-        calendar: Rc<Calendar>,
-        base_date: DateDayFraction,
-        forward: Box<Forward>,
-        div_assumptions: DivAssumptions) 
+    fn new(input: VolByProbabilityInput<T>) 
         -> Result<VolByProbability<T>, qm::Error> {
 
         // We could consider suppressing errors here, then storing
         // them so we only throw them if they are needed. As it stands,
         // we throw if any of the pillars have errors.
-        let n = smiles.len();
+        let n = input.smiles.len();
         if n == 0 {
             return Err(qm::Error::new("Cannot construct vol surface. \
                 No smiles supplied"))
@@ -532,11 +628,11 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         let mut pillar_sqrt_variances = Vec::with_capacity(n);
         let mut pillar_vol_times = Vec::with_capacity(n);
         let mut prev_variance = 0.0;
-        let mut prev_date = base_date;
-        for smile in smiles.iter() {
-            let f = forward.forward(smile.0.date())?;
+        let mut prev_date = input.base_date;
+        for smile in input.smiles.iter() {
+            let f = input.forward.interpolate(smile.0.date())?;
             let vol = smile.1.volatility(f)?;
-            let time = calendar.year_fraction(base_date, smile.0);
+            let time = input.calendar.year_fraction(input.base_date, smile.0);
             let variance = time * vol * vol;
             if variance < prev_variance {
                 // also checks for negative variance
@@ -554,24 +650,20 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         }
 
         Ok(VolByProbability {
-            smiles: smiles.to_vec(),
-            calendar: calendar,
-            base_date: base_date,
-            forward: forward,
+            input: input,
             pillar_forwards: pillar_forwards,
             pillar_sqrt_variances: pillar_sqrt_variances,
-            pillar_vol_times: pillar_vol_times,
-            div_assumptions: div_assumptions
+            pillar_vol_times: pillar_vol_times
         })
     }
 
-    pub fn extrapolate(&self, 
+    fn extrapolate(&self, 
         pillar: usize,
         date_time: DateDayFraction,
         strikes: &[f64],
         mut out: &mut[f64]) -> Result<f64, qm::Error> {
 
-        let vol_time = self.calendar.year_fraction(self.base_date, date_time);
+        let vol_time = self.input.calendar.year_fraction(self.input.base_date, date_time);
         if strikes.is_empty() {
             return Ok(vol_time)    // early exit for efficiency
         }
@@ -580,7 +672,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         // atm vol is the same as at the pillar, so we just use the
         // sqrt(vol_time) as a substitute for atm_variance, effectively
         // pretending vol is one.
-        let forward = self.forward.forward(date_time.date())?;
+        let forward = self.input.forward.interpolate(date_time.date())?;
         let normalised = to_normalised(strikes, forward, vol_time.sqrt());
 
         // It is not very efficient using two local vectors. Consider
@@ -592,18 +684,19 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
             pillar_time.sqrt()); 
 
         // flat extrapolation in normalised strike space
-        self.smiles[pillar].1.volatilities(&adj_strikes, &mut out)?;
+        self.input.smiles[pillar].1.volatilities(&adj_strikes, &mut out)?;
+        //print!("extrapolate: out={:?} vol_time={}\n", out, vol_time);
         Ok(vol_time)
     }
 
-    pub fn interpolate(&self, 
+    fn interpolate(&self, 
         left: usize,
         right: usize,
         date_time: DateDayFraction,
         strikes: &[f64],
         out: &mut[f64]) -> Result<f64, qm::Error> {
 
-        let vol_time = self.calendar.year_fraction(self.base_date, date_time);
+        let vol_time = self.input.calendar.year_fraction(self.input.base_date, date_time);
 
         let n = strikes.len();
         assert!(n == out.len());
@@ -620,7 +713,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         // passing in a workspace.
 
         // interpolate in normalised strike, so first calculate it
-        let forward = self.forward.forward(date_time.date())?;
+        let forward = self.input.forward.interpolate(date_time.date())?;
         let left_sqrt_var = self.pillar_sqrt_variances[left];
         let right_sqrt_var = self.pillar_sqrt_variances[right];
         let left_atm_var = left_sqrt_var * left_sqrt_var;
@@ -649,27 +742,135 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
             if left_vars[i] > right_vars[i] {
                 return Err(qm::Error::new(&format!(
                     "Negative forward variance from {:?} to {:?} strike={}",
-                    self.smiles[left].0, self.smiles[right].0,
+                    self.input.smiles[left].0, self.input.smiles[right].0,
                     strikes[i]).to_string()));
             }
             let variance = lerp(left_vars[i], right_vars[i], fraction);
             out[i] = (variance / vol_time).sqrt();
         }
+        //print!("interpolate: out={:?} vol_time={}\n", out, vol_time);
         Ok(vol_time)
     }
 
-    pub fn pillar_variances(&self,
+    fn pillar_variances(&self,
         pillar: usize,
         vol_time: f64,
         strikes: &[f64],
         mut variances: &mut[f64]) -> Result<(), qm::Error> {
 
         // we use the variances vector as workspace to fetch vols
-        self.smiles[pillar].1.volatilities(&strikes, &mut variances)?;
+        self.input.smiles[pillar].1.volatilities(&strikes, &mut variances)?;
         for i in 0..variances.len() {
             variances[i] = variances[i] * variances[i] * vol_time;
         }
         Ok(())
+    }
+}
+
+/// Create a new type for a VolByProbability<FlatSmile> so it can have its own
+/// type id and deserializer.
+#[derive(Debug, Serialize)]
+pub struct VolByProbabilityFlatSmile(VolByProbability<FlatSmile>);
+
+impl TypeId for VolByProbabilityFlatSmile {
+    fn type_id(&self) -> &'static str {
+        "VolByProbabilityFlatSmile"
+    }
+}
+
+impl VolByProbabilityFlatSmile {
+
+    pub fn new(smiles: &[(DateDayFraction, FlatSmile)],
+        calendar: RcCalendar,
+        base_date: DateDayFraction,
+        forward: Linear<Date>,
+        fixed_divs_after: Linear<Date>,
+        div_assumptions: DivAssumptions) -> Result<VolByProbabilityFlatSmile, qm::Error> {
+        let input = VolByProbabilityInput::new(smiles, calendar, base_date, forward,
+            fixed_divs_after, div_assumptions);
+        let surface = VolByProbability::new(input)?;
+        Ok(VolByProbabilityFlatSmile(surface))
+    }
+
+    // We split VolByProbability into two parts: VolByProbabilityInputs, which
+    // can be serialized and deserialized easily, and the precomputed fields,
+    // which are calculated on load. We manually implement the
+    // deserialize to first deserialize the inputs, then calculate the
+    // extra fields.
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+        let input = VolByProbabilityInput::<FlatSmile>::deserialize(de)?;
+        match VolByProbability::new(input) {
+            Ok(surface) => Ok(Qrc::new(Rc::new(surface))),
+            Err(e) => Err(esd::Error::custom(e.description()))
+        }
+    }
+}
+
+impl VolSurface for VolByProbabilityFlatSmile {
+    fn volatilities(&self, date_time: DateDayFraction, strikes: &[f64],
+        volatilities: &mut[f64]) -> Result<(f64), qm::Error> {
+        self.0.volatilities(date_time, strikes, volatilities)    
+    }
+    fn calendar(&self) -> &RcCalendar { self.0.calendar() }
+    fn base_date(&self) -> DateDayFraction { self.0.base_date() }
+    fn forward(&self) -> Option<&Interpolate<Date>> { self.0.forward() }
+    fn div_assumptions(&self) -> DivAssumptions { self.0.div_assumptions() }
+    fn displacement(&self, date: Date) -> Result<f64, qm::Error> {
+        self.0.displacement(date)
+    }
+}
+
+
+/// Create a new type for a VolByProbability<CubicSplineSmile> so it can have its own
+/// type id and deserializer.
+#[derive(Debug, Serialize)]
+pub struct VolByProbabilityCubicSplineSmile(VolByProbability<CubicSplineSmile>);
+
+impl TypeId for VolByProbabilityCubicSplineSmile {
+    fn type_id(&self) -> &'static str {
+        "VolByProbabilityCubicSplineSmile"
+    }
+}
+
+impl VolByProbabilityCubicSplineSmile {
+
+    pub fn new(smiles: &[(DateDayFraction, CubicSplineSmile)],
+        calendar: RcCalendar,
+        base_date: DateDayFraction,
+        forward: Linear<Date>,
+        fixed_divs_after: Linear<Date>,
+        div_assumptions: DivAssumptions) -> Result<VolByProbabilityCubicSplineSmile, qm::Error> {
+        let input = VolByProbabilityInput::new(smiles, calendar, base_date, forward,
+            fixed_divs_after, div_assumptions);
+        let surface = VolByProbability::new(input)?;
+        Ok(VolByProbabilityCubicSplineSmile(surface))
+    }
+
+    // We split VolByProbability into two parts: VolByProbabilityInputs, which
+    // can be serialized and deserialized easily, and the precomputed fields,
+    // which are calculated on load. We manually implement the
+    // deserialize to first deserialize the inputs, then calculate the
+    // extra fields.
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+        let input = VolByProbabilityInput::<CubicSplineSmile>::deserialize(de)?;
+        match VolByProbability::new(input) {
+            Ok(surface) => Ok(Qrc::new(Rc::new(surface))),
+            Err(e) => Err(esd::Error::custom(e.description()))
+        }
+    }
+}
+
+impl VolSurface for VolByProbabilityCubicSplineSmile {
+    fn volatilities(&self, date_time: DateDayFraction, strikes: &[f64],
+        volatilities: &mut[f64]) -> Result<(f64), qm::Error> {
+        self.0.volatilities(date_time, strikes, volatilities)    
+    }
+    fn calendar(&self) -> &RcCalendar { self.0.calendar() }
+    fn base_date(&self) -> DateDayFraction { self.0.base_date() }
+    fn forward(&self) -> Option<&Interpolate<Date>> { self.0.forward() }
+    fn div_assumptions(&self) -> DivAssumptions { self.0.div_assumptions() }
+    fn displacement(&self, date: Date) -> Result<f64, qm::Error> {
+        self.0.displacement(date)
     }
 }
 
@@ -696,19 +897,18 @@ pub fn to_strikes(normalised: &[f64], forward: f64, sqrt_variance: f64)
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use math::numerics::approx_eq;
     use dates::Date;
     use dates::calendar::WeekdayCalendar;
     use data::volsmile::CubicSplineSmile;
-    use data::forward::InterpolatedForward;
     use math::interpolation::Extrap;
-    use math::interpolation::CubicSpline;
+    use serde_json;
 
     #[test]
     fn flat_vol_surface() {
-        let calendar = Rc::new(WeekdayCalendar());
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
         let base_date = Date::from_ymd(2012, 05, 25);
         let base = DateDayFraction::new(base_date, 0.2);
         let expiry = DateDayFraction::new(base_date + 10, 0.9);
@@ -721,18 +921,17 @@ mod tests {
         assert_approx(var, 0.3 * 0.3 * 6.7 / 252.0, 1e-12);
     }
 
-    #[test]
-    fn vol_by_probability_surface() {
-        let calendar = Rc::new(WeekdayCalendar());
-        let base_date = Date::from_ymd(2012, 05, 25);
-        let base = DateDayFraction::new(base_date, 0.2);
+    pub fn sample_vol_surface(base: DateDayFraction) -> VolByProbabilityCubicSplineSmile {
 
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
+        let base_date = base.date();
+ 
         let d = base_date;
         let points = [(d, 90.0), (d+30, 90.1), (d+60, 90.2), (d+90, 90.1),
             (d+120, 90.0), (d+240, 89.9), (d+480, 89.8), (d+960, 89.8)];
-        let cs = Box::new(CubicSpline::new(&points,
-            Extrap::Natural, Extrap::Natural).unwrap());
-        let fwd = Box::new(InterpolatedForward::new(cs));
+        let fwd = Linear::new(&points, Extrap::Natural, Extrap::Natural).unwrap();
+
+        let divs = Linear::new(&[(d, 0.0)], Extrap::Flat, Extrap::Flat).unwrap();
 
         let mut smiles = Vec::<(DateDayFraction, CubicSplineSmile)>::new();
 
@@ -752,8 +951,14 @@ mod tests {
         smiles.push((DateDayFraction::new(base_date + 364, 0.7),
             CubicSplineSmile::new(&points).unwrap()));
 
-        let v = VolByProbability::new(&smiles, calendar, base, fwd,
-            DivAssumptions::NoCashDivs).unwrap();
+        VolByProbabilityCubicSplineSmile::new(&smiles, calendar, base, fwd, divs,
+            DivAssumptions::NoCashDivs).unwrap()
+    }
+
+    #[test]
+    fn vol_by_probability_surface() {
+        let base_date = Date::from_ymd(2012, 05, 25);
+        let v = sample_vol_surface(DateDayFraction::new(base_date, 0.2));
 
         let strikes = vec![45.0, 55.0, 65.0, 75.0, 85.0, 95.0, 105.0, 115.0];
         let mut variances = vec![0.0; strikes.len()];
@@ -762,38 +967,38 @@ mod tests {
         // hence the extreme variances.
         let expiry = DateDayFraction::new(base_date + 3, 0.9);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.27599030720859624, 0.08993754583823912, 0.02082664049358064, 0.003919581055589816, 0.0009191051493258853, 0.0004674477711579654, 0.03670256301003124, 2.2212956864890576]);
+        assert_vars(&variances, &vec![0.2759858459301978, 0.08993517414933526, 0.020825822062781562, 0.003919405775121364, 0.0009190581968588834, 0.000467443535240036, 0.0367111506162768, 2.221581712098606]);
 
         // on the first pillar
         let expiry = DateDayFraction::new(base_date + 7, 0.7);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.12197114285714239, 0.03802857142857133, 0.012473999999999994, 0.005028571428571429, 0.001964285714285714, 0.001257142857142857, 0.0003355873015873017, 0.03355873015873014]);
+        assert_vars(&variances, &vec![0.12197114285714238, 0.03802857142857133, 0.012473999999999992, 0.005028571428571429, 0.001964285714285714, 0.001257142857142857, 0.0003355873015873017, 0.03355873015873014]);
 
         // mid way between the first two pillars -- testing interpolation
         let expiry = DateDayFraction::new(base_date + 14, 0.7);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.03687050624205899, 0.020163016549248264, 0.012092718888433433, 0.006825164105976889, 0.003078967337942831, 0.002293679595677065, 0.002831740190446551, 0.00022179235644246672]);
+        assert_vars(&variances, &vec![0.03686790530234713, 0.020163068302689324, 0.012093666670268526, 0.006826224892375571, 0.003079703161543359, 0.0022933621476568054, 0.002832297256447101, 0.00022024102314479116]);
 
         // just before the second pillar. Should be close to the next results
         let expiry = DateDayFraction::new(base_date + 28, 0.699);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.03164939753701934, 0.02427312337066741, 0.016527757067307795, 0.009922331225681197, 0.005331077719380287, 0.004368899482970256, 0.005853482505942732, 0.004636515193966411]);
+        assert_vars(&variances, &vec![0.03164939725794168, 0.02427312328380183, 0.016527757040504347, 0.009922331207904311, 0.005331077702828179, 0.004368899486192872, 0.0058534825117505076, 0.004636515181602114]);
 
         // on the second pillar. Close to the previous results.
         let expiry = DateDayFraction::new(base_date + 28, 0.7);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.03165005270337301, 0.024273713417658733, 0.016528170758928578, 0.009922615203373014, 0.005331301587301587, 0.004369108258928571, 0.005853731274801587, 0.0046370318700396825]);
+        assert_vars(&variances, &vec![0.031650052703373004, 0.024273713417658733, 0.016528170758928578, 0.009922615203373014, 0.005331301587301588, 0.004369108258928571, 0.005853731274801587, 0.004637031870039682]);
 
         // just after the second pillar. Close to the previous results.
         let expiry = DateDayFraction::new(base_date + 28, 0.701);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.03165079593455023, 0.024274202510664252, 0.016528560903672357, 0.009922948026909644, 0.0053315595362443974, 0.004369343414181584, 0.0058540651393993145, 0.004637438526659866]);
+        assert_vars(&variances, &vec![0.03165079590958693, 0.024274202473730577, 0.0165285608575132, 0.009922947979072408, 0.005331559502396377, 0.004369343428816184, 0.005854065153172135, 0.00463743844026458]);
 
         // on the fourth pillar, which is one year. These variances should be
         // roughly vol squared, which they are.
         let expiry = DateDayFraction::new(base_date + 364, 0.7);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.10798852946631321, 0.0912236949840647, 0.07688606931438749, 0.0655081103145544, 0.05741985638236925, 0.052838450652765954, 0.05146306527557965, 0.05262980370664515]);
+        assert_vars(&variances, &vec![0.10798852946631321, 0.0912236949840647, 0.07688606931438749, 0.06550811031455442, 0.057419856382369246, 0.052838450652765954, 0.05146306527557965, 0.05262980370664514]);
 
         // extrapolating out to two years. These variances should be roughly
         // twice the one year variances. They are slightly less at extreme
@@ -801,7 +1006,32 @@ mod tests {
         // adjusted strikes towards the forward.
         let expiry = DateDayFraction::new(base_date + 728, 0.7);
         v.variances(expiry, &strikes, &mut variances).unwrap();
-        assert_vars(&variances, &vec![0.1818659647814821, 0.157460749746587, 0.13810453054820163, 0.12339321103154893, 0.1129545784723951, 0.1064822559332999, 0.10339037433701886, 0.10292981173388706]);
+        assert_vars(&variances, &vec![0.18192823836742086, 0.15752211322351797, 0.1381609452301703, 0.12344124737358107, 0.11299115466993954, 0.10650483104542936, 0.10339937927084351, 0.10292596777346709]);
+    }
+
+    #[test]
+    fn vol_by_probability_tagged_serde() {
+
+        // a vol surface
+        let base_date = Date::from_ymd(2012, 05, 25);
+        let surface = RcVolSurface::new(Rc::new(
+            sample_vol_surface(DateDayFraction::new(base_date, 0.2))));
+
+        // Convert the surface to a JSON string.
+        let serialized = serde_json::to_string_pretty(&surface).unwrap();
+        print!("serialized: {}\n", serialized);
+
+        // Convert the JSON string back to a surface.
+        let deserialized: RcVolSurface = serde_json::from_str(&serialized).unwrap();
+
+        // make sure the vols match at some expiry and some strikes
+        let strikes = vec![45.0, 55.0, 65.0, 75.0, 85.0, 95.0, 105.0, 115.0];
+        let expiry = DateDayFraction::new(base_date + 14, 0.7);
+        let mut variances = vec![0.0; strikes.len()];
+        let mut serde_variances = vec![0.0; strikes.len()];
+        surface.variances(expiry, &strikes, &mut variances).unwrap();
+        deserialized.variances(expiry, &strikes, &mut serde_variances).unwrap();
+        assert_vars(&variances, &serde_variances);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

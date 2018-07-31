@@ -1,12 +1,22 @@
 use dates::Date;
 use dates::datetime::DateDayFraction;
 use std::cmp::max;
+use std::fmt::Debug;
+use std::rc::Rc;
+use erased_serde as esd;
+use serde as sd;
+use serde_tagged as sdt;
+use serde_tagged::de::BoxFnSeed;
+use serde::Deserialize;
+use core::factories::TypeId;
+use core::factories::Registry;
+use core::factories::Qrc;
 
 /// Calendars define when business holidays are scheduled. They are used for
 /// business day volatility, settlement calculations, and the roll-out of
 /// schedules for exotic products and swaps.
   
-pub trait Calendar {
+pub trait Calendar : esd::Serialize + TypeId + Debug {
     /// The name of this calendar. Conventionally, the name is a three-letter
     /// upper-case string such as "TGT" or "NYS", though this is not required.
     fn name(&self) -> &str;
@@ -70,10 +80,52 @@ pub trait Calendar {
     }
 }
 
+// Get serialization to work recursively for rate curves by using the
+// technology defined in core/factories. RcCalendar is a container
+// class holding an Rc<Calendar>
+pub type RcCalendar = Qrc<Calendar>;
+pub type TypeRegistry = Registry<BoxFnSeed<RcCalendar>>;
+
+/// Implement deserialization for subclasses of the type
+impl<'de> sd::Deserialize<'de> for RcCalendar {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de>
+    {
+        sdt::de::external::deserialize(deserializer, get_registry())
+    }
+}
+
+/// Return the type registry required for deserialization.
+pub fn get_registry() -> &'static TypeRegistry {
+    lazy_static! {
+        static ref REG: TypeRegistry = {
+            let mut reg = TypeRegistry::new();
+            reg.insert("EveryDayCalendar", BoxFnSeed::new(EveryDayCalendar::from_serial));
+            reg.insert("WeekdayCalendar", BoxFnSeed::new(WeekdayCalendar::from_serial));
+            reg.insert("WeekdayAndHolidayCalendar", BoxFnSeed::new(WeekdayAndHolidayCalendar::from_serial));
+            reg.insert("VolatilityCalendar", BoxFnSeed::new(VolatilityCalendar::from_serial));
+            reg
+        };
+    }
+    &REG
+}
+
 /// An every-day calendar assumes that all days are business days, including
 /// weekends.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EveryDayCalendar();
+
+impl TypeId for EveryDayCalendar {
+    fn type_id(&self) -> &'static str { "EveryDayCalendar" }
+}
+
+impl EveryDayCalendar {
+    pub fn new() -> EveryDayCalendar { EveryDayCalendar {} }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+        Ok(Qrc::new(Rc::new(EveryDayCalendar::deserialize(de)?)))
+    }
+}
 
 impl Calendar for EveryDayCalendar {
 
@@ -113,12 +165,20 @@ impl Calendar for EveryDayCalendar {
 
 /// A weekday calendar assumes that Monday to Friday are business days, and
 /// Saturday and Sunday are not.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct WeekdayCalendar();
+
+impl TypeId for WeekdayCalendar {
+    fn type_id(&self) -> &'static str { "WeekdayCalendar" }
+}
 
 impl WeekdayCalendar {
     pub fn new() -> WeekdayCalendar {
         WeekdayCalendar {}
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+        Ok(Qrc::new(Rc::new(WeekdayCalendar::deserialize(de)?)))
     }
 }
 
@@ -226,14 +286,26 @@ fn slip_to_next_weekday(from: Date, slip_forward: bool) -> Date {
 /// A calendar that assumes that Saturday and Sunday are not business days,
 /// together with a specified list of business holidays. In general this list
 /// is read from a file.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct WeekdayAndHolidayCalendar {
     name: String,
     holidays: Vec<Date>		// must be in date order, with no duplicates
                             // and no weekend dates
 }
 
+impl TypeId for WeekdayAndHolidayCalendar {
+    fn type_id(&self) -> &'static str { "WeekdayAndHolidayCalendar" }
+}
+
 impl WeekdayAndHolidayCalendar {
+
+    pub fn new(name: &str, holidays: &[Date]) -> WeekdayAndHolidayCalendar {
+        WeekdayAndHolidayCalendar { name: name.to_string(), holidays: holidays.to_vec() }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+        Ok(Qrc::new(Rc::new(WeekdayAndHolidayCalendar::deserialize(de)?)))
+    }
 
     // Finds the next holiday, including the day we start from, and returns
     // its offset in the vector. Also returns a bool to say whether
@@ -408,11 +480,29 @@ impl Calendar for WeekdayAndHolidayCalendar {
 /// corresponding spot model, and this is achieved by calling the step
 /// function. We may end up trying to roll by non-integer numbers of days.
 /// In that case, we round to the nearest integer.
-//#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct VolatilityCalendar {
     name: String,
-    calendar: Box<Calendar>,
+    calendar: RcCalendar,
     holiday_weight: f64    // normally greater than zero and less than one
+}
+
+impl TypeId for VolatilityCalendar {
+    fn type_id(&self) -> &'static str { "VolatilityCalendar" }
+}
+
+impl VolatilityCalendar {
+
+    pub fn new(name: &str, calendar: RcCalendar, holiday_weight: f64) -> VolatilityCalendar {
+        VolatilityCalendar {
+            name: name.to_string(),
+            calendar: calendar,
+            holiday_weight: holiday_weight }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+        Ok(Qrc::new(Rc::new(VolatilityCalendar::deserialize(de)?)))
+    }
 }
 
 impl Calendar for VolatilityCalendar {
@@ -842,16 +932,12 @@ mod tests {
             Date::from_str("2019-12-25").unwrap(),
             Date::from_str("2019-12-26").unwrap()];
 
-        WeekdayAndHolidayCalendar { name: "TST".to_string(), holidays: hols }
+        WeekdayAndHolidayCalendar::new("TST", &hols)
     }
 
     fn new_test_volatility_calendar() -> VolatilityCalendar {
         let calendar = new_test_calendar();
-        VolatilityCalendar { 
-            name: "VOL".to_string(), 
-            calendar: Box::new(calendar), 
-            holiday_weight: 0.25
-        } 
+        VolatilityCalendar::new("VOL", Qrc::new(Rc::new(calendar)), 0.25)
     }
 }
 

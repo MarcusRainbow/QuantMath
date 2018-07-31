@@ -11,7 +11,10 @@ use std::rc::Rc;
 /// Forward curve. This represents the expectation value of some asset over
 /// time. It is implemented in different ways for futures (generally driftless)
 /// equities and other assets.
-pub trait Forward {
+pub trait Forward : Interpolate<Date> {
+
+    /// Allows this forward to be treated as an interpolator
+    fn as_interp(&self) -> &Interpolate<Date>;
 
     /// Returns the forward on the given date. For example, this may be
     /// the equity forward. In almost all cases, forwards can be considered
@@ -26,6 +29,13 @@ pub trait Forward {
     }
 }
 
+/// Allow any forward to be treated as an interpolator by date
+impl<T> Interpolate<Date> for T where T: Forward {
+    fn interpolate(&self, date: Date) -> Result<f64, qm::Error> {
+        self.forward(date)
+    }
+}
+
 /// Driftless forward, for example for a future, where the expectation on any
 /// date is the value today.
 pub struct DriftlessForward {
@@ -33,6 +43,8 @@ pub struct DriftlessForward {
 }
 
 impl Forward for DriftlessForward {
+    fn as_interp(&self) -> &Interpolate<Date> { self }
+
     fn forward(&self, _date: Date) -> Result<f64, qm::Error> {
         Ok(self.value)
     }
@@ -53,6 +65,8 @@ pub struct InterpolatedForward {
 }
 
 impl Forward for InterpolatedForward {
+    fn as_interp(&self) -> &Interpolate<Date> { self }
+
     fn forward(&self, date: Date) -> Result<f64, qm::Error> {
         self.interp.interpolate(date)
     }
@@ -77,6 +91,8 @@ pub struct EquityForward {
 }
 
 impl Forward for EquityForward {
+    fn as_interp(&self) -> &Interpolate<Date> { self }
+
     fn forward(&self, date: Date) -> Result<f64, qm::Error> {
 
         // add up any dividends before and including the given date

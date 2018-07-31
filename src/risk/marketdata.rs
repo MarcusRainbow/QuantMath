@@ -5,7 +5,7 @@ use core::qm;
 use dates::Date;
 use data::curves::RcRateCurve;
 use data::divstream::DividendStream;
-use data::volsurface::VolSurface;
+use data::volsurface::RcVolSurface;
 use data::forward::Forward;
 use data::forward::EquityForward;
 use data::bump::Bump;
@@ -43,7 +43,7 @@ pub struct MarketData {
     yield_curves: HashMap<String, RcRateCurve>,
     borrow_curves: HashMap<String, RcRateCurve>,
     dividends: HashMap<String, Rc<DividendStream>>,
-    vol_surfaces: HashMap<String, Rc<VolSurface>>
+    vol_surfaces: HashMap<String, RcVolSurface>
 }
 
 impl MarketData {
@@ -71,7 +71,7 @@ impl MarketData {
         yield_curves: HashMap<String, RcRateCurve>,
         borrow_curves: HashMap<String, RcRateCurve>,
         dividends: HashMap<String, Rc<DividendStream>>,
-        vol_surfaces: HashMap<String, Rc<VolSurface>>) -> MarketData {
+        vol_surfaces: HashMap<String, RcVolSurface>) -> MarketData {
 
         MarketData {
             spot_date: spot_date, 
@@ -177,7 +177,7 @@ impl PricingContext for MarketData {
     /// vols.
     fn vol_surface(&self, instrument: &Instrument, _high_water_mark: Date,
         forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
-         -> Result<Rc<VolSurface>, qm::Error> {
+         -> Result<RcVolSurface, qm::Error> {
 
         let id = instrument.id();
         let mut vol = find_market_data(id, &self.vol_surfaces, "Vol surface")?;
@@ -316,7 +316,7 @@ pub struct SavedData {
     yield_curves: HashMap<String, RcRateCurve>,
     borrow_curves: HashMap<String, RcRateCurve>,
     dividends: HashMap<String, Rc<DividendStream>>,
-    vol_surfaces: HashMap<String, Rc<VolSurface>>
+    vol_surfaces: HashMap<String, RcVolSurface>
 }
 
 impl SavedData {
@@ -365,13 +365,14 @@ pub mod tests {
     use data::divstream::DividendStream;
     use data::divstream::Dividend;
     use data::curves::RateCurveAct365;
-    use data::volsurface::VolSurface;
+    use data::volsurface::RcVolSurface;
     use data::volsurface::FlatVolSurface;
     use data::bumpspot::BumpSpot;
     use data::bumpdivs::BumpDivs;
     use data::bumpvol::BumpVol;
     use data::bumpyield::BumpYield;
     use dates::calendar::WeekdayCalendar;
+    use dates::calendar::RcCalendar;
     use math::numerics::approx_eq;
     use math::interpolation::Extrap;
 
@@ -460,11 +461,11 @@ pub mod tests {
             Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
-    pub fn create_sample_flat_vol() -> Rc<VolSurface> {
-        let calendar = Rc::new(WeekdayCalendar());
+    pub fn create_sample_flat_vol() -> RcVolSurface {
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
         let base_date = Date::from_ymd(2016, 12, 30);
         let base = DateDayFraction::new(base_date, 0.2);
-        Rc::new(FlatVolSurface::new(0.3, calendar, base))
+        RcVolSurface::new(Rc::new(FlatVolSurface::new(0.3, calendar, base)))
     }
 
     pub fn sample_market_data() -> MarketData {

@@ -51,7 +51,7 @@ where
         E: sd::de::Error,
     {
         self.registry.get(tag.as_ref())
-            .ok_or_else(|| sd::de::Error::custom("Unknown tag"))
+            .ok_or_else(|| sd::de::Error::custom(&format!("Unknown tag: {}", tag.as_ref())))
     }
 }
 
