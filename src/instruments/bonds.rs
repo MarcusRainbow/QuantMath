@@ -135,7 +135,7 @@ mod tests {
     use data::curves::RateCurveAct365;
     use data::curves::RcRateCurve;
     use data::forward::Forward;
-    use data::volsurface::VolSurface;
+    use data::volsurface::RcVolSurface;
     use dates::calendar::WeekdayCalendar;
     use dates::rules::BusinessDays;
     use dates::Date;
@@ -185,7 +185,7 @@ mod tests {
 
         fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
             _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
-            -> Result<Rc<VolSurface>, qm::Error> {
+            -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("VolSurface not supported"))
         }
 

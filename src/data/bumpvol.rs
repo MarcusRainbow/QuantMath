@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::f64::NAN;
-use data::volsurface::VolSurface;
+use data::volsurface::RcVolSurface;
 use data::volsurface::FlatVolSurface;
 use data::voldecorators::TimeScaledBumpVol;
 use data::voldecorators::ParallelBumpVol;
@@ -54,19 +54,19 @@ impl BumpVol {
     }
 }
 
-impl Bumper<Rc<VolSurface>> for BumpVol {
+impl Bumper<RcVolSurface> for BumpVol {
 
-    fn apply(&self, surface: Rc<VolSurface>) -> Rc<VolSurface> {
+    fn apply(&self, surface: RcVolSurface) -> RcVolSurface {
         match self {
             &BumpVol::FlatAdditive { size }
-                => Rc::new(ParallelBumpVol::new(surface.clone(), size)),
+                => RcVolSurface::new(Rc::new(ParallelBumpVol::new(surface.clone(), size))),
 
             &BumpVol::TimeScaled { size, floor }
-                => Rc::new(TimeScaledBumpVol::new(surface.clone(), size, floor)),
+                => RcVolSurface::new(Rc::new(TimeScaledBumpVol::new(surface.clone(), size, floor))),
 
             &BumpVol::Replace { vol }
-                => Rc::new(FlatVolSurface::new(vol, 
-                    surface.calendar().clone(), surface.base_date()))
+                => RcVolSurface::new(Rc::new(FlatVolSurface::new(vol, 
+                    surface.calendar().clone(), surface.base_date())))
         }
     }
 }

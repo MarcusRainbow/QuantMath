@@ -571,12 +571,13 @@ mod tests {
     use math::interpolation::Extrap;
     use math::interpolation::CubicSpline;
     use data::forward::Forward;
-    use data::volsurface::VolSurface;
+    use data::volsurface::RcVolSurface;
     use data::curves::RateCurveAct365;
     use data::curves::RcRateCurve;
     use data::forward::InterpolatedForward;
     use data::volsurface::FlatVolSurface;
     use dates::calendar::WeekdayCalendar;
+    use dates::calendar::RcCalendar;
     use dates::Date;
     use dates::datetime::TimeOfDay;
     use instruments::basket::Basket;
@@ -626,13 +627,13 @@ mod tests {
 
         fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
             _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
-            -> Result<Rc<VolSurface>, qm::Error> {
+            -> Result<RcVolSurface, qm::Error> {
 
-            let calendar = Rc::new(WeekdayCalendar());
+            let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
             let base_date = Date::from_ymd(2018, 05, 30);
             let base = DateDayFraction::new(base_date, 0.2);
             let vol = FlatVolSurface::new(0.3, calendar, base);
-            Ok(Rc::new(vol))
+            Ok(RcVolSurface::new(Rc::new(vol)))
         }
 
         fn correlation(&self, _first: &Instrument, _second: &Instrument)

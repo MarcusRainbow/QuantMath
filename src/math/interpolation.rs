@@ -2,6 +2,10 @@ use std::marker::PhantomData;
 use std::f64::NAN;
 use std::f64::INFINITY;
 use std::cmp::Ordering;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
 use core::qm;
 
 /// To use interpolation, the types along the x axis must be Interpolable
@@ -251,45 +255,57 @@ impl<T : Interpolable<T> + Copy> Linear<T> {
 /// at each of the pillar points.
 #[derive(Debug, Clone)]
 pub struct CubicSpline<T> where T : Interpolable<T> {
+    inputs: CubicSplineInputs<T>,
+    second_deriv: Vec<f64>
+}
+
+impl<T> Serialize for CubicSpline<T> where T : Interpolable<T> + Serialize {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        self.inputs.serialize(serializer)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CubicSplineInputs<T> where T : Interpolable<T> {
     left: Extrap,
     right: Extrap,
-    points: Vec<(T, f64)>,
-    second_deriv: Vec<f64>
+    points: Vec<(T, f64)>
 }
 
 impl<T : Interpolable<T> + Copy> Interpolate<T> for CubicSpline<T> {
     fn interpolate(&self, x: T) -> Result<f64, qm::Error> {
 
-        let n = self.points.len();
+        let n = self.inputs.points.len();
         if n == 0 {
             return Err(qm::Error::new("Cubic spline interpolator requires \
                 at least 2 points"))
         }
 
         // binary chop to find our element. If we find it, return it
-        let found = self.points.binary_search_by(|p| p.0.interp_cmp(x));
+        let found = self.inputs.points.binary_search_by(|p| p.0.interp_cmp(x));
         match found {
-            Ok(i) => Ok(self.points[i].1),
+            Ok(i) => Ok(self.inputs.points[i].1),
 
             // Not found it. Are we at the left or right extreme?
             Err(i) => if i == 0 {
-                if self.left.is_natural() && n > 1 {
-                    nr_splint(self.points[0], self.points[1],
+                if self.inputs.left.is_natural() && n > 1 {
+                    nr_splint(self.inputs.points[0], self.inputs.points[1],
                         self.second_deriv[0], self.second_deriv[1], x)
                 } else {
-                    self.left.extrapolate(self.points[0].1)
+                    self.inputs.left.extrapolate(self.inputs.points[0].1)
                 }
             } else if i >= n {
-                if self.left.is_natural() && n > 1 {
-                    nr_splint(self.points[n-2], self.points[n-1],
+                if self.inputs.left.is_natural() && n > 1 {
+                    nr_splint(self.inputs.points[n-2], self.inputs.points[n-1],
                         self.second_deriv[n-2], self.second_deriv[n-1], x)
                 } else {
-                    self.right.extrapolate(self.points[n-1].1)
+                    self.inputs.right.extrapolate(self.inputs.points[n-1].1)
                 }
             } else {
 
                 // We are between two points. Cubic spline interpolate
-                nr_splint(self.points[i-1], self.points[i],
+                nr_splint(self.inputs.points[i-1], self.inputs.points[i],
                     self.second_deriv[i-1], self.second_deriv[i], x)
             }
         }
@@ -312,10 +328,32 @@ impl<T : Interpolable<T> + Copy> CubicSpline<T> {
         nr_spline(points, deriv_0, deriv_n, &mut second_deriv);
 
         Ok(CubicSpline {
-            left: left,
-            right: right,
-            points: points.to_vec(),
+            inputs: CubicSplineInputs {
+                left: left,
+                right: right,
+                points: points.to_vec() },
             second_deriv: second_deriv })
+    }
+}
+
+// We split CubicSpline into two parts: CubicSplineInputs, which
+// can be serialized and deserialized easily, and the second
+// derivs, which are calculated on load. We manually implement the
+// deserialize to first deserialize the inputs, then calculate the
+// second derivatives.
+impl<'de, T> Deserialize<'de> for CubicSpline<T> 
+where T : Interpolable<T> + Deserialize<'de> + Copy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        let inputs = CubicSplineInputs::deserialize(deserializer)?;
+
+        let mut second_deriv = vec![0.0; inputs.points.len()];
+        let deriv_0 = if inputs.left.is_natural() { INFINITY } else { 0.0 };
+        let deriv_n = if inputs.right.is_natural() { INFINITY } else { 0.0 };
+
+        nr_spline(&inputs.points, deriv_0, deriv_n, &mut second_deriv);
+
+        Ok(CubicSpline { inputs, second_deriv })
     }
 }
 
@@ -545,6 +583,32 @@ mod tests {
         assert_match(deserialized.interpolate(2), 3.0);
         assert_match(deserialized.interpolate(4), 8.0);
         assert_match(deserialized.interpolate(5), 8.0);
+    }
+
+    #[test]
+    fn cubic_spline_interp_serde() {
+
+        // an interpolator with some points  
+        let points = [(0.0, 0.0), (2.0, 3.0), (4.0, 8.0), (6.0, 9.0),
+            (7.0, 10.0)];
+        let cs = CubicSpline::<f64>::new(&points,
+            Extrap::Natural, Extrap::Natural).unwrap();
+
+        // Convert the interpolator to a JSON string.
+        let serialized = serde_json::to_string(&cs).unwrap();
+        assert_eq!(serialized, r#"{"left":"Natural","right":"Natural","points":[[0.0,0.0],[2.0,3.0],[4.0,8.0],[6.0,9.0],[7.0,10.0]]}"#);
+
+        // Convert the JSON string back to an interpolator.
+        let deserialized: CubicSpline<f64> = serde_json::from_str(&serialized).unwrap();
+
+        // make sure it matches at the pillars and beyond
+        assert_match(deserialized.interpolate(-1.0), -1.1798780487804879);
+        assert_match(deserialized.interpolate(0.0), 0.0);
+        assert_match(deserialized.interpolate(1.0), 1.1798780487804879);
+        assert_match(deserialized.interpolate(2.0), 3.0);
+        assert_match(deserialized.interpolate(5.0), 8.728658536585366);
+        assert_match(deserialized.interpolate(7.0), 10.0);
+        assert_match(deserialized.interpolate(8.0), 11.0);
     }
 }
 

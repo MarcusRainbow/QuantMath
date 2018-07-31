@@ -18,7 +18,7 @@ use std::fmt;
 /// We do assume an ordering of the enums here, matching the order they are
 /// expressed. If other values are added, such as LiborFixingTime, we may
 /// need to implement comparison functions manually, using Ord and PartialOrd.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum TimeOfDay {
     Open,
     EDSP,
@@ -37,7 +37,7 @@ impl Display for TimeOfDay {
 
 /// Convenience struct that groups a date and a time of day. For example, this
 /// represents the time of a fixing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct DateTime {
     date: Date,
     time_of_day: TimeOfDay
@@ -80,7 +80,7 @@ impl Display for DateTime {
 /// volatility time of the current day. Vol time is a monotonic function of
 /// real time, but certainly not a linear one, and it varies depending on the
 /// location and even the underlier.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct DateDayFraction {
     date: Date,
     day_fraction: f64
