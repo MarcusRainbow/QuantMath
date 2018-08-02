@@ -2,10 +2,8 @@ pub mod blackdiffusion;
 
 use std::collections::HashMap;
 use std::clone::Clone;
-use std::rc::Rc;
 use core::qm;
 use instruments::RcInstrument;
-use instruments::Instrument;
 use instruments::MonteCarloDependencies;
 use instruments::MonteCarloContext;
 use risk::Bumpable;
@@ -62,7 +60,7 @@ impl Clone for Box<MonteCarloModel> {
 pub struct MonteCarloTimeline {
     _spot_date: Date,
     observations: HashMap<RcInstrument, Vec<DateDayFraction>>,
-    flows: Vec<Rc<Instrument>>,
+    flows: Vec<RcInstrument>,
     collated: bool
 }
 
@@ -95,7 +93,7 @@ impl MonteCarloTimeline {
         &self.observations
     }
 
-    pub fn flows(&self) -> &[Rc<Instrument>] {
+    pub fn flows(&self) -> &[RcInstrument] {
         assert!(self.collated);
         &self.flows
     }
@@ -103,16 +101,16 @@ impl MonteCarloTimeline {
 
 impl MonteCarloDependencies for MonteCarloTimeline {
 
-    fn observation(&mut self, instrument: &Rc<Instrument>,
+    fn observation(&mut self, instrument: &RcInstrument,
         date_time: DateDayFraction) {
 
         // Record the observations in the order the client specifies them
         // for any one instrument
-        self.observations.entry(RcInstrument::new(instrument.clone()))
+        self.observations.entry(instrument.clone())
             .or_insert(Vec::<DateDayFraction>::new()).push(date_time);
     }
 
-    fn flow(&mut self, instrument: &Rc<Instrument>) {
+    fn flow(&mut self, instrument: &RcInstrument) {
 
         // We must record flows in the order the client specifies them, as
         // the client later relies on this order

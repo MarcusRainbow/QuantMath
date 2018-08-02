@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::rc::Rc;
 use std::collections::HashMap;
 use rand;
 use rand::StdRng;
@@ -111,7 +110,7 @@ impl MonteCarloModelFactory for BlackDiffusionFactory {
 #[derive(Clone)]
 pub struct BlackDiffusion {
     observations: Vec<DateDayFraction>,
-    flows: Vec<Rc<Instrument>>,
+    flows: Vec<RcInstrument>,
     context: Box<BumpablePricingContext>,
     key: HashMap<String, usize>,
     instruments: Vec<RcInstrument>,
@@ -471,7 +470,7 @@ impl MonteCarloModel for BlackDiffusion {
 
 impl MonteCarloContext for BlackDiffusion {
 
-    fn paths(&self, instrument: &Rc<Instrument>)
+    fn paths(&self, instrument: &RcInstrument)
         -> Result<ArrayView2<f64>, qm::Error> {
 
         let id = instrument.id().to_string();

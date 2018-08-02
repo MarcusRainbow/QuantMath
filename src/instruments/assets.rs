@@ -4,16 +4,22 @@ use std::fmt;
 use std::cmp::Ordering;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::ops::Deref;
 use instruments::Instrument;
+use instruments::RcInstrument;
 use instruments::Priceable;
 use instruments::PricingContext;
 use instruments::DependencyContext;
 use instruments::SpotRequirement;
-use dates::rules::DateRule;
+use dates::rules::RcDateRule;
 use dates::datetime::TimeOfDay;
 use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
 use core::qm;
+use core::factories::TypeId;
+use serde::Deserialize;
+use erased_serde as esd;
+use serde as sd;
 
 /// Represents a currency. Generally currencies have a one-to-one mapping with
 /// world currencies. There is an exception in countries like Korea, which have
@@ -21,17 +27,24 @@ use core::qm;
 ///
 /// This currency always represents major units such as dollars or pounds,
 /// rather than minor units such as cents or pence.
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Currency {
     id: String,
-    settlement: Rc<DateRule>
+    settlement: RcDateRule
 }
 
 impl Currency {
-    pub fn new(id: &str, settlement: Rc<DateRule>) -> Currency {
+    pub fn new(id: &str, settlement: RcDateRule) -> Currency {
         Currency { id: id.to_string(), settlement: settlement }
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
+        Ok(RcInstrument::new(Rc::new(Currency::deserialize(de)?)))
+    }
+}
+
+impl TypeId for Currency {
+    fn type_id(&self) -> &'static str { "Currency" }
 }
 
 impl Instrument for Currency {
@@ -48,7 +61,7 @@ impl Instrument for Currency {
         &self.id
     }
 
-    fn settlement(&self) -> &Rc<DateRule> {
+    fn settlement(&self) -> &RcDateRule {
         &self.settlement
     }
 
@@ -125,23 +138,68 @@ pub fn dependence_on_spot_discount(instrument: &Instrument,
     context.yield_curve(instrument.credit_id(), pay_date);
 }
 
+/// Create a new type for an Rc containing a currency, so we can implement
+/// serialize and deserialize for it. Ideally, this should deduplicate the
+/// pointers, so we end up with only one instance of each currency. Leave
+/// this as an exercise.
+#[derive(Clone, Debug)]
+pub struct RcCurrency(Rc<Currency>);
+
+impl RcCurrency {
+    pub fn new(ccy: Rc<Currency>) -> RcCurrency {
+        RcCurrency(ccy)
+    }
+}
+
+impl Deref for RcCurrency {
+    type Target = Currency;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl sd::Serialize for RcCurrency {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> sd::Deserialize<'de> for RcCurrency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de> {
+        let ccy = Currency::deserialize(deserializer)?;
+        Ok(RcCurrency::new(Rc::new(ccy)))
+    }
+}
+
 /// Represents an equity single name or index. Can also be used to represent
 /// funds and ETFs,
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Equity {
     id: String,
     credit_id: String,
-    currency: Rc<Currency>,
-    settlement: Rc<DateRule>
+    currency: RcCurrency,
+    settlement: RcDateRule
+}
+
+impl TypeId for Equity {
+    fn type_id(&self) -> &'static str { "Equity" }
 }
 
 impl Equity {
-    pub fn new(id: &str, credit_id: &str,currency: Rc<Currency>, 
-        settlement: Rc<DateRule>) -> Equity {
+    pub fn new(id: &str, credit_id: &str,currency: RcCurrency, 
+        settlement: RcDateRule) -> Equity {
 
         Equity { id: id.to_string(), credit_id: credit_id.to_string(),
             currency: currency, settlement: settlement }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
+        Ok(RcInstrument::new(Rc::new(Equity::deserialize(de)?)))
     }
 }
 
@@ -158,7 +216,7 @@ impl Instrument for Equity {
         &self.credit_id
     }
 
-    fn settlement(&self) -> &Rc<DateRule> {
+    fn settlement(&self) -> &RcDateRule {
         &self.settlement
     }
 
@@ -248,19 +306,27 @@ impl Priceable for Equity {
 }
 
 /// Represents a credit entity
-#[derive(Clone, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CreditEntity {
     id: String,
-    currency: Rc<Currency>,
-    settlement: Rc<DateRule>
+    currency: RcCurrency,
+    settlement: RcDateRule
+}
+
+impl TypeId for CreditEntity {
+    fn type_id(&self) -> &'static str { "CreditEntity" }
 }
 
 impl CreditEntity {
-    pub fn new(id: &str, currency: Rc<Currency>, 
-        settlement: Rc<DateRule>) -> CreditEntity {
+    pub fn new(id: &str, currency: RcCurrency, 
+        settlement: RcDateRule) -> CreditEntity {
 
         CreditEntity { id: id.to_string(), currency: currency,
             settlement: settlement }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
+        Ok(RcInstrument::new(Rc::new(CreditEntity::deserialize(de)?)))
     }
 }
 
@@ -278,7 +344,7 @@ impl Instrument for CreditEntity {
         &self.id
     }
 
-    fn settlement(&self) -> &Rc<DateRule> {
+    fn settlement(&self) -> &RcDateRule {
         &self.settlement
     }
 
@@ -351,20 +417,21 @@ pub mod tests {
     use data::curves::RateCurveAct365;
     use data::curves::RcRateCurve;
     use dates::calendar::WeekdayCalendar;
+    use dates::calendar::RcCalendar;
     use dates::rules::BusinessDays;
     use dates::Date;
     use data::forward::DriftlessForward;
     use std::rc::Rc;
 
     pub fn sample_currency(step: u32) -> Currency {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        let settlement = Rc::new(BusinessDays::new_step(calendar, step));
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
-    pub fn sample_equity(currency: Rc<Currency>, name: &str, step: u32) -> Equity {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        let settlement = Rc::new(BusinessDays::new_step(calendar, step));
+    pub fn sample_equity(currency: RcCurrency, name: &str, step: u32) -> Equity {
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
         Equity::new(name, "LSE", currency, settlement)
     }
 
@@ -416,7 +483,7 @@ pub mod tests {
     #[test]
     fn test_equity_price_on_spot() {
         let spot = 123.4;
-        let currency = Rc::new(sample_currency(2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let equity = sample_equity(currency, "BP.L", 2);
         let context = sample_pricing_context(spot);
         let val_date = DateTime::new(context.spot_date(), TimeOfDay::Open);
@@ -436,7 +503,7 @@ pub mod tests {
     #[test]
     fn test_equity_price_mismatching_dates() {
         let spot = 123.4;
-        let currency = Rc::new(sample_currency(3));
+        let currency = RcCurrency::new(Rc::new(sample_currency(3)));
         let equity = sample_equity(currency, "BP.L", 3);
         let context = sample_pricing_context(spot);
         let val_date = DateTime::new(context.spot_date() + 3, TimeOfDay::Open);

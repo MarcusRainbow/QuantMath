@@ -1,12 +1,11 @@
 use dates::Date;
-use dates::rules::DateRule;
+use dates::rules::RcDateRule;
 use math::interpolation::Interpolate;
 use data::divstream::DividendBootstrap;
 use data::divstream::DividendStream;
 use data::curves::RcRateCurve;
 use data::curves::RateCurve;
 use core::qm;
-use std::rc::Rc;
 
 /// Forward curve. This represents the expectation value of some asset over
 /// time. It is implemented in different ways for futures (generally driftless)
@@ -81,7 +80,7 @@ impl InterpolatedForward {
 /// An equity forward has a spot, a discount rate which, together with a
 /// borrow, defines the rate of growth, plus a dividend stream.
 pub struct EquityForward {
-    settlement: Rc<DateRule>,
+    settlement: RcDateRule,
     rate: RcRateCurve,
     borrow: RcRateCurve,
     div_yield: RcRateCurve,
@@ -120,7 +119,7 @@ impl EquityForward {
     pub fn new(
         base_date: Date,
         spot: f64,
-        settlement: Rc<DateRule>,
+        settlement: RcDateRule,
         rate: RcRateCurve,
         borrow: RcRateCurve,
         divs: &DividendStream,
@@ -194,6 +193,7 @@ mod tests {
     use data::divstream::Dividend;
     use dates::calendar::WeekdayCalendar;
     use dates::rules::BusinessDays;
+    use dates::calendar::RcCalendar;
 
     #[test]
     fn driftless_forward() {
@@ -228,8 +228,8 @@ mod tests {
         let divs = create_sample_divstream();
         let rate = create_sample_rate();
         let borrow = create_sample_borrow();
-        let calendar = Rc::new(WeekdayCalendar{});
-        let settlement = Rc::new(BusinessDays::new_step(calendar, 2));
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar{}));
+        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, 2)));
 
         let fwd = EquityForward::new(d, spot, settlement, rate, borrow, &divs,
             d + 1500).unwrap();

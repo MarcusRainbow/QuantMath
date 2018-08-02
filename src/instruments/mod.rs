@@ -3,10 +3,16 @@ pub mod bonds;
 pub mod options;
 pub mod basket;
 
-use dates::datetime::TimeOfDay;
 use instruments::assets::Currency;
+use instruments::assets::CreditEntity;
+use instruments::assets::Equity;
+use instruments::bonds::ZeroCoupon;
+use instruments::basket::Basket;
+use instruments::options::SpotStartingEuropean;
+use instruments::options::ForwardStartingEuropean;
 use dates::Date;
-use dates::rules::DateRule;
+use dates::datetime::TimeOfDay;
+use dates::rules::RcDateRule;
 use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
 use data::curves::RcRateCurve;
@@ -16,13 +22,22 @@ use data::volsurface::VolTimeDynamics;
 use data::volsurface::VolForwardDynamics;
 use data::fixings::FixingTable;
 use core::qm;
+use core::factories::TypeId;
+use core::factories::Registry;
+use core::factories::Qrc;
 use math::interpolation::Interpolate;
 use std::rc::Rc;
 use std::hash::Hash;
 use std::cmp::Ordering;
 use std::hash::Hasher;
 use std::f64::NAN;
+use std::fmt::Debug;
+use std::ops::Deref;
 use ndarray::ArrayView2;
+use erased_serde as esd;
+use serde as sd;
+use serde_tagged as sdt;
+use serde_tagged::de::BoxFnSeed;
 
 /// There are a few controversial design decisions here. The first is to do
 /// with the separation of products from indices, which is the case in
@@ -31,7 +46,7 @@ use ndarray::ArrayView2;
 /// and rather specious, so I have classed all tradeable instruments together,
 /// as Instrument.
 
-pub trait Instrument {
+pub trait Instrument : esd::Serialize + TypeId + Debug {
     /// The id of this instrument is used for identifying market data. For
     /// example equity ids are used to identify spots. It is also used for
     /// reporting of results, for example where composite or portfolio prices
@@ -50,7 +65,7 @@ pub trait Instrument {
 
     /// The settlement period associated with premium and payoff payments
     /// for this instrument.
-    fn settlement(&self) -> &Rc<DateRule>;
+    fn settlement(&self) -> &RcDateRule;
 
     /// Reports the internal dependencies of this product. Returns an enum
     /// to specify the external dependencies for a spot value on the product
@@ -104,7 +119,7 @@ pub trait Instrument {
     /// None, as do any that happen to be unaffected by the particular fixings
     /// supplied. This is the default implementation.
     fn fix(&self, _fixing_table: &FixingTable)
-        -> Result<Option<Vec<(f64, Rc<Instrument>)>>, qm::Error> {
+        -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
         Ok(None) 
     }
 
@@ -122,11 +137,11 @@ pub trait Instrument {
 /// Utility method to fix all instruments in a vector, returning them as a weighted vector.
 /// Currently we do not attempt to net instruments of the same type, though we could do so.
 /// If there are no changes to any instruments, we return None.
-pub fn fix_all(instruments: &Vec<(f64, Rc<Instrument>)>, fixing_table: &FixingTable)
-    -> Result<Option<Vec<(f64, Rc<Instrument>)>>, qm::Error> {
+pub fn fix_all(instruments: &Vec<(f64, RcInstrument)>, fixing_table: &FixingTable)
+    -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
 
     // optional modified basket, in case anything changed
-    let mut basket : Vec<(f64, Rc<Instrument>)> = Vec::new();
+    let mut basket : Vec<(f64, RcInstrument)> = Vec::new();
     let mut uncopied = 0;
     let mut modified = false;
 
@@ -161,24 +176,70 @@ pub fn fix_all(instruments: &Vec<(f64, Rc<Instrument>)>, fixing_table: &FixingTa
     }
 }
 
+// Get serialization to work recursively for instruments by using the
+// technology defined in core/factories. RcInstrument is a container
+// class holding an RcInstrument
+pub type TypeRegistry = Registry<BoxFnSeed<RcInstrument>>;
+
+/// Implement deserialization for subclasses of the type
+impl<'de> sd::Deserialize<'de> for RcInstrument {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de>
+    {
+        sdt::de::external::deserialize(deserializer, get_registry())
+    }
+}
+
+/// Return the type registry required for deserialization.
+pub fn get_registry() -> &'static TypeRegistry {
+    lazy_static! {
+        static ref REG: TypeRegistry = {
+            let mut reg = TypeRegistry::new();
+            reg.insert("Currency", BoxFnSeed::new(Currency::from_serial));
+            reg.insert("CreditEntity", BoxFnSeed::new(CreditEntity::from_serial));
+            reg.insert("Equity", BoxFnSeed::new(Equity::from_serial));
+            reg.insert("Equity", BoxFnSeed::new(Equity::from_serial));
+            reg.insert("ZeroCoupon", BoxFnSeed::new(ZeroCoupon::from_serial));
+            reg.insert("Basket", BoxFnSeed::new(Basket::from_serial));
+            reg.insert("SpotStartingEuropean", BoxFnSeed::new(SpotStartingEuropean::from_serial));
+            reg.insert("ForwardStartingEuropean", BoxFnSeed::new(ForwardStartingEuropean::from_serial));
+            reg
+        };
+    }
+    &REG
+}
+
 /// When making hash maps or sets of instruments, we only key by the id, which
 /// should be unique across all instrument types.
-#[derive(Clone)]
-pub struct RcInstrument {
-    instrument: Rc<Instrument>
-}
+#[derive(Clone, Debug)]
+pub struct RcInstrument (Qrc<Instrument>);
 
 impl RcInstrument {
     pub fn new(instrument: Rc<Instrument>) -> RcInstrument {
-        RcInstrument { instrument: instrument }
+        RcInstrument(Qrc::new(instrument))
     }
 
     pub fn id(&self) -> &str {
-        &self.instrument.id()
+        &self.0.id()
     }
 
     pub fn instrument(&self) -> &Instrument {
-        &*self.instrument
+        &*self.0
+    }
+}
+
+impl Deref for RcInstrument {
+    type Target = Instrument;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl sd::Serialize for RcInstrument {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer {
+        self.0.serialize(serializer)
     }
 }
 
@@ -221,7 +282,7 @@ pub trait DependencyContext {
     fn yield_curve(&mut self, credit_id: &str, high_water_mark: Date);
 
     /// Specify a dependency on a spot value, given the instrument
-    fn spot(&mut self, instrument: &Rc<Instrument>);
+    fn spot(&mut self, instrument: &RcInstrument);
 
     /// Specify a dependency on a forward curve, given any instrument. Also
     /// specify a high water mark, beyond which we never directly ask for
@@ -229,13 +290,13 @@ pub trait DependencyContext {
     /// requests. If the vol surface depends on forwards beyond this mark, it
     /// is up to the supplier to provide them, regardless of this high water
     /// mark.
-    fn forward_curve(&mut self, instrument: &Rc<Instrument>, 
+    fn forward_curve(&mut self, instrument: &RcInstrument, 
         high_water_mark: Date);
 
     /// Specify a dependency on a vol surfce, given any instrument. Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
-    fn vol_surface(&mut self, instrument: &Rc<Instrument>,
+    fn vol_surface(&mut self, instrument: &RcInstrument,
         high_water_mark: Date);
 
     /// Specify a dependency on a specific fixing, by underlier id and
@@ -463,7 +524,7 @@ pub trait MonteCarloDependencies {
     /// All the returned observations should be in the future (or unfixed,
     /// today). Historical observations should have been handled by the freeze
     /// method.
-    fn observation(&mut self, instrument: &Rc<Instrument>,
+    fn observation(&mut self, instrument: &RcInstrument,
         date_time: DateDayFraction);
 
     /// Specifies a potential cashflow or stock transfer. In theory, any
@@ -472,7 +533,7 @@ pub trait MonteCarloDependencies {
     /// restrictions on what can be used. In practice, you need to choose
     /// instruments that reflect the dates of transfer, so Bond rather than
     /// Currency, for example.
-    fn flow(&mut self, instrument: &Rc<Instrument>);
+    fn flow(&mut self, instrument: &RcInstrument);
 }
 
 /// Context for Monte-Carlo pricing. The most important thing this gives is
@@ -488,7 +549,7 @@ pub trait MonteCarloContext {
     /// models may choose to represent all observations today by the spot
     /// value, but this is an approximation and a modelling choice. In that
     /// case, the model must supply the same value for all paths.
-    fn paths(&self, instrument: &Rc<Instrument>)
+    fn paths(&self, instrument: &RcInstrument)
         -> Result<ArrayView2<f64>, qm::Error>;
 
     /// Value the flows resulting from the valuation. The quantities argument is

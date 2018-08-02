@@ -4,7 +4,7 @@ use std::any::Any;
 use core::qm;
 use dates::Date;
 use data::curves::RcRateCurve;
-use data::divstream::DividendStream;
+use data::divstream::RcDividendStream;
 use data::volsurface::RcVolSurface;
 use data::forward::Forward;
 use data::forward::EquityForward;
@@ -35,14 +35,13 @@ use risk::dependencies::DependencyCollector;
 /// As new forms of market data are required, they should be added to this
 /// struct. They may also need to be added to PricingContext, so they can be
 /// accessed during pricing.
-//#[derive(Clone, Serialize, Deserialize)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MarketData {
     spot_date: Date, 
     spots: HashMap<String, f64>,
     yield_curves: HashMap<String, RcRateCurve>,
     borrow_curves: HashMap<String, RcRateCurve>,
-    dividends: HashMap<String, Rc<DividendStream>>,
+    dividends: HashMap<String, RcDividendStream>,
     vol_surfaces: HashMap<String, RcVolSurface>
 }
 
@@ -70,7 +69,7 @@ impl MarketData {
         spots: HashMap<String, f64>,
         yield_curves: HashMap<String, RcRateCurve>,
         borrow_curves: HashMap<String, RcRateCurve>,
-        dividends: HashMap<String, Rc<DividendStream>>,
+        dividends: HashMap<String, RcDividendStream>,
         vol_surfaces: HashMap<String, RcVolSurface>) -> MarketData {
 
         MarketData {
@@ -315,7 +314,7 @@ pub struct SavedData {
     spots: HashMap<String, f64>,
     yield_curves: HashMap<String, RcRateCurve>,
     borrow_curves: HashMap<String, RcRateCurve>,
-    dividends: HashMap<String, Rc<DividendStream>>,
+    dividends: HashMap<String, RcDividendStream>,
     vol_surfaces: HashMap<String, RcVolSurface>
 }
 
@@ -350,11 +349,12 @@ impl Saveable for SavedData {
 pub mod tests {
     use super::*;
     use instruments::assets::Currency;
+    use instruments::assets::RcCurrency;
     use std::rc::Rc;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
     use dates::datetime::DateDayFraction;
-    use dates::rules::DateRule;
+    use dates::rules::RcDateRule;
     use dates::rules::BusinessDays;
     use instruments::assets::Equity;
     use instruments::options::SpotStartingEuropean;
@@ -362,6 +362,7 @@ pub mod tests {
     use instruments::options::PutOrCall;
     use instruments::options::OptionSettlement;
     use instruments::Priceable;
+    use instruments::RcInstrument;
     use data::divstream::DividendStream;
     use data::divstream::Dividend;
     use data::curves::RateCurveAct365;
@@ -375,19 +376,20 @@ pub mod tests {
     use dates::calendar::RcCalendar;
     use math::numerics::approx_eq;
     use math::interpolation::Extrap;
+    use serde_json;
 
     pub fn sample_currency(step: u32) -> Currency {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        let settlement = Rc::new(BusinessDays::new_step(calendar, step));
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
-    pub fn sample_settlement(step: u32) -> Rc<DateRule> {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        Rc::new(BusinessDays::new_step(calendar, step))
+    pub fn sample_settlement(step: u32) -> RcDateRule {
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)))
     }
 
-    pub fn sample_equity(currency: Rc<Currency>, step: u32) -> Equity {
+    pub fn sample_equity(currency: RcCurrency, step: u32) -> Equity {
         let settlement = sample_settlement(step);
         Equity::new("BP.L", "LSE", currency, settlement)
     }
@@ -398,9 +400,9 @@ pub mod tests {
         let put_or_call = PutOrCall::Call;
         let expiry = DateTime::new(
             Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
-        let currency = Rc::new(sample_currency(2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity = Rc::new(sample_equity(currency, 2));
+        let equity = RcInstrument::new(Rc::new(sample_equity(currency, 2)));
         let european = SpotStartingEuropean::new("SampleSpotEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike, put_or_call, OptionSettlement::Cash).unwrap();
@@ -415,16 +417,16 @@ pub mod tests {
         let put_or_call = PutOrCall::Call;
         let expiry = DateTime::new(
             Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
-        let currency = Rc::new(sample_currency(2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity = Rc::new(sample_equity(currency, 2));
+        let equity = RcInstrument::new(Rc::new(sample_equity(currency, 2)));
         let european = ForwardStartingEuropean::new("SampleForwardEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike_fraction, strike_date, put_or_call, OptionSettlement::Cash).unwrap();
         Rc::new(european)
     }
 
-    pub fn create_sample_divstream() -> Rc<DividendStream> {
+    pub fn create_sample_divstream() -> RcDividendStream {
 
         // Early divs are purely cash. Later ones are mixed cash/relative
         let d = Date::from_ymd(2017, 01, 02);
@@ -442,7 +444,7 @@ pub mod tests {
             Extrap::Zero, Extrap::Flat).unwrap();
         let div_yield = RcRateCurve::new(Rc::new(curve));
 
-        Rc::new(DividendStream::new(&divs, div_yield))
+        RcDividendStream::new(Rc::new(DividendStream::new(&divs, div_yield)))
     }
 
     pub fn create_sample_rate() -> RcRateCurve {
@@ -633,6 +635,25 @@ pub mod tests {
         save.clear();
         let price = european.price(&mut_data, val_date).unwrap();
         assert_approx(price, unbumped_price, 1e-12);
+    }
+
+    #[test]
+    fn serde_market_data_roundtrip() {
+
+        // create some sample data and price a european with it
+        let market_data = sample_market_data();
+        let european = sample_european();
+        let val_date = DateTime::new(Date::from_ymd(2017, 01, 02), TimeOfDay::Open);
+        let price = european.price(&market_data, val_date).unwrap();
+
+        // round trip it via JSON
+        let serialized = serde_json::to_string_pretty(&market_data).unwrap();
+        print!("serialized: {}\n", serialized);
+        let deserialized: MarketData = serde_json::from_str(&serialized).unwrap();
+
+        // check that we still get the same price
+        let serde_price = european.price(&deserialized, val_date).unwrap();
+        assert_approx(serde_price, price, 1e-12);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {
