@@ -3,7 +3,7 @@ pub mod selfpricer;
 
 use core::qm;
 use std::rc::Rc;
-use instruments::Instrument;
+use instruments::RcInstrument;
 use data::fixings::FixingTable;
 use risk::marketdata::MarketData;
 use risk::Pricer;
@@ -15,7 +15,7 @@ pub trait PricerFactory {
     /// All the inputs are shared pointers to const objects, which allows them
     /// to be shared across multiple pricers. (Consider making them Arc rather
     /// than Rc, allowing multithreaded use across different pricers.)
-    fn new(&self, instrument: Rc<Instrument>, fixings: Rc<FixingTable>, 
+    fn new(&self, instrument: RcInstrument, fixings: Rc<FixingTable>, 
         market_data: Rc<MarketData>) -> Result<Box<Pricer>, qm::Error>;
 }
  

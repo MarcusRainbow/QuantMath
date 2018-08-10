@@ -1,29 +1,37 @@
-use std::rc::Rc;
 use std::fmt::Display;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::rc::Rc;
 use instruments::Instrument;
 use instruments::Priceable;
 use instruments::PricingContext;
 use instruments::DependencyContext;
 use instruments::SpotRequirement;
 use instruments::assets::Currency;
+use instruments::assets::RcCurrency;
+use instruments::RcInstrument;
 use dates::Date;
 use dates::datetime::DateTime;
-use dates::rules::DateRule;
+use dates::rules::RcDateRule;
 use core::qm;
+use core::factories::TypeId;
+use serde::Deserialize;
+use erased_serde as esd;
 
-/// Represents a currency to be paid at a specific date.
-
-#[derive(Clone, Debug)]
+/// Represents a unit amount of currency to be paid at a specific date.
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ZeroCoupon {
     id: String,
     credit_id: String,
-    currency: Rc<Currency>,
+    currency: RcCurrency,
     ex_date: DateTime,
     payment_date: Date,
-    settlement: Rc<DateRule>
+    settlement: RcDateRule
+}
+
+impl TypeId for ZeroCoupon {
+    fn type_id(&self) -> &'static str { "ZeroCoupon" }
 }
 
 impl ZeroCoupon {
@@ -34,12 +42,16 @@ impl ZeroCoupon {
     /// be supplied in case the user does not pass in a discount date
     /// to discount to. Normally, the settlement rule should be that of
     /// the instrument that span off the zero coupon.
-    pub fn new(id: &str, credit_id: &str, currency: Rc<Currency>,
-        ex_date: DateTime, payment_date: Date, settlement: Rc<DateRule>) -> ZeroCoupon {
+    pub fn new(id: &str, credit_id: &str, currency: RcCurrency,
+        ex_date: DateTime, payment_date: Date, settlement: RcDateRule) -> ZeroCoupon {
 
         ZeroCoupon { id: id.to_string(), credit_id: credit_id.to_string(),
             currency: currency, ex_date: ex_date, payment_date: payment_date,
             settlement: settlement }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
+        Ok(RcInstrument::new(Rc::new(ZeroCoupon::deserialize(de)?)))
     }
 }
 
@@ -56,7 +68,7 @@ impl Instrument for ZeroCoupon {
         &self.credit_id
     }
 
-    fn settlement(&self) -> &Rc<DateRule> {
+    fn settlement(&self) -> &RcDateRule {
         // A settlement period for a zero coupon does not really make sense,
         // as they have explicit settlement dates. However, we need to supply
         // one in case the user supplies a discount date of None.
@@ -137,19 +149,21 @@ mod tests {
     use data::forward::Forward;
     use data::volsurface::RcVolSurface;
     use dates::calendar::WeekdayCalendar;
+    use dates::calendar::RcCalendar;
     use dates::rules::BusinessDays;
     use dates::Date;
     use dates::datetime::TimeOfDay;
+    use std::rc::Rc;
 
     fn sample_currency(step: u32) -> Currency {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        let settlement = Rc::new(BusinessDays::new_step(calendar, step));
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
-    fn sample_zero_coupon(currency: Rc<Currency>, step: u32) -> ZeroCoupon {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        let settlement = Rc::new(BusinessDays::new_step(calendar, step));
+    fn sample_zero_coupon(currency: RcCurrency, step: u32) -> ZeroCoupon {
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
         ZeroCoupon::new("GBP.2018-07-05", "OPT", currency,
             DateTime::new(Date::from_ymd(2018, 07, 03), TimeOfDay::Open),
             Date::from_ymd(2018, 07, 05), settlement)
@@ -203,7 +217,7 @@ mod tests {
     #[test]
     fn zero_coupon() {
         let val_date = DateTime::new(Date::from_ymd(2018, 06, 05), TimeOfDay::Open);
-        let currency = Rc::new(sample_currency(2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let zero = sample_zero_coupon(currency, 2);
         let context = sample_pricing_context();
         let price = zero.price(&context, val_date).unwrap();

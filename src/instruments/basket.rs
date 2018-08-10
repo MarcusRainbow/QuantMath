@@ -1,3 +1,4 @@
+use core::factories::TypeId;
 use instruments::fix_all;
 use std::rc::Rc;
 use std::fmt::Display;
@@ -6,33 +7,40 @@ use std::cmp::Ordering;
 use std::hash::Hash;
 use std::hash::Hasher;
 use instruments::Instrument;
+use instruments::RcInstrument;
 use instruments::Priceable;
 use instruments::PricingContext;
 use instruments::DependencyContext;
 use instruments::SpotRequirement;
 use instruments::assets::Currency;
-use dates::rules::DateRule;
+use instruments::assets::RcCurrency;
+use dates::rules::RcDateRule;
 use dates::datetime::TimeOfDay;
 use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
 use data::fixings::FixingTable;
 use core::qm;
+use erased_serde as esd;
+use serde::Deserialize;
 
 /// A basket of instruments, such as equities or composites. This uses
 /// the composite pattern (see Gang of Four Design Patterns).
-
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Basket {
     id: String,
     credit_id: String,
-    currency: Rc<Currency>,
-    settlement: Rc<DateRule>,
-    basket: Vec<(f64, Rc<Instrument>)>
+    currency: RcCurrency,
+    settlement: RcDateRule,
+    basket: Vec<(f64, RcInstrument)>
+}
+
+impl TypeId for Basket {
+    fn type_id(&self) -> &'static str { "Basket" }
 }
 
 impl Basket {
-    pub fn new(id: &str, credit_id: &str, currency: Rc<Currency>, 
-        settlement: Rc<DateRule>, basket: Vec<(f64, Rc<Instrument>)>)
+    pub fn new(id: &str, credit_id: &str, currency: RcCurrency, 
+        settlement: RcDateRule, basket: Vec<(f64, RcInstrument)>)
         -> Result<Basket, qm::Error> {
 
         // validate that the basket members are all in the right currency
@@ -40,13 +48,17 @@ impl Basket {
         Ok(Basket { id: id.to_string(), credit_id: credit_id.to_string(),
             currency: currency, settlement: settlement , basket: basket })
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
+        Ok(RcInstrument::new(Rc::new(Basket::deserialize(de)?)))
+    }
 }
 
 impl Instrument for Basket {
     fn id(&self) -> &str { &self.id }
     fn payoff_currency(&self) -> &Currency { &*self.currency }
     fn credit_id(&self) -> &str { &self.credit_id }
-    fn settlement(&self) -> &Rc<DateRule> { &self.settlement }
+    fn settlement(&self) -> &RcDateRule { &self.settlement }
 
     fn dependencies(&self, context: &mut DependencyContext)
         -> SpotRequirement {
@@ -77,13 +89,13 @@ impl Instrument for Basket {
     }
 
     fn fix(&self, fixing_table: &FixingTable)
-        -> Result<Option<Vec<(f64, Rc<Instrument>)>>, qm::Error> {
+        -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
         
         match fix_all(&self.basket, fixing_table)? {
             Some(basket) => {
                 let id = format!("{}:fixed", self.id());
-                let replacement : Rc<Instrument> = Rc::new(
-                    Basket::new(&id, self.credit_id(), self.currency.clone(), self.settlement().clone(), basket)?);
+                let replacement : RcInstrument = RcInstrument::new(Rc::new(
+                    Basket::new(&id, self.credit_id(), self.currency.clone(), self.settlement().clone(), basket)?));
                 Ok(Some(vec![(1.0, replacement)]))
             },
             None => Ok(None)
@@ -169,9 +181,9 @@ pub mod tests {
     use instruments::assets::tests::sample_equity;
 
     pub fn sample_basket(step: u32) -> Basket {
-        let currency = Rc::new(sample_currency(step));
-        let az : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "AZ.L", step));
-        let bp : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "BP.L", step));
+        let currency = RcCurrency::new(Rc::new(sample_currency(step)));
+        let az = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "AZ.L", step)));
+        let bp = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "BP.L", step)));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
         Basket::new("basket", az.credit_id(), currency, az.settlement().clone(), basket).unwrap()
     }

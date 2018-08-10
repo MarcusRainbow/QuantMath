@@ -2,9 +2,9 @@ use risk::Bumpable;
 use dates::Date;
 use dates::datetime::DateTime;
 use core::qm;
-use std::rc::Rc;
 use std::collections::HashMap;
 use instruments::Instrument;
+use instruments::RcInstrument;
 use instruments::fix_all;
 use instruments::PricingContext;
 use data::fixings::FixingTable;
@@ -31,7 +31,7 @@ impl BumpTime {
     /// changed, it also applies the bump to the model. If the list of instruments has
     /// changed, the model will need to be completely rebuilt. In that case, the method
     /// returns true.
-    pub fn apply(&self, instruments: &mut Vec<(f64, Rc<Instrument>)>,
+    pub fn apply(&self, instruments: &mut Vec<(f64, RcInstrument)>,
         bumpable: &mut Bumpable) -> Result<bool, qm::Error> {
 
         // Modify the vector of instruments, if any fixings between the old and new spot dates
@@ -53,7 +53,7 @@ impl BumpTime {
     /// Creates a fixing table representing any fixings between the old and new spot dates, and
     /// applies it to the instruments, modifying the vector if necessary. If any have changed,
     /// returns true.
-    pub fn update_instruments(&self, instruments: &mut Vec<(f64, Rc<Instrument>)>,
+    pub fn update_instruments(&self, instruments: &mut Vec<(f64, RcInstrument)>,
         context: &PricingContext, dependencies: &DependencyCollector) -> Result<bool, qm::Error> {
 
         // are there any fixings between the old and new spot dates?
@@ -89,7 +89,7 @@ impl BumpTime {
         // Apply the fixings to each of the instruments, and build up a new vector of them
         let mut any_changes = !fixing_map.is_empty();
         if any_changes {
-            let fixing_table = FixingTable::from_map(new_spot_date, &fixing_map)?;
+            let fixing_table = FixingTable::from_iter_known_until(new_spot_date, fixing_map.iter())?;
             if let Some(ref mut replacement) = fix_all(instruments, &fixing_table)? {
                 instruments.clear();
                 instruments.append(replacement);

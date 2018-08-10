@@ -1,6 +1,6 @@
 use core::qm;
 use std::rc::Rc;
-use instruments::Instrument;
+use instruments::RcInstrument;
 use instruments::PricingContext;
 use instruments::DependencyContext;
 use risk::cache::PricingContextPrefetch;
@@ -25,7 +25,7 @@ use models::MonteCarloTimeline;
 #[derive(Clone)]
 pub struct MonteCarloPricer {
     model_factory: Rc<MonteCarloModelFactory>,
-    instruments: Vec<(f64, Rc<Instrument>)>,
+    instruments: Vec<(f64, RcInstrument)>,
     model: Box<MonteCarloModel>
 }
 
@@ -52,7 +52,7 @@ impl MonteCarloPricerFactory {
 }
 
 impl PricerFactory for MonteCarloPricerFactory {
-    fn new(&self, instrument: Rc<Instrument>, fixing_table: Rc<FixingTable>, 
+    fn new(&self, instrument: RcInstrument, fixing_table: Rc<FixingTable>, 
         market_data: Rc<MarketData>) -> Result<Box<Pricer>, qm::Error> {
 
         // Apply the fixings to the instrument. (This is the last time we need
@@ -69,7 +69,7 @@ impl PricerFactory for MonteCarloPricerFactory {
 }
 
 impl MonteCarloPricer {
-    pub fn new(instruments:  Vec<(f64, Rc<Instrument>)>,
+    pub fn new(instruments:  Vec<(f64, RcInstrument)>,
         model_factory: Rc<MonteCarloModelFactory>, market_data: &MarketData)
         -> Result<MonteCarloPricer, qm::Error> {
 
@@ -201,7 +201,7 @@ mod tests {
         // the Monte-Carlo pricing against analytic.
 
         let market_data: Rc<MarketData> = Rc::new(sample_market_data());
-        let instrument: Rc<Instrument> = sample_european();
+        let instrument = RcInstrument::new(sample_european());
         let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
 
         let n_paths = 100000;
@@ -295,7 +295,7 @@ mod tests {
         // the Monte-Carlo pricing against analytic.
 
         let market_data: Rc<MarketData> = Rc::new(sample_market_data());
-        let instrument: Rc<Instrument> = sample_forward_european();
+        let instrument = RcInstrument::new(sample_forward_european());
         let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
 
         let n_paths = 100000;

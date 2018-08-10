@@ -119,12 +119,14 @@ where T: esd::Serialize + TypeId + Debug + ?Sized {
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
     use super::*;
     use serde_json;
     use serde;
     use serde_tagged;
     use serde_tagged::de::BoxFnSeed;
+    //use core::dedup::{Dedup, DedupControl, Drc, InstanceId, FromId};
+    //use std::cell::RefCell;
+    use std::rc::Rc;
 
     // An example for de-/serialization of trait objects.
     // 
@@ -359,6 +361,101 @@ mod tests {
         assert_debug_eq(&rc_b, &de_b);
         assert_debug_eq(&rc_c, &de_c);
     }
+
+/*
+    // test deduplicated factories
+    pub struct DrcStored(Drc<Stored, RcStored>);
+
+    impl DrcStored {
+        fn new(s: RcStored) { DrcStored(s) }
+    }
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+    pub struct C {
+        id: &'static str,
+        left: DrcStored,
+        right: DrcStored
+    }
+
+    thread_local! {
+        static DEDUP_STORED : RefCell<Dedup<Stored, DrcStored>> 
+            = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
+    }
+
+    impl InstanceId for A {
+        fn id(&self) -> &str { &self.foo() }
+    }
+
+    impl InstanceId for B {
+        fn id(&self) -> &str { "b" }
+    }
+
+    impl InstanceId for C {
+        fn id(&self) -> &str { self.id }
+    }
+
+    impl FromId for DrcStored {
+        fn from_id(id: &str) -> Option<Self> {
+            DEDUP_STORED.with(|tls| tls.borrow().get(id).clone())
+        }
+    }
+
+    impl sd::Serialize for DrcStored {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: sd::Serializer {
+            self.serialize_with_dedup(serializer, &DEDUP_STORED)
+        }
+    }
+
+    impl<'de> sd::Deserialize<'de> for DrcStored {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: sd::Deserializer<'de> {
+            Self::deserialize_with_dedup(deserializer, &DEDUP_STORED)
+        }
+    }
+
+    // this test just uses the default inline mode of dedup
+    #[test]
+    fn serde_tagged_dedup_inline_roundtrip() {
+
+        // Let's begin by creating our test data ...
+        let a = DrcStored::new(Rc::new(A { foo: "a".to_owned() }));
+        let b = DrcStored::new(Rc::new(A { foo: "b".to_owned() }));
+        let c = DrcStored::new(Rc::new(C { id: "c", left: a.clone(), right: b.clone() }));
+        let d = DrcStored::new(Rc::new(C { id: "c", left: c.clone(), right: b.clone() }));
+
+        // ... and then transform it to trait objects.
+        // We use clone here so we can later assert that de-/serialization does not
+        // change anything.
+        let rc_a = a.clone();
+        let rc_b = b.clone();
+        let rc_c = c.clone();
+        let rc_d = d.clone();
+ 
+        // Now we can serialize our trait-objects.
+        // Thanks to our `Serialize` implementation for trait objects this works
+        // just like with any other type.
+        let ser_a = serde_json::to_string_pretty(&rc_a).unwrap();
+        let ser_b = serde_json::to_string_pretty(&rc_b).unwrap();
+        let ser_c = serde_json::to_string_pretty(&rc_c).unwrap();
+        let ser_d = serde_json::to_string_pretty(&rc_c).unwrap();
+
+        // Again note the warning regarding serialization of non-trait-objects
+        // above.
+
+        // Now we let's deserialize our trait objects.
+        // This works also just like any other type.
+        let de_a: RcStored = serde_json::from_str(&ser_a).unwrap();
+        let de_b: RcStored = serde_json::from_str(&ser_b).unwrap();
+        let de_c: RcStored = serde_json::from_str(&ser_c).unwrap();
+        let de_d: DrcStored = serde_json::from_str(&ser_d).unwrap();
+
+        assert_debug_eq(&rc_a, &de_a);
+        assert_debug_eq(&rc_b, &de_b);
+        assert_debug_eq(&rc_c, &de_c);
+        assert_debug_eq(&rc_d, &de_d);
+    }
+*/
 
     /// A helper function to assert that two strings contain the same JSON data.
     fn assert_json_equal(a: &str, b: &str) {

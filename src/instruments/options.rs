@@ -1,10 +1,12 @@
 use std::rc::Rc;
 use std::f64::NAN;
 use instruments::Instrument;
+use instruments::RcInstrument;
 use instruments::Priceable;
 use instruments::PricingContext;
 use instruments::DependencyContext;
 use instruments::assets::Currency;
+use instruments::assets::RcCurrency;
 use instruments::bonds::ZeroCoupon;
 use instruments::SpotRequirement;
 use instruments::MonteCarloPriceable;
@@ -13,33 +15,36 @@ use instruments::MonteCarloContext;
 use math::optionpricing::Black76;
 use data::fixings::FixingTable;
 use dates::Date;
-use dates::rules::DateRule;
+use dates::rules::RcDateRule;
 use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
 use core::qm;
+use core::factories::TypeId;
 use ndarray::Axis;
 use ndarray::Array2;
+use erased_serde as esd;
+use serde::Deserialize;
 
 /// A call option pays (S-K).max(0).
 /// A put option pays (K-S).max(0).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PutOrCall { Put, Call }
 
 /// At expiry, a cash settled option fixes into a cash payment at the payment
 /// date. A physically settled option fixes into a payment of the strike at
 /// the payment date, and a transfer of the stock at the stock settlement date
 /// (in practice always the same time, otherwise there would be credit risk)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OptionSettlement { Cash, Physical }
 
 /// A VanillaOption is an internal data structure to help share code between
 /// types of vanilla.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 struct VanillaOption {
     id: String,
     credit_id: String,
-    underlying: Rc<Instrument>,
-    settlement: Rc<DateRule>,
+    underlying: RcInstrument,
+    settlement: RcDateRule,
     expiry: DateTime,
     put_or_call: PutOrCall,
     cash_or_physical: OptionSettlement,
@@ -49,9 +54,16 @@ struct VanillaOption {
     pay_date: Date,
 }
 
+impl TypeId for VanillaOption {
+    fn type_id(&self) -> &'static str {
+        // should never get here, as VanillaOption should not need tagged serialization
+        panic!("VanillaOption::type_id: not implemented");
+    }
+}
+
 impl VanillaOption {
-    pub fn new(id: &str, credit_id: &str, underlying: Rc<Instrument>,
-        settlement: Rc<DateRule>, expiry: DateTime, put_or_call: PutOrCall,
+    pub fn new(id: &str, credit_id: &str, underlying: RcInstrument,
+        settlement: RcDateRule, expiry: DateTime, put_or_call: PutOrCall,
         cash_or_physical: OptionSettlement)
         -> Result<VanillaOption, qm::Error> {
 
@@ -162,10 +174,15 @@ impl VanillaOption {
 /// volatile, time value means there is a possibility of the underlying price
 /// going up or down. The optionality means that the downside is limited, but
 /// not the upside, so time value generally means the option is worth more.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SpotStartingEuropean {
+    #[serde(flatten)]
     vanilla: VanillaOption,
     strike: f64,
+}
+
+impl TypeId for SpotStartingEuropean {
+    fn type_id(&self) -> &'static str { "SpotStartingEuropean" }
 }
 
 /// A forward-starting European option behaves like a spot-starting one,
@@ -180,8 +197,12 @@ pub struct SpotStartingEuropean {
 /// alternative is to have a fixed-notional option, where the underlying
 /// number of shares is modified at the strike date such that the strike
 /// remains constant. Fixed-shares options are far more common.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
+//#[derive(Clone, SerializeState, DeserializeState, Debug)]
+//#[serde(serialize_state = "HashMap<String, RcInstrument>")]
+//#[serde(deserialize_state = "HashMap<String, RcInstrument>")]
 pub struct ForwardStartingEuropean {
+    #[serde(flatten)]
     vanilla: VanillaOption,
     strike_fraction: f64,
     strike_date: DateTime,
@@ -190,12 +211,16 @@ pub struct ForwardStartingEuropean {
     strike_time: DateDayFraction,
 }
 
+impl TypeId for ForwardStartingEuropean {
+    fn type_id(&self) -> &'static str { "ForwardStartingEuropean" }
+}
+
 impl SpotStartingEuropean {
     pub fn new(
         id: &str,
         credit_id: &str,
-        underlying: Rc<Instrument>,
-        settlement: Rc<DateRule>,
+        underlying: RcInstrument,
+        settlement: RcDateRule,
         expiry: DateTime,
         strike: f64,
         put_or_call: PutOrCall,
@@ -215,14 +240,18 @@ impl SpotStartingEuropean {
         -> SpotStartingEuropean {
         SpotStartingEuropean { vanilla: vanilla, strike: strike }
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
+        Ok(RcInstrument::new(Rc::new(SpotStartingEuropean::deserialize(de)?)))
+    }
 }
 
 impl ForwardStartingEuropean {
     pub fn new(
         id: &str,
         credit_id: &str,
-        underlying: Rc<Instrument>,
-        settlement: Rc<DateRule>,
+        underlying: RcInstrument,
+        settlement: RcDateRule,
         expiry: DateTime,
         strike_fraction: f64,
         strike_date: DateTime,
@@ -240,6 +269,10 @@ impl ForwardStartingEuropean {
                 strike_fraction: strike_fraction, strike_date: strike_date,
                 strike_time: strike_time })
         }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
+        Ok(RcInstrument::new(Rc::new(ForwardStartingEuropean::deserialize(de)?)))
     }
 }
 
@@ -259,7 +292,7 @@ impl Instrument for VanillaOption {
         &*self.credit_id
     }
 
-    fn settlement(&self) -> &Rc<DateRule> {
+    fn settlement(&self) -> &RcDateRule {
         &self.settlement
     }
 
@@ -291,7 +324,7 @@ impl Instrument for SpotStartingEuropean {
     fn id(&self) -> &str { self.vanilla.id() }
     fn payoff_currency(&self) -> &Currency { self.vanilla.payoff_currency() }
     fn credit_id(&self) -> &str { self.vanilla.credit_id() }
-    fn settlement(&self) -> &Rc<DateRule> { self.vanilla.settlement() }
+    fn settlement(&self) -> &RcDateRule { self.vanilla.settlement() }
     fn dependencies(&self, context: &mut DependencyContext)
         -> SpotRequirement { self.vanilla.dependencies(context) }
     fn as_priceable(&self) -> Option<&Priceable> { Some(self) }
@@ -300,7 +333,7 @@ impl Instrument for SpotStartingEuropean {
     // We cannot delegate fix to the contained vanilla, because it needs
     // to know the strike
     fn fix(&self, fixing_table: &FixingTable)
-        -> Result<Option<Vec<(f64, Rc<Instrument>)>>, qm::Error> {
+        -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
 
         // If there is an expiry fixing (error if missing and in the past),
         // the product turns into either a cash flow, or an equity flow and
@@ -308,7 +341,7 @@ impl Instrument for SpotStartingEuropean {
         let fixing = fixing_table.get(self.vanilla.underlying.id(),
             self.vanilla.expiry)?;
         if let Some(spot_fixing) = fixing {
-            let mut decomp : Vec<(f64, Rc<Instrument>)> = Vec::new();
+            let mut decomp : Vec<(f64, RcInstrument)> = Vec::new();
             let strike = self.strike;
             let sign = match self.vanilla.put_or_call {
                         PutOrCall::Call => 1.0,
@@ -320,23 +353,23 @@ impl Instrument for SpotStartingEuropean {
                 OptionSettlement::Cash => {
                     let payment = sign * (spot_fixing - strike);
                     if payment > 0.0 {
-                        decomp.push((payment, Rc::new(ZeroCoupon::new(
+                        decomp.push((payment, RcInstrument::new(Rc::new(ZeroCoupon::new(
                             &payment_id, self.credit_id(), 
-                            Rc::new(self.payoff_currency().clone()),
+                            RcCurrency::new(Rc::new(self.payoff_currency().clone())),
                             self.vanilla.expiry, 
                             self.vanilla.pay_date,
-                            self.vanilla.settlement.clone()))));
+                            self.vanilla.settlement.clone())))));
                     }
                 },
 
                 OptionSettlement::Physical => {
                     if sign * (spot_fixing - strike) > 0.0 {
-                        decomp.push((-strike * sign, Rc::new(ZeroCoupon::new(
+                        decomp.push((-strike * sign, RcInstrument::new(Rc::new(ZeroCoupon::new(
                             &payment_id, self.credit_id(), 
-                            Rc::new(self.payoff_currency().clone()), 
+                            RcCurrency::new(Rc::new(self.payoff_currency().clone())), 
                             self.vanilla.expiry,
                             self.vanilla.pay_date,
-                            self.vanilla.settlement.clone()))));
+                            self.vanilla.settlement.clone())))));
                         decomp.push((sign, self.vanilla.underlying.clone()));
                     }
                 }
@@ -353,7 +386,7 @@ impl Instrument for ForwardStartingEuropean {
     fn id(&self) -> &str { self.vanilla.id() }
     fn payoff_currency(&self) -> &Currency { self.vanilla.payoff_currency() }
     fn credit_id(&self) -> &str { self.vanilla.credit_id() }
-    fn settlement(&self) -> &Rc<DateRule> { self.vanilla.settlement() }
+    fn settlement(&self) -> &RcDateRule { self.vanilla.settlement() }
     fn as_priceable(&self) -> Option<&Priceable> { Some(self) }
     fn as_mc_priceable(&self) -> Option<&MonteCarloPriceable> { Some(self) }
 
@@ -369,14 +402,14 @@ impl Instrument for ForwardStartingEuropean {
     // We cannot delegate fix to the contained vanilla, because it needs
     // to know the strike_fraction and strike date
     fn fix(&self, fixing_table: &FixingTable)
-        -> Result<Option<Vec<(f64, Rc<Instrument>)>>, qm::Error> {
+        -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
 
         // If there is a strike fixing (error if missing and in the past),
         // the product turns into a spot starting European
         let fixing = fixing_table.get(self.vanilla.underlying.id(),
             self.strike_date)?;
         if let Some(f) = fixing {
-            let mut decomp: Vec<(f64, Rc<Instrument>)> = Vec::new();
+            let mut decomp: Vec<(f64, RcInstrument)> = Vec::new();
             let strike = f * self.strike_fraction;
             let spot_starting = SpotStartingEuropean::from_vanilla(
                 self.vanilla.clone(), strike);
@@ -386,7 +419,7 @@ impl Instrument for ForwardStartingEuropean {
             if let Some(_) = further {
                 Ok(further)
             } else {
-                decomp.push((1.0, Rc::new(spot_starting)));
+                decomp.push((1.0, RcInstrument::new(Rc::new(spot_starting))));
                 Ok(Some(decomp))
             }
         } else {
@@ -442,15 +475,15 @@ impl MonteCarloPriceable for SpotStartingEuropean {
         output.observation(&self.vanilla.underlying, self.vanilla.expiry_time);
 
         // TODO this feels inefficient and ugly
-        let currency = Rc::new(self.payoff_currency().clone());
+        let currency = RcCurrency::new(Rc::new(self.payoff_currency().clone()));
 
         // For the purposes of Monte-Carlo valuation we treat all vanillas as
         // if they paid cash at the pay date. (Physically settled vanillas pay
         // stock as well, but that does not affect the price before expiry.)
-        let payment : Rc<Instrument> = Rc::new(
+        let payment : RcInstrument = RcInstrument::new(Rc::new(
             ZeroCoupon::new(&format!("{}:Expiry", self.vanilla.id),
             &self.vanilla.credit_id, currency, self.vanilla.expiry, self.vanilla.pay_date,
-            self.vanilla.settlement.clone()));
+            self.vanilla.settlement.clone())));
         output.flow(&payment);
 
         Ok(())
@@ -508,15 +541,15 @@ impl MonteCarloPriceable for ForwardStartingEuropean {
         output.observation(&self.vanilla.underlying, self.vanilla.expiry_time);
 
         // TODO this feels inefficient and ugly
-        let currency = Rc::new(self.payoff_currency().clone());
+        let currency = RcCurrency::new(Rc::new(self.payoff_currency().clone()));
 
         // For the purposes of Monte-Carlo valuation we treat all vanillas as
         // if they paid cash at the pay date. (Physically settled vanillas pay
         // stock as well, but that does not affect the price before expiry.)
-        let payment : Rc<Instrument> = Rc::new(
+        let payment : RcInstrument = RcInstrument::new(Rc::new(
             ZeroCoupon::new(&format!("{}:Expiry", self.vanilla.id),
             &self.vanilla.credit_id, currency, self.vanilla.expiry, self.vanilla.pay_date,
-            self.vanilla.settlement.clone()));
+            self.vanilla.settlement.clone())));
         output.flow(&payment);
 
         Ok(())
@@ -583,6 +616,7 @@ mod tests {
     use instruments::basket::Basket;
     use instruments::assets::tests::sample_currency;
     use instruments::assets::tests::sample_equity;
+    use serde_json;
 
     struct SamplePricingContext { 
         spot: f64
@@ -825,8 +859,8 @@ mod tests {
     fn check_european_value(spot: f64, strike: f64, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = Rc::new(sample_currency(2));
-        let equity = Rc::new(sample_equity(currency, "BP.L", 2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let equity = RcInstrument::new(Rc::new(sample_equity(currency, "BP.L", 2)));
         let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = SpotStartingEuropean::new("SampleEuropean", "OPT",
@@ -842,12 +876,12 @@ mod tests {
     fn check_basket_european_value(spot: f64, strike: f64, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = Rc::new(sample_currency(2));
-        let az : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "AZ.L", 2));
-        let bp : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "BP.L", 2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let az = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "AZ.L", 2)));
+        let bp = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "BP.L", 2)));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
-        let ul : Rc<Instrument> = Rc::new(Basket::new(
-            "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap());
+        let ul = RcInstrument::new(Rc::new(Basket::new(
+            "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap()));
         let settlement = ul.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = SpotStartingEuropean::new("SampleBasketEuropean", "OPT",
@@ -864,8 +898,8 @@ mod tests {
         strike_date: DateTime, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = Rc::new(sample_currency(2));
-        let equity = Rc::new(sample_equity(currency, "BP.L", 2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let equity = RcInstrument::new(Rc::new(sample_equity(currency, "BP.L", 2)));
         let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
@@ -882,12 +916,12 @@ mod tests {
         strike_date: DateTime, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = Rc::new(sample_currency(2));
-        let az : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "AZ.L", 2));
-        let bp : Rc<Instrument> = Rc::new(sample_equity(currency.clone(), "BP.L", 2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let az = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "AZ.L", 2)));
+        let bp = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "BP.L", 2)));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
-        let ul : Rc<Instrument> = Rc::new(Basket::new(
-            "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap());
+        let ul = RcInstrument::new(Rc::new(Basket::new(
+            "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap()));
         let settlement = ul.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
@@ -904,8 +938,8 @@ mod tests {
         strike_date: DateTime, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = Rc::new(sample_currency(2));
-        let equity = Rc::new(sample_equity(currency, "BP.L", 2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let equity = RcInstrument::new(Rc::new(sample_equity(currency, "BP.L", 2)));
         let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
@@ -931,6 +965,238 @@ mod tests {
             assert!(false, "failed to fix");
         }
     }
+
+    fn sample_forward_starting_european() -> ForwardStartingEuropean {
+        let strike_fraction = 1.15170375;
+        let strike_date = DateTime::new(
+            Date::from_ymd(2018, 06, 08), TimeOfDay::Close);
+        let expiry = DateTime::new(
+            Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let az = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "AZ.L", 2)));
+        let bp = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "BP.L", 2)));
+        let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
+        let ul = RcInstrument::new(Rc::new(Basket::new(
+            "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap()));
+        let settlement = ul.settlement().clone();
+        let cash_or_physical = OptionSettlement::Cash;
+        ForwardStartingEuropean::new("SampleEuropean", "OPT",
+            ul.clone(), settlement, expiry, strike_fraction,
+            strike_date, PutOrCall::Call, cash_or_physical).unwrap()
+    }
+
+    #[test]
+    fn european_serde() {
+
+        // tests serialization and deserialization of a strongly typed european option
+
+        let spot = 100.0;
+        let european = sample_forward_starting_european();
+  
+        // value it
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
+        let context = sample_pricing_context(spot);
+        let price = european.price(&context, val_date).unwrap();
+
+        // Serialize to a JSON string.
+        let serialized = serde_json::to_string_pretty(&european).unwrap();
+
+        // Convert the JSON string back to an interpolator.
+        let deserialized: ForwardStartingEuropean = serde_json::from_str(&serialized).unwrap();
+
+        // check the price still matches
+        let priceable = deserialized.as_priceable().unwrap();
+        let serde_price = priceable.price(&context, val_date).unwrap();
+    
+        assert_approx(serde_price, price, 1e-12);
+    }
+
+    #[test]
+    fn european_tagged_serde() {
+
+        // tests serialization and deserialization of a european option contained within a
+        // Rc<Instrument>. It therefore tests the tagged serialization of the option
+
+        let spot = 100.0;
+        let european = sample_forward_starting_european();
+  
+        // value it
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
+        let context = sample_pricing_context(spot);
+        let price = european.price(&context, val_date).unwrap();
+
+        // Serialize to a JSON string.
+        let instrument = RcInstrument::new(Rc::new(european));
+        let serialized = serde_json::to_string_pretty(&instrument).unwrap();
+        print!("{}", serialized);
+        assert_eq!(serialized, 
+r###"{
+  "ForwardStartingEuropean": {
+    "id": "SampleEuropean",
+    "credit_id": "OPT",
+    "underlying": {
+      "Basket": {
+        "id": "basket",
+        "credit_id": "LSE",
+        "currency": {
+          "id": "GBP",
+          "settlement": {
+            "BusinessDays": {
+              "calendar": {
+                "WeekdayCalendar": []
+              },
+              "step": 2,
+              "slip_forward": true
+            }
+          }
+        },
+        "settlement": {
+          "BusinessDays": {
+            "calendar": {
+              "WeekdayCalendar": []
+            },
+            "step": 2,
+            "slip_forward": true
+          }
+        },
+        "basket": [
+          [
+            0.4,
+            {
+              "Equity": {
+                "id": "AZ.L",
+                "credit_id": "LSE",
+                "currency": {
+                  "id": "GBP",
+                  "settlement": {
+                    "BusinessDays": {
+                      "calendar": {
+                        "WeekdayCalendar": []
+                      },
+                      "step": 2,
+                      "slip_forward": true
+                    }
+                  }
+                },
+                "settlement": {
+                  "BusinessDays": {
+                    "calendar": {
+                      "WeekdayCalendar": []
+                    },
+                    "step": 2,
+                    "slip_forward": true
+                  }
+                }
+              }
+            }
+          ],
+          [
+            0.6,
+            {
+              "Equity": {
+                "id": "BP.L",
+                "credit_id": "LSE",
+                "currency": {
+                  "id": "GBP",
+                  "settlement": {
+                    "BusinessDays": {
+                      "calendar": {
+                        "WeekdayCalendar": []
+                      },
+                      "step": 2,
+                      "slip_forward": true
+                    }
+                  }
+                },
+                "settlement": {
+                  "BusinessDays": {
+                    "calendar": {
+                      "WeekdayCalendar": []
+                    },
+                    "step": 2,
+                    "slip_forward": true
+                  }
+                }
+              }
+            }
+          ]
+        ]
+      }
+    },
+    "settlement": {
+      "BusinessDays": {
+        "calendar": {
+          "WeekdayCalendar": []
+        },
+        "step": 2,
+        "slip_forward": true
+      }
+    },
+    "expiry": {
+      "date": "2018-12-01",
+      "time_of_day": "Close"
+    },
+    "put_or_call": "Call",
+    "cash_or_physical": "Cash",
+    "expiry_time": {
+      "date": "2018-12-01",
+      "day_fraction": 0.8
+    },
+    "pay_date": "2018-12-05",
+    "strike_fraction": 1.15170375,
+    "strike_date": {
+      "date": "2018-06-08",
+      "time_of_day": "Close"
+    },
+    "strike_time": {
+      "date": "2018-06-08",
+      "day_fraction": 0.8
+    }
+  }
+}"###);
+
+        // Convert the JSON string back to an interpolator.
+        let deserialized: RcInstrument = serde_json::from_str(&serialized).unwrap();
+
+        // check the price still matches
+        let priceable = deserialized.as_priceable().unwrap();
+        let serde_price = priceable.price(&context, val_date).unwrap();
+    
+        assert_approx(serde_price, price, 1e-12);
+    }
+
+/*
+    #[test]
+    fn european_recursive_serde() {
+
+        let spot = 100.0;
+        let european = sample_forward_starting_european();
+  
+        // value it
+        let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
+        let context = sample_pricing_context(spot);
+        let price = european.price(&context, val_date).unwrap();
+
+        let mut buffer = Vec::new();
+        {
+            let mut serializer = serde_json::Serializer::pretty(&mut buffer);
+            let seed = HashMap::new();
+            european.serialize_state(&mut serializer, &seed).unwrap();
+        }
+
+        let deserialized = {
+            let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
+            let mut seed = 0;
+            ForwardStartingEuropean::deserialize_state(&mut seed, &mut deserializer).unwrap()
+        };
+    
+        // check the price still matches
+        let priceable = deserialized.as_priceable().unwrap();
+        let serde_price = priceable.price(&context, val_date).unwrap();
+    
+        assert_approx(serde_price, price, 1e-12);
+    }
+*/
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {
         assert!(approx_eq(value, expected, tolerance),
