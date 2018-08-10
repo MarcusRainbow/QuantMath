@@ -7,6 +7,8 @@ use data::forward::discount_with_borrow;
 use core::qm;
 use std::rc::Rc;
 use std::f64::NAN;
+use std::ops::Deref;
+use serde as sd;
 
 /// A dividend is a corporate action that pays shareholders an amount of cash.
 /// The cash changes ownership on the ex date, and is paid on the payment date,
@@ -74,6 +76,7 @@ impl Dividend {
 /// When dividends are not known explicitly, a dividend yield may be added
 /// to ensure that Futures and equity swaps are matched correctly.
 //#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DividendStream {
     dividends: Vec<Dividend>,
     div_yield: RcRateCurve,
@@ -121,6 +124,41 @@ impl DividendStream {
     pub fn dividends(&self) -> &[Dividend] { &self.dividends }
     pub fn div_yield(&self) -> RcRateCurve { self.div_yield.clone() }
     pub fn last_cash_ex_date(&self) -> Date { self.last_cash_ex_date }
+}
+
+/// Create a type RcDividendStream to allow us to implement serialization
+/// and deserialization
+#[derive(Clone)]
+pub struct RcDividendStream(Rc<DividendStream>);
+
+impl RcDividendStream {
+    pub fn new(stream: Rc<DividendStream>) -> RcDividendStream {
+        RcDividendStream(stream)
+    }
+}
+
+impl Deref for RcDividendStream {
+    type Target = DividendStream;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl sd::Serialize for RcDividendStream {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> sd::Deserialize<'de> for RcDividendStream {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de> {
+        let stream = DividendStream::deserialize(deserializer)?;
+        Ok(RcDividendStream::new(Rc::new(stream)))
+    }
 }
 
 /// In order to use a dividend stream, we bootstrap its data into a vector

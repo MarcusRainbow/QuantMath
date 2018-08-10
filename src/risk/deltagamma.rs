@@ -91,7 +91,6 @@ impl ReportGenerator for DeltaGammaReportGenerator {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use std::rc::Rc;
     use math::numerics::approx_eq;
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
@@ -102,7 +101,7 @@ pub mod tests {
     use risk::dependencies::DependencyCollector;
     use risk::cache::PricingContextPrefetch;
     use instruments::PricingContext;
-    use instruments::Instrument;
+    use instruments::RcInstrument;
     use risk::cache::tests::create_dependencies;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
@@ -110,7 +109,7 @@ pub mod tests {
     // a sample pricer that evaluates european options
     #[derive(Clone)]
     struct SamplePricer {
-        instruments: Vec<(f64, Rc<Instrument>)>,
+        instruments: Vec<(f64, RcInstrument)>,
         context: PricingContextPrefetch
     }
 
@@ -120,7 +119,7 @@ pub mod tests {
         let european = sample_european();
  
         let spot_date = market_data.spot_date();
-        let instrument: Rc<Instrument> = european.clone();
+        let instrument = RcInstrument::new(european.clone());
         let dependencies = create_dependencies(&instrument, spot_date);
         let context = PricingContextPrefetch::new(&market_data,
             dependencies).unwrap();

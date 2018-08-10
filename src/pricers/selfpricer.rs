@@ -1,6 +1,6 @@
 use core::qm;
 use std::rc::Rc;
-use instruments::Instrument;
+use instruments::RcInstrument;
 use instruments::PricingContext;
 use instruments::DependencyContext;
 use risk::cache::PricingContextPrefetch;
@@ -24,7 +24,7 @@ use dates::datetime::TimeOfDay;
 /// interface as a Pricer, allowing bumping for risk calculation.
 #[derive(Clone)]
 pub struct SelfPricer {
-    instruments: Vec<(f64, Rc<Instrument>)>,
+    instruments: Vec<(f64, RcInstrument)>,
     context: PricingContextPrefetch
 }
 
@@ -42,7 +42,7 @@ impl SelfPricerFactory {
 }
 
 impl PricerFactory for SelfPricerFactory {
-    fn new(&self, instrument: Rc<Instrument>, fixing_table: Rc<FixingTable>, 
+    fn new(&self, instrument: RcInstrument, fixing_table: Rc<FixingTable>, 
         market_data: Rc<MarketData>) -> Result<Box<Pricer>, qm::Error> {
 
         // Apply the fixings to the instrument. (This is the last time we need
@@ -58,7 +58,7 @@ impl PricerFactory for SelfPricerFactory {
 }
 
 impl SelfPricer {
-    pub fn new(instruments:  Vec<(f64, Rc<Instrument>)>, 
+    pub fn new(instruments:  Vec<(f64, RcInstrument)>, 
         market_data: &MarketData) -> Result<SelfPricer, qm::Error> {
 
         // Find the dependencies of the resulting vector of instruments
@@ -172,7 +172,7 @@ mod tests {
     fn self_price_european_bumped_price() {
 
         let market_data: Rc<MarketData> = Rc::new(sample_market_data());
-        let instrument: Rc<Instrument> = sample_european();
+        let instrument = RcInstrument::new(sample_european());
         let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
 
         let factory = SelfPricerFactory::new();
@@ -256,7 +256,7 @@ mod tests {
     fn self_price_forward_european_time_bumped() {
 
         let market_data: Rc<MarketData> = Rc::new(sample_market_data());
-        let instrument: Rc<Instrument> = sample_forward_european();
+        let instrument = RcInstrument::new(sample_forward_european());
         let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
 
         let factory = SelfPricerFactory::new();

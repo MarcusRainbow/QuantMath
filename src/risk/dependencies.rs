@@ -2,12 +2,10 @@ use std::collections::hash_map::Iter;
 use instruments::DependencyContext;
 use dates::Date;
 use dates::datetime::DateTime;
-use instruments::Instrument;
 use instruments::RcInstrument;
 use instruments::SpotRequirement;
 use std::collections::HashSet;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 /// Collect the dependencies of an instrument
 pub struct DependencyCollector {
@@ -16,7 +14,7 @@ pub struct DependencyCollector {
     yield_curves: HashMap<String, Date>,
     forward_curves: HashMap<RcInstrument, Date>,
     vol_surfaces: HashMap<RcInstrument, Date>,
-    instruments: HashMap<String, Rc<Instrument>>,
+    instruments: HashMap<String, RcInstrument>,
     forward_id_from_credit_id: HashMap<String, Vec<String>>,
     fixings: HashMap<String, Vec<DateTime>>,
     empty: Vec<String>,
@@ -39,8 +37,8 @@ impl DependencyCollector {
         }
     }
 
-    pub fn has_spot(&self, instrument: &Rc<Instrument>) -> bool {
-        let key = RcInstrument::new(instrument.clone());
+    pub fn has_spot(&self, instrument: &RcInstrument) -> bool {
+        let key = instrument.clone();
         self.spots.contains(&key)
     }
 
@@ -48,12 +46,12 @@ impl DependencyCollector {
         get_hwm_by_str(&self.yield_curves, credit_id)
     }
 
-    pub fn forward_curve_hwm(&self, instrument: &Rc<Instrument>)
+    pub fn forward_curve_hwm(&self, instrument: &RcInstrument)
         -> Option<Date> {
         get_hwm(&self.forward_curves, instrument)
     }
 
-    pub fn vol_surface_hwm(&self, instrument: &Rc<Instrument>)
+    pub fn vol_surface_hwm(&self, instrument: &RcInstrument)
         -> Option<Date> {
         get_hwm(&self.vol_surfaces, instrument)
     }
@@ -66,7 +64,7 @@ impl DependencyCollector {
         &self.vol_surfaces
     }
 
-    pub fn instrument_by_id(&self, id: &str) ->Option<&Rc<Instrument>> {
+    pub fn instrument_by_id(&self, id: &str) ->Option<&RcInstrument> {
         self.instruments.get(&id.to_string())
     }
 
@@ -79,7 +77,7 @@ impl DependencyCollector {
         }       
     }
 
-    pub fn instruments_iter(&self) -> Iter<String, Rc<Instrument>> {
+    pub fn instruments_iter(&self) -> Iter<String, RcInstrument> {
         self.instruments.iter()
     }
 
@@ -91,7 +89,7 @@ impl DependencyCollector {
         }
     }
 
-    fn add_instrument(&mut self, instrument: &Rc<Instrument>) {
+    fn add_instrument(&mut self, instrument: &RcInstrument) {
         self.instruments.insert(
             instrument.id().to_string(), instrument.clone());
     }
@@ -110,9 +108,9 @@ fn get_hwm_by_str(map: &HashMap<String, Date>, id: &str) -> Option<Date> {
     }
 }
 
-fn get_hwm(map: &HashMap<RcInstrument, Date>, instrument: &Rc<Instrument>)
+fn get_hwm(map: &HashMap<RcInstrument, Date>, instrument: &RcInstrument)
     -> Option<Date> {
-    let key = RcInstrument::new(instrument.clone());
+    let key = instrument.clone();
     match map.get(&key) {
         Some(hwm) => Some(*hwm),
         None => None
@@ -128,20 +126,20 @@ impl DependencyContext for DependencyCollector {
         set_hwm_by_str(credit_id, high_water_mark, &mut self.yield_curves);
     }
 
-    fn spot(&mut self, instrument: &Rc<Instrument>) {
+    fn spot(&mut self, instrument: &RcInstrument) {
 
         // recurse into this instrument
         let spot_requirement = instrument.dependencies(self);
 
         // if required, add a dependence on this spot
         if spot_requirement != SpotRequirement::NotRequired {
-            let key = RcInstrument::new(instrument.clone());
+            let key = instrument.clone();
             self.spots.insert(key);
             self.add_instrument(instrument);
         }
     }
 
-    fn forward_curve(&mut self, instrument: &Rc<Instrument>,
+    fn forward_curve(&mut self, instrument: &RcInstrument,
         high_water_mark: Date) {
 
         set_hwm(instrument, high_water_mark, &mut self.forward_curves);
@@ -160,7 +158,7 @@ impl DependencyContext for DependencyCollector {
         self.spot(instrument);
     }
 
-    fn vol_surface(&mut self, instrument: &Rc<Instrument>,
+    fn vol_surface(&mut self, instrument: &RcInstrument,
         high_water_mark: Date) {
         set_hwm(instrument, high_water_mark, &mut self.vol_surfaces);
         self.add_instrument(instrument);
@@ -184,10 +182,10 @@ pub fn set_hwm_by_str(id: &str, high_water_mark: Date,
     }
 }
 
-pub fn set_hwm(instrument: &Rc<Instrument>, high_water_mark: Date,
+pub fn set_hwm(instrument: &RcInstrument, high_water_mark: Date,
     map: &mut HashMap<RcInstrument, Date>) {
 
-    let key = RcInstrument::new(instrument.clone());
+    let key = instrument.clone();
     let entry = map.entry(key).or_insert(high_water_mark);
     if high_water_mark > *entry {
         *entry = high_water_mark;
@@ -198,30 +196,32 @@ pub fn set_hwm(instrument: &Rc<Instrument>, high_water_mark: Date,
 mod tests {
     use super::*;
     use dates::calendar::WeekdayCalendar;
+    use dates::calendar::RcCalendar;
     use dates::rules::BusinessDays;
     use dates::datetime::TimeOfDay;
     use dates::datetime::DateTime;
     use dates::Date;
     use instruments::assets::Currency;
+    use instruments::assets::RcCurrency;
     use instruments::assets::Equity;
     use instruments::options::SpotStartingEuropean;
     use instruments::options::PutOrCall;
     use instruments::options::OptionSettlement;
-    use dates::rules::DateRule;
+    use dates::rules::RcDateRule;
     use std::rc::Rc;
 
     fn sample_currency(step: u32) -> Currency {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        let settlement = Rc::new(BusinessDays::new_step(calendar, step));
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
-    fn sample_settlement(step: u32) -> Rc<DateRule> {
-        let calendar = Rc::new(WeekdayCalendar::new());
-        Rc::new(BusinessDays::new_step(calendar, step))
+    fn sample_settlement(step: u32) -> RcDateRule {
+        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
+        RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)))
     }
 
-    fn sample_equity(currency: Rc<Currency>, step: u32) -> Equity {
+    fn sample_equity(currency: RcCurrency, step: u32) -> Equity {
         let settlement = sample_settlement(step);
         Equity::new("BP.L", "LSE", currency, settlement)
     }
@@ -234,17 +234,17 @@ mod tests {
         let short_expiry = DateTime::new(d+70, TimeOfDay::Close);
         let long_expiry = DateTime::new(d+210, TimeOfDay::Close);
 
-        let currency = Rc::new(sample_currency(2));
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity: Rc<Instrument> = Rc::new(sample_equity(currency, 2));
-        let short_european: Rc<Instrument> = Rc::new(SpotStartingEuropean::new(
+        let equity: RcInstrument = RcInstrument::new(Rc::new(sample_equity(currency, 2)));
+        let short_european: RcInstrument = RcInstrument::new(Rc::new(SpotStartingEuropean::new(
             "ShortDatedEquity",
             "OPT", equity.clone(), settlement.clone(), short_expiry,
-            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap());
-        let long_european: Rc<Instrument> = Rc::new(SpotStartingEuropean::new(
+            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap()));
+        let long_european: RcInstrument = RcInstrument::new(Rc::new(SpotStartingEuropean::new(
             "LongDatedEquity",
             "OPT", equity.clone(), settlement, long_expiry,
-            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap());
+            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap()));
 
         let mut c = DependencyCollector::new(d);
         c.spot(&short_european);

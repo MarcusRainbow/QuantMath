@@ -17,6 +17,7 @@ impl FixingTable {
         fixings: &[(&str, &[(DateTime, f64)])]) 
         -> Result<FixingTable, qm::Error> {
 
+        // TODO we ought to be able to implement this in terms of from_iter_known_until
         let mut fixing_table = FixingTable::new(fixings_known_until);
         for fixing in fixings.iter() {
             let fixing_curve = Fixings::new(fixing.0, fixing.1)?;
@@ -25,15 +26,18 @@ impl FixingTable {
         Ok(fixing_table)
     }
 
-    /// TODO this is the same code as the above constructor. Needs templating
-    pub fn from_map(fixings_known_until: Date,
-        fixings: &HashMap<String, Vec<(DateTime, f64)>>) 
-        -> Result<FixingTable, qm::Error> {
-
-        let mut fixing_table = FixingTable::new(fixings_known_until);
-        for fixing in fixings.iter() {
-            let fixing_curve = Fixings::new(fixing.0, fixing.1)?;
-            fixing_table.insert(fixing.0, fixing_curve)?;
+    /// Creates a fixing table from a source such as a HashMap iterator, or an iterator from a slice
+    /// of pairs of ids and slices of Date
+    pub fn from_iter_known_until<T, U, V>(fixings_known_until: Date, iter: T) -> Result<FixingTable, qm::Error>
+    where 
+        T: IntoIterator<Item = (U, V)>,
+        U: AsRef<str>,
+        V: AsRef<[(DateTime, f64)]> {
+        
+       let mut fixing_table = FixingTable::new(fixings_known_until);
+        for fixing in iter {
+            let fixing_curve = Fixings::new(fixing.0.as_ref(), fixing.1.as_ref())?;
+            fixing_table.insert(fixing.0.as_ref(), fixing_curve)?;
         }
         Ok(fixing_table)
     }

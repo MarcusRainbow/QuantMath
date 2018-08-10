@@ -381,6 +381,7 @@ pub mod tests {
     use std::rc::Rc;
     use instruments::DependencyContext;
     use instruments::Priceable;
+    use instruments::RcInstrument;
     use math::numerics::approx_eq;
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
@@ -391,7 +392,7 @@ pub mod tests {
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
 
-    pub fn create_dependencies(instrument: &Rc<Instrument>, spot_date: Date)
+    pub fn create_dependencies(instrument: &RcInstrument, spot_date: Date)
         -> Rc<DependencyCollector> {
 
         let mut collector = DependencyCollector::new(spot_date);
@@ -411,7 +412,7 @@ pub mod tests {
         // so we can modify it and also create an
         // empty saved data to save state so we can restore it
         let spot_date = Date::from_ymd(2017, 01, 02);
-        let instrument: Rc<Instrument> = european.clone();
+        let instrument = RcInstrument::new(european.clone());
         let dependencies = create_dependencies(&instrument, spot_date);
         let mut mut_data = PricingContextPrefetch::new(&market_data,
             dependencies).unwrap();
