@@ -25,13 +25,17 @@ use core::qm;
 use core::factories::TypeId;
 use core::factories::Registry;
 use core::factories::Qrc;
+use core::dedup::{Dedup, DedupControl, Drc, FromId, InstanceId};
 use math::interpolation::Interpolate;
 use std::rc::Rc;
 use std::hash::Hash;
+use std::collections::HashMap;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::hash::Hasher;
 use std::f64::NAN;
 use std::fmt::Debug;
+use std::fmt;
 use std::ops::Deref;
 use ndarray::ArrayView2;
 use erased_serde as esd;
@@ -46,12 +50,7 @@ use serde_tagged::de::BoxFnSeed;
 /// and rather specious, so I have classed all tradeable instruments together,
 /// as Instrument.
 
-pub trait Instrument : esd::Serialize + TypeId + Debug {
-    /// The id of this instrument is used for identifying market data. For
-    /// example equity ids are used to identify spots. It is also used for
-    /// reporting of results, for example where composite or portfolio prices
-    /// are broken down by constituents.
-    fn id(&self) -> &str;
+pub trait Instrument : esd::Serialize + TypeId + InstanceId + Debug {
 
     /// The currency you receive when this instrument pays cashflows.
     /// For those such as equities and physically-settled options, it is
@@ -179,10 +178,10 @@ pub fn fix_all(instruments: &Vec<(f64, RcInstrument)>, fixing_table: &FixingTabl
 // Get serialization to work recursively for instruments by using the
 // technology defined in core/factories. RcInstrument is a container
 // class holding an RcInstrument
-pub type TypeRegistry = Registry<BoxFnSeed<RcInstrument>>;
+pub type TypeRegistry = Registry<BoxFnSeed<Qrc<Instrument>>>;
 
 /// Implement deserialization for subclasses of the type
-impl<'de> sd::Deserialize<'de> for RcInstrument {
+impl<'de> sd::Deserialize<'de> for Qrc<Instrument> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: sd::Deserializer<'de>
     {
@@ -211,35 +210,15 @@ pub fn get_registry() -> &'static TypeRegistry {
 
 /// When making hash maps or sets of instruments, we only key by the id, which
 /// should be unique across all instrument types.
-#[derive(Clone, Debug)]
-pub struct RcInstrument (Qrc<Instrument>);
+pub type RcInstrument = Drc<Instrument, Qrc<Instrument>>;
 
 impl RcInstrument {
-    pub fn new(instrument: Rc<Instrument>) -> RcInstrument {
-        RcInstrument(Qrc::new(instrument))
-    }
-
     pub fn id(&self) -> &str {
-        &self.0.id()
+        self.deref().id()
     }
 
     pub fn instrument(&self) -> &Instrument {
-        &*self.0
-    }
-}
-
-impl Deref for RcInstrument {
-    type Target = Instrument;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
-impl sd::Serialize for RcInstrument {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: sd::Serializer {
-        self.0.serialize(serializer)
+        self.deref()
     }
 }
 
@@ -268,7 +247,85 @@ impl Hash for RcInstrument {
         self.id().hash(state);
     }
 }
- 
+
+/// Support for deduplication of instruments when serializing and deserializing
+
+thread_local! {
+    static DEDUP_INSTRUMENT : RefCell<Dedup<Instrument, Qrc<Instrument>>> 
+        = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
+}
+
+impl FromId for RcInstrument {
+    fn from_id(id: &str) -> Option<Self> {
+        DEDUP_INSTRUMENT.with(|tls| tls.borrow().get(id).clone())
+    }
+}
+
+impl sd::Serialize for RcInstrument {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer {
+        self.serialize_with_dedup(serializer, &DEDUP_INSTRUMENT, |s| {
+            let qrc : &Qrc<Instrument> = self.content();
+            qrc.serialize(s)
+        })
+    }
+}
+
+// Sadly, I don't think there is an easy way to make this generic. Part of the problem is the
+// interface to visitor, which parameterises the types for Error and Visitor. It is therefore
+// hard to implement this in a functor or passed-in interface that does not simply reproduce
+// visitor (as here).
+pub fn string_or_struct_polymorphic<'de, D>(deserializer: D) -> Result<RcInstrument, D::Error>
+where
+    D: sd::de::Deserializer<'de>,
+{
+    // This is a Visitor that forwards string types to T's `FromId` impl and
+    // forwards map types to T's `Deserialize` impl. The `PhantomData` is to
+    // keep the compiler from complaining about T being an unused generic type
+    // parameter. We need T in order to know the Value type for the Visitor
+    // impl.
+    struct StringOrStruct();
+
+    impl<'de> sd::de::Visitor<'de> for StringOrStruct {
+        type Value = RcInstrument;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("string or map")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<RcInstrument, E>
+        where
+            E: sd::de::Error,
+        {
+            if let Some(result) = FromId::from_id(value) {
+                Ok(result)
+            } else {
+                Err(sd::de::Error::invalid_value(sd::de::Unexpected::Str(value), &self))
+            }
+        }
+
+        fn visit_map<M>(self, visitor: M) -> Result<RcInstrument, M::Error>
+        where
+            M: sd::de::MapAccess<'de>,
+        {
+            let obj: Qrc<Instrument> = sd::de::Deserialize::deserialize(sd::de::value::MapAccessDeserializer::new(visitor))?;
+            Ok(Drc::new(obj))
+        }
+    }
+
+    deserializer.deserialize_any(StringOrStruct())
+}
+
+impl<'de> sd::Deserialize<'de> for RcInstrument {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de> {
+
+        Self::deserialize_with_dedup(deserializer, &DEDUP_INSTRUMENT, |d| {
+            string_or_struct_polymorphic(d)
+        })
+    }
+}
+
 /// When an instrument reports its dependencies, it makes calls to a context.
 /// These calls should match the calls to the pricing context made during
 /// pricing, if this is a Priceable instrument.

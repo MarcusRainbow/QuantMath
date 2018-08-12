@@ -208,6 +208,7 @@ mod tests {
     use instruments::options::PutOrCall;
     use instruments::options::OptionSettlement;
     use dates::rules::RcDateRule;
+    use core::factories::Qrc;
     use std::rc::Rc;
 
     fn sample_currency(step: u32) -> Currency {
@@ -236,15 +237,15 @@ mod tests {
 
         let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity: RcInstrument = RcInstrument::new(Rc::new(sample_equity(currency, 2)));
-        let short_european: RcInstrument = RcInstrument::new(Rc::new(SpotStartingEuropean::new(
+        let equity: RcInstrument = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, 2))));
+        let short_european: RcInstrument = RcInstrument::new(Qrc::new(Rc::new(SpotStartingEuropean::new(
             "ShortDatedEquity",
             "OPT", equity.clone(), settlement.clone(), short_expiry,
-            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap()));
-        let long_european: RcInstrument = RcInstrument::new(Rc::new(SpotStartingEuropean::new(
+            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap())));
+        let long_european: RcInstrument = RcInstrument::new(Qrc::new(Rc::new(SpotStartingEuropean::new(
             "LongDatedEquity",
             "OPT", equity.clone(), settlement, long_expiry,
-            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap()));
+            strike, PutOrCall::Call, OptionSettlement::Cash).unwrap())));
 
         let mut c = DependencyCollector::new(d);
         c.spot(&short_european);

@@ -19,8 +19,7 @@ use serde::de::Visitor;
 /// during serialization and deserialization.
 pub struct Dedup<T, R>
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
-    for<'de> T: sd::Deserialize<'de>,
+    T: InstanceId + Debug + ?Sized,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId,
 {
@@ -30,8 +29,7 @@ where
 
 impl<T, R> Dedup<T, R>
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
-    for<'de> T: sd::Deserialize<'de>,
+    T: InstanceId + Debug + ?Sized,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId,
 {
@@ -122,15 +120,13 @@ impl<T> Wrap<Arc<T>> for T {
 /// can implement our serialize/deserialize methods on it.
 pub struct Drc<T, R>(R)
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
-    for<'de> T: sd::Deserialize<'de>,
+    T: InstanceId + Debug + ?Sized,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId;
     
 impl<T, R> Drc<T, R> 
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
-    for<'de> T: sd::Deserialize<'de>,
+    T: InstanceId + Debug + ?Sized,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId,
 {
@@ -138,16 +134,20 @@ where
         Drc(value)
     }
 
-    pub fn serialize_with_dedup<S>(&self, serializer: S,
-        tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>)
-        -> Result<S::Ok, S::Error>
-    where S: sd::Serializer {
+    pub fn content(&self) -> &R { &self.0 }
+
+    pub fn serialize_with_dedup<S, F>(&self, serializer: S,
+        tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>,
+        serialize: F) -> Result<S::Ok, S::Error>
+    where
+        S: sd::Serializer,
+        F: FnOnce(S) -> Result<S::Ok, S::Error> {
 
         let control = tls_seed.with(|tls| tls.borrow().control().clone());
         match control {
             // Inline serialization means we just recurse into the shared pointer. There is
             // no deduplication.
-            DedupControl::Inline => self.0.serialize(serializer),
+            DedupControl::Inline => serialize(serializer),
 
             // ErrorIfMissing means all subcomponents should be supplied in the map
             DedupControl::ErrorIfMissing => {
@@ -165,7 +165,7 @@ where
             DedupControl::WriteOnce => {
                 let prev = tls_seed.with(|tls| tls.borrow_mut().insert(self.clone()));
                 if let None = prev {
-                    self.0.serialize(serializer)
+                    serialize(serializer)
                 } else {
                     serializer.serialize_str(self.0.id())
                 }
@@ -173,29 +173,31 @@ where
         }
     }
 
-    pub fn deserialize_with_dedup<'de, D>(deserializer: D,
-        tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>) -> Result<Self, D::Error>
-    where D: sd::Deserializer<'de> {
-
+    pub fn deserialize_with_dedup<'de, D, F>(deserializer: D,
+        tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>,
+        deserialize: F) -> Result<Self, D::Error>
+    where 
+        D: sd::Deserializer<'de>,
+        F: FnOnce(D) -> Result<Self, D::Error>
+    {
         let control = tls_seed.with(|tls| tls.borrow().control().clone());
         match control {
             // Inline deserialization means we assume the serial form contains the definition
             // of the data inline. Simply recurse into it.
             DedupControl::Inline => {
-                let obj = T::deserialize(deserializer)?;
-                Ok(Drc::new(obj.wrap()))
+                deserialize(deserializer)
             },
 
             // ErrorIfMissing means all subcomponents should be supplied in the map. We should just
             // be looking for a string.
             DedupControl::ErrorIfMissing => {
-                string_or_struct::<T, R, D>(deserializer)
+                deserialize(deserializer)
             },
 
             // WriteOnce means we look for the component in the map, and write it and insert it
             // if it is not there
             DedupControl::WriteOnce => {
-                let obj = string_or_struct::<T, R, D>(deserializer)?;
+                let obj = deserialize(deserializer)?;
                 tls_seed.with(|tls| tls.borrow_mut().insert(obj.clone()));
                 Ok(obj)
             }
@@ -205,8 +207,7 @@ where
 
 impl<T, R> Clone for Drc<T, R>
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
-    for<'de> T: sd::Deserialize<'de>,
+    T: InstanceId + Debug + ?Sized,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId,
 {
@@ -217,8 +218,7 @@ where
 
 impl<T, R> Deref for Drc<T, R> 
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
-    for<'de> T: sd::Deserialize<'de>,
+    T: InstanceId + Debug + ?Sized,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId,
 {
@@ -231,8 +231,7 @@ where
 
 impl<T, R> Debug for Drc<T, R> 
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
-    for<'de> T: sd::Deserialize<'de>,
+    T: InstanceId + Debug + ?Sized,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId,
 {
@@ -249,7 +248,7 @@ pub trait FromId where Self: Sized {
 // Code based on the example 'string_or_struct' given in the serde documentation
 pub fn string_or_struct<'de, T, R, D>(deserializer: D) -> Result<Drc<T, R>, D::Error>
 where
-    T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
+    T: InstanceId + Wrap<R> + Debug + ?Sized,
     for<'de2> T: sd::Deserialize<'de2>,
     R: Deref<Target = T> + Clone,
     Drc<T, R>: FromId,
@@ -264,7 +263,7 @@ where
 
     impl<'de, T, R> Visitor<'de> for StringOrStruct<T, R>
     where
-        T: InstanceId + sd::Serialize + Wrap<R> + Debug + ?Sized,
+        T: InstanceId + Wrap<R> + Debug + ?Sized,
         for<'de2> T: sd::Deserialize<'de2>,
         R: Deref<Target = T> + Clone,
         Drc<T, R>: FromId,
@@ -338,14 +337,16 @@ mod tests {
     impl sd::Serialize for DrcNode {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: sd::Serializer {
-            self.serialize_with_dedup(serializer, &DEDUP_NODE)
+            self.serialize_with_dedup(serializer, &DEDUP_NODE,
+                |s| self.0.serialize(s))
         }
     }
 
     impl<'de> sd::Deserialize<'de> for DrcNode {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where D: sd::Deserializer<'de> {
-            Self::deserialize_with_dedup(deserializer, &DEDUP_NODE)
+            Self::deserialize_with_dedup(deserializer, &DEDUP_NODE, 
+                |d| string_or_struct::<Node, Rc<Node>, D>(d))
         }
     }
 

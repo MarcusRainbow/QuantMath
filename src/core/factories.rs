@@ -124,8 +124,10 @@ mod tests {
     use serde;
     use serde_tagged;
     use serde_tagged::de::BoxFnSeed;
-    //use core::dedup::{Dedup, DedupControl, Drc, InstanceId, FromId};
-    //use std::cell::RefCell;
+    use serde::Deserialize;
+    use serde::Serialize;
+    use core::dedup::{Dedup, DedupControl, Drc, InstanceId, FromId};
+    use std::cell::RefCell;
     use std::rc::Rc;
 
     // An example for de-/serialization of trait objects.
@@ -195,13 +197,15 @@ mod tests {
     // FYI: This is required to enforce a fixed v-table layout, which is required
     //      to create a trait object from a set of traits.
 
+    // The subtrait InstanceId is required for deduplication only.
+
     /// The trait we actually want to store as trait object.
-    pub trait Stored: esd::Serialize + TypeId + Debug {}
+    pub trait Stored: esd::Serialize + TypeId + InstanceId + Debug {}
 
     // In this case, we also want to automatically implement it for all types which
     // meet our requirements.
     impl<T> Stored for T
-    where T: esd::Serialize + TypeId + Debug
+    where T: esd::Serialize + TypeId + InstanceId + Debug
     {}
 
     // Now we can implement `Serialize` and `Deserialize` for our trait objects.
@@ -250,6 +254,7 @@ mod tests {
                 let mut reg = TypeRegistry::new();
                 reg.insert("A", BoxFnSeed::new(deserialize_erased::a));
                 reg.insert("B", BoxFnSeed::new(deserialize_erased::b));
+                reg.insert("C", BoxFnSeed::new(deserialize_erased::c));
                 reg
             };
         }
@@ -272,6 +277,11 @@ mod tests {
         /// Deserialize a value of type `B` as trait-object.
         pub fn b<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
             Ok(RcStored::new(Rc::new(B::deserialize(de)?)))
+        }
+
+        /// Deserialize a value of type `B` as trait-object.
+        pub fn c<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
+            Ok(RcStored::new(Rc::new(C::deserialize(de)?)))
         }
     }
 
@@ -362,36 +372,37 @@ mod tests {
         assert_debug_eq(&rc_c, &de_c);
     }
 
-/*
     // test deduplicated factories
-    pub struct DrcStored(Drc<Stored, RcStored>);
+    pub type DrcStored = Drc<Stored, RcStored>;
 
-    impl DrcStored {
-        fn new(s: RcStored) { DrcStored(s) }
-    }
-
-    #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+    #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct C {
-        id: &'static str,
+        id: String,
         left: DrcStored,
         right: DrcStored
     }
 
     thread_local! {
-        static DEDUP_STORED : RefCell<Dedup<Stored, DrcStored>> 
+        static DEDUP_STORED : RefCell<Dedup<Stored, RcStored>> 
             = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
     }
 
     impl InstanceId for A {
-        fn id(&self) -> &str { &self.foo() }
+        fn id(&self) -> &str { &self.foo }
     }
 
     impl InstanceId for B {
         fn id(&self) -> &str { "b" }
     }
 
+    impl TypeId for C {
+        fn type_id(&self) -> &'static str {
+            "C"
+        }
+    }
+
     impl InstanceId for C {
-        fn id(&self) -> &str { self.id }
+        fn id(&self) -> &str { &self.id }
     }
 
     impl FromId for DrcStored {
@@ -403,59 +414,208 @@ mod tests {
     impl sd::Serialize for DrcStored {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: sd::Serializer {
-            self.serialize_with_dedup(serializer, &DEDUP_STORED)
+            self.serialize_with_dedup(serializer, &DEDUP_STORED, |s| {
+                self.deref().deref().serialize(s)
+            })
         }
     }
+
+    // Sadly, I don't think there is an easy way to make this generic. Part of the problem is the
+    // interface to visitor, which parameterises the types for Error and Visitor. It is therefore
+    // hard to implement this in a functor or passed-in interface that does not simply reproduce
+    // visitor (as here).
+    pub fn string_or_struct_polymorphic<'de, D>(deserializer: D) -> Result<DrcStored, D::Error>
+    where
+        D: sd::de::Deserializer<'de>,
+    {
+        // This is a Visitor that forwards string types to T's `FromId` impl and
+        // forwards map types to T's `Deserialize` impl. The `PhantomData` is to
+        // keep the compiler from complaining about T being an unused generic type
+        // parameter. We need T in order to know the Value type for the Visitor
+        // impl.
+        struct StringOrStruct();
+
+        impl<'de> sd::de::Visitor<'de> for StringOrStruct {
+            type Value = DrcStored;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("string or map")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<DrcStored, E>
+            where
+                E: sd::de::Error,
+            {
+                if let Some(result) = FromId::from_id(value) {
+                    Ok(result)
+                } else {
+                    Err(sd::de::Error::invalid_value(sd::de::Unexpected::Str(value), &self))
+                }
+            }
+
+            fn visit_map<M>(self, visitor: M) -> Result<DrcStored, M::Error>
+            where
+                M: sd::de::MapAccess<'de>,
+            {
+                let obj: RcStored = sd::de::Deserialize::deserialize(sd::de::value::MapAccessDeserializer::new(visitor))?;
+                Ok(Drc::new(obj))
+            }
+        }
+
+        deserializer.deserialize_any(StringOrStruct())
+    }
+
 
     impl<'de> sd::Deserialize<'de> for DrcStored {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where D: sd::Deserializer<'de> {
-            Self::deserialize_with_dedup(deserializer, &DEDUP_STORED)
+
+            Self::deserialize_with_dedup(deserializer, &DEDUP_STORED, |d| {
+                string_or_struct_polymorphic(d)
+            })
         }
     }
 
     // this test just uses the default inline mode of dedup
     #[test]
-    fn serde_tagged_dedup_inline_roundtrip() {
+    fn serde_tagged_dedup_roundtrip_inline() {
+        serde_tagged_dedup_roundtrip(DedupControl::Inline, HashMap::new(), r###"{
+  "C": {
+    "id": "d",
+    "left": {
+      "C": {
+        "id": "c",
+        "left": {
+          "A": {
+            "foo": "a"
+          }
+        },
+        "right": {
+          "B": {
+            "Str": "b"
+          }
+        }
+      }
+    },
+    "right": {
+      "C": {
+        "id": "c",
+        "left": {
+          "A": {
+            "foo": "a"
+          }
+        },
+        "right": {
+          "B": {
+            "Str": "b"
+          }
+        }
+      }
+    }
+  }
+}"###)
+    }
+
+    #[test]
+    fn serde_tagged_dedup_roundtrip_error_if_missing() {
+
+        let a : Rc<Stored> = Rc::new(A { foo: "a".to_owned() });
+        let rc_a = DrcStored::new(RcStored::new(a.clone()));
+        let b : Rc<Stored> = Rc::new(B::Str("b".to_owned()));
+        let rc_b = DrcStored::new(RcStored::new(b.clone()));
+        let c : Rc<Stored> = Rc::new(C { id: "c".to_string(), left: rc_a.clone(), right: rc_b.clone() });
+        let rc_c = DrcStored::new(RcStored::new(c.clone()));
+        let d : Rc<Stored> = Rc::new(C { id: "d".to_string(), left: rc_c.clone(), right: rc_c.clone() });
+        let rc_d = DrcStored::new(RcStored::new(d.clone()));
+        
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), rc_a);
+        map.insert("b".to_string(), rc_b);
+        map.insert("c".to_string(), rc_c);
+        map.insert("d".to_string(), rc_d);
+
+        serde_tagged_dedup_roundtrip(DedupControl::ErrorIfMissing, map, r###""d""###);
+    }
+
+    #[test]
+    fn serde_tagged_dedup_roundtrip_write_once() {
+        serde_tagged_dedup_roundtrip(DedupControl::WriteOnce, HashMap::new(), r###"{
+  "C": {
+    "id": "d",
+    "left": {
+      "C": {
+        "id": "c",
+        "left": {
+          "A": {
+            "foo": "a"
+          }
+        },
+        "right": {
+          "B": {
+            "Str": "b"
+          }
+        }
+      }
+    },
+    "right": "c"
+  }
+}"###);
+    }
+
+    fn serde_tagged_dedup_roundtrip(control: DedupControl, map: HashMap<String, DrcStored>, expected: &str) {
 
         // Let's begin by creating our test data ...
-        let a = DrcStored::new(Rc::new(A { foo: "a".to_owned() }));
-        let b = DrcStored::new(Rc::new(A { foo: "b".to_owned() }));
-        let c = DrcStored::new(Rc::new(C { id: "c", left: a.clone(), right: b.clone() }));
-        let d = DrcStored::new(Rc::new(C { id: "c", left: c.clone(), right: b.clone() }));
+        let a : Rc<Stored> = Rc::new(A { foo: "a".to_owned() });
+        let rc_a = DrcStored::new(RcStored::new(a.clone()));
+        let b : Rc<Stored> = Rc::new(B::Str("b".to_owned()));
+        let rc_b = DrcStored::new(RcStored::new(b.clone()));
+        let c : Rc<Stored> = Rc::new(C { id: "c".to_string(), left: rc_a.clone(), right: rc_b.clone() });
+        let rc_c = DrcStored::new(RcStored::new(c.clone()));
+        let d : Rc<Stored> = Rc::new(C { id: "d".to_string(), left: rc_c.clone(), right: rc_c.clone() });
+        let rc_d = DrcStored::new(RcStored::new(d.clone()));
 
-        // ... and then transform it to trait objects.
-        // We use clone here so we can later assert that de-/serialization does not
-        // change anything.
-        let rc_a = a.clone();
-        let rc_b = b.clone();
-        let rc_c = c.clone();
-        let rc_d = d.clone();
- 
         // Now we can serialize our trait-objects.
         // Thanks to our `Serialize` implementation for trait objects this works
         // just like with any other type.
-        let ser_a = serde_json::to_string_pretty(&rc_a).unwrap();
-        let ser_b = serde_json::to_string_pretty(&rc_b).unwrap();
-        let ser_c = serde_json::to_string_pretty(&rc_c).unwrap();
-        let ser_d = serde_json::to_string_pretty(&rc_c).unwrap();
+        let ser_a = to_string_pretty(&rc_a, control, &map);
+        let ser_b = to_string_pretty(&rc_b, control, &map);
+        let ser_c = to_string_pretty(&rc_c, control, &map);
+        let ser_d = to_string_pretty(&rc_d, control, &map);
 
-        // Again note the warning regarding serialization of non-trait-objects
-        // above.
+        let ser_d_str = String::from_utf8(ser_d.clone()).unwrap();
+        print!("{}", ser_d_str);
+        assert_eq!(ser_d_str, expected);
 
         // Now we let's deserialize our trait objects.
         // This works also just like any other type.
-        let de_a: RcStored = serde_json::from_str(&ser_a).unwrap();
-        let de_b: RcStored = serde_json::from_str(&ser_b).unwrap();
-        let de_c: RcStored = serde_json::from_str(&ser_c).unwrap();
-        let de_d: DrcStored = serde_json::from_str(&ser_d).unwrap();
+        let de_a: DrcStored = from_json(&ser_a, control, &map);
+        let de_b: DrcStored = from_json(&ser_b, control, &map);
+        let de_c: DrcStored = from_json(&ser_c, control, &map);
+        let de_d: DrcStored = from_json(&ser_d, control, &map);
 
         assert_debug_eq(&rc_a, &de_a);
         assert_debug_eq(&rc_b, &de_b);
         assert_debug_eq(&rc_c, &de_c);
         assert_debug_eq(&rc_d, &de_d);
     }
-*/
+
+    fn to_string_pretty(obj: &DrcStored, control: DedupControl, map: &HashMap<String, DrcStored>)
+        -> Vec<u8> {
+        let mut buffer = Vec::new();
+        {
+            let mut serializer = serde_json::Serializer::pretty(&mut buffer);
+            let mut seed = Dedup::<Stored, Qrc<Stored>>::new(control.clone(), map.clone());
+            seed.with(&DEDUP_STORED, || obj.serialize(&mut serializer)).unwrap();
+        }
+        buffer
+    }
+
+    fn from_json(ser: &[u8], control: DedupControl, map: &HashMap<String, DrcStored>)
+        -> DrcStored {
+        let mut deserializer = serde_json::Deserializer::from_slice(&ser);
+        let mut seed = Dedup::<Stored, Qrc<Stored>>::new(control.clone(), map.clone());
+        seed.with(&DEDUP_STORED, || DrcStored::deserialize(&mut deserializer)).unwrap()
+    }
 
     /// A helper function to assert that two strings contain the same JSON data.
     fn assert_json_equal(a: &str, b: &str) {
@@ -466,7 +626,7 @@ mod tests {
 
     /// A helper function to assert that the debug representations of two objects
     /// are the same
-    fn assert_debug_eq(a: &RcStored, b: &RcStored) {
+    fn assert_debug_eq<T>(a: &T, b: &T) where T: Debug {
         let a_debug = format!("{:?}", a);
         let b_debug = format!("{:?}", b);
         assert_eq!(a_debug, b_debug);

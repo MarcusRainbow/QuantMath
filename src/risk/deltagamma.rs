@@ -105,6 +105,7 @@ pub mod tests {
     use risk::cache::tests::create_dependencies;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
+    use core::factories::Qrc;
 
     // a sample pricer that evaluates european options
     #[derive(Clone)]
@@ -119,7 +120,7 @@ pub mod tests {
         let european = sample_european();
  
         let spot_date = market_data.spot_date();
-        let instrument = RcInstrument::new(european.clone());
+        let instrument = RcInstrument::new(Qrc::new(european.clone()));
         let dependencies = create_dependencies(&instrument, spot_date);
         let context = PricingContextPrefetch::new(&market_data,
             dependencies).unwrap();
