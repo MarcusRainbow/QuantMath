@@ -376,6 +376,7 @@ pub mod tests {
     use dates::calendar::RcCalendar;
     use math::numerics::approx_eq;
     use math::interpolation::Extrap;
+    use core::factories::Qrc;
     use serde_json;
 
     pub fn sample_currency(step: u32) -> Currency {
@@ -402,7 +403,7 @@ pub mod tests {
             Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
         let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity = RcInstrument::new(Rc::new(sample_equity(currency, 2)));
+        let equity = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, 2))));
         let european = SpotStartingEuropean::new("SampleSpotEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike, put_or_call, OptionSettlement::Cash).unwrap();
@@ -419,7 +420,7 @@ pub mod tests {
             Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
         let currency = RcCurrency::new(Rc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity = RcInstrument::new(Rc::new(sample_equity(currency, 2)));
+        let equity = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, 2))));
         let european = ForwardStartingEuropean::new("SampleForwardEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike_fraction, strike_date, put_or_call, OptionSettlement::Cash).unwrap();

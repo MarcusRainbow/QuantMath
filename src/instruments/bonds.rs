@@ -10,12 +10,13 @@ use instruments::DependencyContext;
 use instruments::SpotRequirement;
 use instruments::assets::Currency;
 use instruments::assets::RcCurrency;
-use instruments::RcInstrument;
 use dates::Date;
 use dates::datetime::DateTime;
 use dates::rules::RcDateRule;
 use core::qm;
 use core::factories::TypeId;
+use core::factories::Qrc;
+use core::dedup::InstanceId;
 use serde::Deserialize;
 use erased_serde as esd;
 
@@ -34,6 +35,10 @@ impl TypeId for ZeroCoupon {
     fn type_id(&self) -> &'static str { "ZeroCoupon" }
 }
 
+impl InstanceId for ZeroCoupon {
+    fn id(&self) -> &str { &self.id }
+}
+
 impl ZeroCoupon {
     /// Creates a zero coupon bond. It must have an id that uniquely
     /// represents it. It is discounted according to the yield curve
@@ -50,15 +55,12 @@ impl ZeroCoupon {
             settlement: settlement }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
-        Ok(RcInstrument::new(Rc::new(ZeroCoupon::deserialize(de)?)))
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
+        Ok(Qrc::new(Rc::new(ZeroCoupon::deserialize(de)?)))
     }
 }
 
 impl Instrument for ZeroCoupon {
-    fn id(&self) -> &str {
-        &self.id
-    }
 
     fn payoff_currency(&self) -> &Currency {
         &*self.currency

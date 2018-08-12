@@ -184,6 +184,7 @@ mod tests {
     use risk::marketdata::tests::sample_european;
     use risk::marketdata::tests::sample_forward_european;
     use models::blackdiffusion::BlackDiffusionFactory;
+    use core::factories::Qrc;
 
     fn sample_fixings() -> FixingTable {
         let today = Date::from_ymd(2017, 01, 02);
@@ -201,7 +202,7 @@ mod tests {
         // the Monte-Carlo pricing against analytic.
 
         let market_data: Rc<MarketData> = Rc::new(sample_market_data());
-        let instrument = RcInstrument::new(sample_european());
+        let instrument = RcInstrument::new(Qrc::new(sample_european()));
         let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
 
         let n_paths = 100000;
@@ -295,7 +296,7 @@ mod tests {
         // the Monte-Carlo pricing against analytic.
 
         let market_data: Rc<MarketData> = Rc::new(sample_market_data());
-        let instrument = RcInstrument::new(sample_forward_european());
+        let instrument = RcInstrument::new(Qrc::new(sample_forward_european()));
         let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
 
         let n_paths = 100000;

@@ -391,6 +391,7 @@ pub mod tests {
     use data::bumpyield::BumpYield;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
+    use core::factories::Qrc;
 
     pub fn create_dependencies(instrument: &RcInstrument, spot_date: Date)
         -> Rc<DependencyCollector> {
@@ -412,7 +413,7 @@ pub mod tests {
         // so we can modify it and also create an
         // empty saved data to save state so we can restore it
         let spot_date = Date::from_ymd(2017, 01, 02);
-        let instrument = RcInstrument::new(european.clone());
+        let instrument = RcInstrument::new(Qrc::new(european.clone()));
         let dependencies = create_dependencies(&instrument, spot_date);
         let mut mut_data = PricingContextPrefetch::new(&market_data,
             dependencies).unwrap();

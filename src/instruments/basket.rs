@@ -20,6 +20,8 @@ use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
 use data::fixings::FixingTable;
 use core::qm;
+use core::factories::Qrc;
+use core::dedup::InstanceId;
 use erased_serde as esd;
 use serde::Deserialize;
 
@@ -38,6 +40,10 @@ impl TypeId for Basket {
     fn type_id(&self) -> &'static str { "Basket" }
 }
 
+impl InstanceId for Basket {
+    fn id(&self) -> &str { &self.id }
+}
+
 impl Basket {
     pub fn new(id: &str, credit_id: &str, currency: RcCurrency, 
         settlement: RcDateRule, basket: Vec<(f64, RcInstrument)>)
@@ -49,13 +55,12 @@ impl Basket {
             currency: currency, settlement: settlement , basket: basket })
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
-        Ok(RcInstrument::new(Rc::new(Basket::deserialize(de)?)))
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
+        Ok(Qrc::new(Rc::new(Basket::deserialize(de)?)))
     }
 }
 
 impl Instrument for Basket {
-    fn id(&self) -> &str { &self.id }
     fn payoff_currency(&self) -> &Currency { &*self.currency }
     fn credit_id(&self) -> &str { &self.credit_id }
     fn settlement(&self) -> &RcDateRule { &self.settlement }
@@ -94,8 +99,8 @@ impl Instrument for Basket {
         match fix_all(&self.basket, fixing_table)? {
             Some(basket) => {
                 let id = format!("{}:fixed", self.id());
-                let replacement : RcInstrument = RcInstrument::new(Rc::new(
-                    Basket::new(&id, self.credit_id(), self.currency.clone(), self.settlement().clone(), basket)?));
+                let replacement : RcInstrument = RcInstrument::new(Qrc::new(Rc::new(
+                    Basket::new(&id, self.credit_id(), self.currency.clone(), self.settlement().clone(), basket)?)));
                 Ok(Some(vec![(1.0, replacement)]))
             },
             None => Ok(None)
@@ -182,8 +187,8 @@ pub mod tests {
 
     pub fn sample_basket(step: u32) -> Basket {
         let currency = RcCurrency::new(Rc::new(sample_currency(step)));
-        let az = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "AZ.L", step)));
-        let bp = RcInstrument::new(Rc::new(sample_equity(currency.clone(), "BP.L", step)));
+        let az = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "AZ.L", step))));
+        let bp = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "BP.L", step))));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
         Basket::new("basket", az.credit_id(), currency, az.settlement().clone(), basket).unwrap()
     }

@@ -3,10 +3,11 @@ use std::fmt::Display;
 use std::fmt;
 use std::cmp::Ordering;
 use std::hash::Hash;
+use std::collections::HashMap;
 use std::hash::Hasher;
 use std::ops::Deref;
+use std::cell::RefCell;
 use instruments::Instrument;
-use instruments::RcInstrument;
 use instruments::Priceable;
 use instruments::PricingContext;
 use instruments::DependencyContext;
@@ -17,6 +18,9 @@ use dates::datetime::DateTime;
 use dates::datetime::DateDayFraction;
 use core::qm;
 use core::factories::TypeId;
+use core::dedup::InstanceId;
+use core::factories::Qrc;
+use core::dedup::{Drc, Dedup, DedupControl, FromId, string_or_struct};
 use serde::Deserialize;
 use erased_serde as esd;
 use serde as sd;
@@ -38,8 +42,8 @@ impl Currency {
         Currency { id: id.to_string(), settlement: settlement }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
-        Ok(RcInstrument::new(Rc::new(Currency::deserialize(de)?)))
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
+        Ok(Qrc::new(Rc::new(Currency::deserialize(de)?)))
     }
 }
 
@@ -47,10 +51,11 @@ impl TypeId for Currency {
     fn type_id(&self) -> &'static str { "Currency" }
 }
 
+impl InstanceId for Currency {
+    fn id(&self) -> &str { &self.id }
+}
+
 impl Instrument for Currency {
-    fn id(&self) -> &str {
-        &self.id
-    }
 
     fn payoff_currency(&self) -> &Currency {
         self
@@ -138,27 +143,36 @@ pub fn dependence_on_spot_discount(instrument: &Instrument,
     context.yield_curve(instrument.credit_id(), pay_date);
 }
 
-/// Create a new type for an Rc containing a currency, so we can implement
-/// serialize and deserialize for it. Ideally, this should deduplicate the
-/// pointers, so we end up with only one instance of each currency. Leave
-/// this as an exercise.
-#[derive(Clone, Debug)]
-pub struct RcCurrency(Rc<Currency>);
+pub type RcCurrency = Drc<Currency, Rc<Currency>>;
 
-impl RcCurrency {
-    pub fn new(ccy: Rc<Currency>) -> RcCurrency {
-        RcCurrency(ccy)
+thread_local! {
+    pub static DEDUP_CURRENCY : RefCell<Dedup<Currency, Rc<Currency>>> 
+        = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
+}
+
+impl FromId for RcCurrency {
+    fn from_id(id: &str) -> Option<Self> {
+        DEDUP_CURRENCY.with(|tls| tls.borrow().get(id).clone())
     }
 }
 
-impl Deref for RcCurrency {
-    type Target = Currency;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl sd::Serialize for RcCurrency {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer {
+        self.serialize_with_dedup(serializer, &DEDUP_CURRENCY,
+            |s| self.deref().serialize(s))
     }
 }
 
+impl<'de> sd::Deserialize<'de> for RcCurrency {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de> {
+        Self::deserialize_with_dedup(deserializer, &DEDUP_CURRENCY, 
+            |d| string_or_struct::<Currency, Rc<Currency>, D>(d))
+    }
+}
+
+/*
 impl sd::Serialize for RcCurrency {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: sd::Serializer
@@ -174,6 +188,7 @@ impl<'de> sd::Deserialize<'de> for RcCurrency {
         Ok(RcCurrency::new(Rc::new(ccy)))
     }
 }
+*/
 
 /// Represents an equity single name or index. Can also be used to represent
 /// funds and ETFs,
@@ -190,6 +205,10 @@ impl TypeId for Equity {
     fn type_id(&self) -> &'static str { "Equity" }
 }
 
+impl InstanceId for Equity {
+    fn id(&self) -> &str { &self.id }
+}
+
 impl Equity {
     pub fn new(id: &str, credit_id: &str,currency: RcCurrency, 
         settlement: RcDateRule) -> Equity {
@@ -198,15 +217,12 @@ impl Equity {
             currency: currency, settlement: settlement }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
-        Ok(RcInstrument::new(Rc::new(Equity::deserialize(de)?)))
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
+        Ok(Qrc::new(Rc::new(Equity::deserialize(de)?)))
     }
 }
 
 impl Instrument for Equity {
-    fn id(&self) -> &str {
-        &self.id
-    }
 
     fn payoff_currency(&self) -> &Currency {
         &*self.currency
@@ -325,15 +341,16 @@ impl CreditEntity {
             settlement: settlement }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcInstrument, esd::Error> {
-        Ok(RcInstrument::new(Rc::new(CreditEntity::deserialize(de)?)))
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
+        Ok(Qrc::new(Rc::new(CreditEntity::deserialize(de)?)))
     }
 }
 
+impl InstanceId for CreditEntity {
+    fn id(&self) -> &str { &self.id }
+}
+
 impl Instrument for CreditEntity {
-    fn id(&self) -> &str {
-        &self.id
-    }
 
     fn payoff_currency(&self) -> &Currency {
         &*self.currency
