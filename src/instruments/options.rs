@@ -630,6 +630,7 @@ mod tests {
     use instruments::assets::tests::sample_currency;
     use instruments::assets::tests::sample_equity;
     use instruments::assets::DEDUP_CURRENCY;
+    use instruments::DEDUP_INSTRUMENT;
     use serde_json;
     use serde::Serialize;
 
@@ -981,8 +982,7 @@ mod tests {
         }
     }
 
-    fn sample_forward_starting_european() -> ForwardStartingEuropean {
-        let strike_fraction = 1.15170375;
+    fn sample_forward_starting_european(strike_fraction: f64, id: &str) -> ForwardStartingEuropean {
         let strike_date = DateTime::new(
             Date::from_ymd(2018, 06, 08), TimeOfDay::Close);
         let expiry = DateTime::new(
@@ -995,7 +995,7 @@ mod tests {
             "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap())));
         let settlement = ul.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
-        ForwardStartingEuropean::new("SampleEuropean", "OPT",
+        ForwardStartingEuropean::new(id, "OPT",
             ul.clone(), settlement, expiry, strike_fraction,
             strike_date, PutOrCall::Call, cash_or_physical).unwrap()
     }
@@ -1006,7 +1006,7 @@ mod tests {
         // tests serialization and deserialization of a strongly typed european option
 
         let spot = 100.0;
-        let european = sample_forward_starting_european();
+        let european = sample_forward_starting_european(1.15170375, "SampleEuropean");
   
         // value it
         let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
@@ -1365,7 +1365,7 @@ mod tests {
         // Rc<Instrument>. It therefore tests the tagged serialization of the option
 
         let spot = 100.0;
-        let european = sample_forward_starting_european();
+        let european = sample_forward_starting_european(1.15170375, "SampleEuropean");
   
         // value it
         let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
@@ -1400,38 +1400,550 @@ mod tests {
         assert_approx(serde_price, price, 1e-12);
     }
 
-/*
     #[test]
-    fn european_recursive_serde() {
+    fn basket_tagged_serde_dedup_inline() {
+        basket_tagged_serde_dedup(DedupControl::Inline, HashMap::new(), HashMap::new(), r###"{
+  "id": "OptionBasket",
+  "credit_id": "OPT",
+  "currency": {
+    "id": "GBP",
+    "settlement": {
+      "BusinessDays": {
+        "calendar": {
+          "WeekdayCalendar": []
+        },
+        "step": 2,
+        "slip_forward": true
+      }
+    }
+  },
+  "settlement": {
+    "BusinessDays": {
+      "calendar": {
+        "WeekdayCalendar": []
+      },
+      "step": 2,
+      "slip_forward": true
+    }
+  },
+  "basket": [
+    [
+      0.4,
+      {
+        "ForwardStartingEuropean": {
+          "id": "Option1",
+          "credit_id": "OPT",
+          "underlying": {
+            "Basket": {
+              "id": "basket",
+              "credit_id": "LSE",
+              "currency": {
+                "id": "GBP",
+                "settlement": {
+                  "BusinessDays": {
+                    "calendar": {
+                      "WeekdayCalendar": []
+                    },
+                    "step": 2,
+                    "slip_forward": true
+                  }
+                }
+              },
+              "settlement": {
+                "BusinessDays": {
+                  "calendar": {
+                    "WeekdayCalendar": []
+                  },
+                  "step": 2,
+                  "slip_forward": true
+                }
+              },
+              "basket": [
+                [
+                  0.4,
+                  {
+                    "Equity": {
+                      "id": "AZ.L",
+                      "credit_id": "LSE",
+                      "currency": {
+                        "id": "GBP",
+                        "settlement": {
+                          "BusinessDays": {
+                            "calendar": {
+                              "WeekdayCalendar": []
+                            },
+                            "step": 2,
+                            "slip_forward": true
+                          }
+                        }
+                      },
+                      "settlement": {
+                        "BusinessDays": {
+                          "calendar": {
+                            "WeekdayCalendar": []
+                          },
+                          "step": 2,
+                          "slip_forward": true
+                        }
+                      }
+                    }
+                  }
+                ],
+                [
+                  0.6,
+                  {
+                    "Equity": {
+                      "id": "BP.L",
+                      "credit_id": "LSE",
+                      "currency": {
+                        "id": "GBP",
+                        "settlement": {
+                          "BusinessDays": {
+                            "calendar": {
+                              "WeekdayCalendar": []
+                            },
+                            "step": 2,
+                            "slip_forward": true
+                          }
+                        }
+                      },
+                      "settlement": {
+                        "BusinessDays": {
+                          "calendar": {
+                            "WeekdayCalendar": []
+                          },
+                          "step": 2,
+                          "slip_forward": true
+                        }
+                      }
+                    }
+                  }
+                ]
+              ]
+            }
+          },
+          "settlement": {
+            "BusinessDays": {
+              "calendar": {
+                "WeekdayCalendar": []
+              },
+              "step": 2,
+              "slip_forward": true
+            }
+          },
+          "expiry": {
+            "date": "2018-12-01",
+            "time_of_day": "Close"
+          },
+          "put_or_call": "Call",
+          "cash_or_physical": "Cash",
+          "expiry_time": {
+            "date": "2018-12-01",
+            "day_fraction": 0.8
+          },
+          "pay_date": "2018-12-05",
+          "strike_fraction": 1.15,
+          "strike_date": {
+            "date": "2018-06-08",
+            "time_of_day": "Close"
+          },
+          "strike_time": {
+            "date": "2018-06-08",
+            "day_fraction": 0.8
+          }
+        }
+      }
+    ],
+    [
+      0.6,
+      {
+        "ForwardStartingEuropean": {
+          "id": "Option2",
+          "credit_id": "OPT",
+          "underlying": {
+            "Basket": {
+              "id": "basket",
+              "credit_id": "LSE",
+              "currency": {
+                "id": "GBP",
+                "settlement": {
+                  "BusinessDays": {
+                    "calendar": {
+                      "WeekdayCalendar": []
+                    },
+                    "step": 2,
+                    "slip_forward": true
+                  }
+                }
+              },
+              "settlement": {
+                "BusinessDays": {
+                  "calendar": {
+                    "WeekdayCalendar": []
+                  },
+                  "step": 2,
+                  "slip_forward": true
+                }
+              },
+              "basket": [
+                [
+                  0.4,
+                  {
+                    "Equity": {
+                      "id": "AZ.L",
+                      "credit_id": "LSE",
+                      "currency": {
+                        "id": "GBP",
+                        "settlement": {
+                          "BusinessDays": {
+                            "calendar": {
+                              "WeekdayCalendar": []
+                            },
+                            "step": 2,
+                            "slip_forward": true
+                          }
+                        }
+                      },
+                      "settlement": {
+                        "BusinessDays": {
+                          "calendar": {
+                            "WeekdayCalendar": []
+                          },
+                          "step": 2,
+                          "slip_forward": true
+                        }
+                      }
+                    }
+                  }
+                ],
+                [
+                  0.6,
+                  {
+                    "Equity": {
+                      "id": "BP.L",
+                      "credit_id": "LSE",
+                      "currency": {
+                        "id": "GBP",
+                        "settlement": {
+                          "BusinessDays": {
+                            "calendar": {
+                              "WeekdayCalendar": []
+                            },
+                            "step": 2,
+                            "slip_forward": true
+                          }
+                        }
+                      },
+                      "settlement": {
+                        "BusinessDays": {
+                          "calendar": {
+                            "WeekdayCalendar": []
+                          },
+                          "step": 2,
+                          "slip_forward": true
+                        }
+                      }
+                    }
+                  }
+                ]
+              ]
+            }
+          },
+          "settlement": {
+            "BusinessDays": {
+              "calendar": {
+                "WeekdayCalendar": []
+              },
+              "step": 2,
+              "slip_forward": true
+            }
+          },
+          "expiry": {
+            "date": "2018-12-01",
+            "time_of_day": "Close"
+          },
+          "put_or_call": "Call",
+          "cash_or_physical": "Cash",
+          "expiry_time": {
+            "date": "2018-12-01",
+            "day_fraction": 0.8
+          },
+          "pay_date": "2018-12-05",
+          "strike_fraction": 0.85,
+          "strike_date": {
+            "date": "2018-06-08",
+            "time_of_day": "Close"
+          },
+          "strike_time": {
+            "date": "2018-06-08",
+            "day_fraction": 0.8
+          }
+        }
+      }
+    ]
+  ]
+}"###);
+    }
+
+    #[test]
+    fn basket_tagged_serde_dedup_write_once() {
+        basket_tagged_serde_dedup(DedupControl::WriteOnce, HashMap::new(), HashMap::new(), r###"{
+  "id": "OptionBasket",
+  "credit_id": "OPT",
+  "currency": {
+    "id": "GBP",
+    "settlement": {
+      "BusinessDays": {
+        "calendar": {
+          "WeekdayCalendar": []
+        },
+        "step": 2,
+        "slip_forward": true
+      }
+    }
+  },
+  "settlement": {
+    "BusinessDays": {
+      "calendar": {
+        "WeekdayCalendar": []
+      },
+      "step": 2,
+      "slip_forward": true
+    }
+  },
+  "basket": [
+    [
+      0.4,
+      {
+        "ForwardStartingEuropean": {
+          "id": "Option1",
+          "credit_id": "OPT",
+          "underlying": {
+            "Basket": {
+              "id": "basket",
+              "credit_id": "LSE",
+              "currency": "GBP",
+              "settlement": {
+                "BusinessDays": {
+                  "calendar": {
+                    "WeekdayCalendar": []
+                  },
+                  "step": 2,
+                  "slip_forward": true
+                }
+              },
+              "basket": [
+                [
+                  0.4,
+                  {
+                    "Equity": {
+                      "id": "AZ.L",
+                      "credit_id": "LSE",
+                      "currency": "GBP",
+                      "settlement": {
+                        "BusinessDays": {
+                          "calendar": {
+                            "WeekdayCalendar": []
+                          },
+                          "step": 2,
+                          "slip_forward": true
+                        }
+                      }
+                    }
+                  }
+                ],
+                [
+                  0.6,
+                  {
+                    "Equity": {
+                      "id": "BP.L",
+                      "credit_id": "LSE",
+                      "currency": "GBP",
+                      "settlement": {
+                        "BusinessDays": {
+                          "calendar": {
+                            "WeekdayCalendar": []
+                          },
+                          "step": 2,
+                          "slip_forward": true
+                        }
+                      }
+                    }
+                  }
+                ]
+              ]
+            }
+          },
+          "settlement": {
+            "BusinessDays": {
+              "calendar": {
+                "WeekdayCalendar": []
+              },
+              "step": 2,
+              "slip_forward": true
+            }
+          },
+          "expiry": {
+            "date": "2018-12-01",
+            "time_of_day": "Close"
+          },
+          "put_or_call": "Call",
+          "cash_or_physical": "Cash",
+          "expiry_time": {
+            "date": "2018-12-01",
+            "day_fraction": 0.8
+          },
+          "pay_date": "2018-12-05",
+          "strike_fraction": 1.15,
+          "strike_date": {
+            "date": "2018-06-08",
+            "time_of_day": "Close"
+          },
+          "strike_time": {
+            "date": "2018-06-08",
+            "day_fraction": 0.8
+          }
+        }
+      }
+    ],
+    [
+      0.6,
+      {
+        "ForwardStartingEuropean": {
+          "id": "Option2",
+          "credit_id": "OPT",
+          "underlying": "basket",
+          "settlement": {
+            "BusinessDays": {
+              "calendar": {
+                "WeekdayCalendar": []
+              },
+              "step": 2,
+              "slip_forward": true
+            }
+          },
+          "expiry": {
+            "date": "2018-12-01",
+            "time_of_day": "Close"
+          },
+          "put_or_call": "Call",
+          "cash_or_physical": "Cash",
+          "expiry_time": {
+            "date": "2018-12-01",
+            "day_fraction": 0.8
+          },
+          "pay_date": "2018-12-05",
+          "strike_fraction": 0.85,
+          "strike_date": {
+            "date": "2018-06-08",
+            "time_of_day": "Close"
+          },
+          "strike_time": {
+            "date": "2018-06-08",
+            "day_fraction": 0.8
+          }
+        }
+      }
+    ]
+  ]
+}"###);
+    }
+
+    #[test]
+    fn basket_tagged_serde_dedup_error_if_missing() {
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let mut currencies = HashMap::new();
+        currencies.insert("GBP".to_string(), currency);
+
+        let european1 = RcInstrument::new(Qrc::new(Rc::new(
+            sample_forward_starting_european(1.15, "Option1"))));
+        let european2 = RcInstrument::new(Qrc::new(Rc::new(
+            sample_forward_starting_european(0.85, "Option2"))));
+        let mut instruments = HashMap::new();
+        instruments.insert("Option1".to_string(), european1);
+        instruments.insert("Option2".to_string(), european2);
+
+        basket_tagged_serde_dedup(DedupControl::ErrorIfMissing, currencies, instruments, r###"{
+  "id": "OptionBasket",
+  "credit_id": "OPT",
+  "currency": "GBP",
+  "settlement": {
+    "BusinessDays": {
+      "calendar": {
+        "WeekdayCalendar": []
+      },
+      "step": 2,
+      "slip_forward": true
+    }
+  },
+  "basket": [
+    [
+      0.4,
+      "Option1"
+    ],
+    [
+      0.6,
+      "Option2"
+    ]
+  ]
+}"###);
+    }
+
+    fn basket_tagged_serde_dedup(control: DedupControl, 
+        currencies: HashMap<String, RcCurrency>, 
+        instruments: HashMap<String, RcInstrument>,
+        expected: &str) {
+
+        // tests serialization and deserialization of a basket containing two european options
+        // on a basket of equity underliers. It therefore tests the tagged serialization of the option
+        // and the deduplication of the shared components.
 
         let spot = 100.0;
-        let european = sample_forward_starting_european();
-  
+        let european1 = RcInstrument::new(Qrc::new(Rc::new(
+            sample_forward_starting_european(1.15, "Option1"))));
+        let european2 = RcInstrument::new(Qrc::new(Rc::new(
+            sample_forward_starting_european(0.85, "Option2"))));
+        let basket = vec![(0.4f64, european1.clone()), (0.6f64, european2.clone())];
+        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+
+        let option_basket = Basket::new(
+            "OptionBasket", european1.credit_id(), currency, 
+            european1.settlement().clone(), basket).unwrap();
+
         // value it
         let val_date = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Open);
         let context = sample_pricing_context(spot);
-        let price = european.price(&context, val_date).unwrap();
+        let price = option_basket.price(&context, val_date).unwrap();
 
+        // write it out and read it back in
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let seed = HashMap::new();
-            european.serialize_state(&mut serializer, &seed).unwrap();
+            let mut ccy_seed = Dedup::<Currency, Rc<Currency>>::new(control.clone(), currencies.clone());
+            let mut opt_seed = Dedup::<Instrument, Qrc<Instrument>>::new(control.clone(), instruments.clone());
+            ccy_seed.with(&DEDUP_CURRENCY, 
+                || opt_seed.with(&DEDUP_INSTRUMENT,
+                || option_basket.serialize(&mut serializer))).unwrap();
         }
+
+        let serialized = String::from_utf8(buffer.clone()).unwrap();
+        print!("{}", serialized);
+        assert_eq!(serialized, expected);
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut seed = 0;
-            ForwardStartingEuropean::deserialize_state(&mut seed, &mut deserializer).unwrap()
+            let mut ccy_seed = Dedup::<Currency, Rc<Currency>>::new(control.clone(), currencies.clone());
+            let mut opt_seed = Dedup::<Instrument, Qrc<Instrument>>::new(control.clone(), instruments.clone());
+            ccy_seed.with(&DEDUP_CURRENCY, 
+                || opt_seed.with(&DEDUP_INSTRUMENT,
+                || Basket::deserialize(&mut deserializer))).unwrap()
         };
-    
+
         // check the price still matches
-        let priceable = deserialized.as_priceable().unwrap();
-        let serde_price = priceable.price(&context, val_date).unwrap();
+        let serde_price = deserialized.price(&context, val_date).unwrap();
     
         assert_approx(serde_price, price, 1e-12);
     }
-*/
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {
         assert!(approx_eq(value, expected, tolerance),
