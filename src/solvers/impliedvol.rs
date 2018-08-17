@@ -53,7 +53,7 @@ fn single_vol_id(pricer: &Pricer) -> Result<String, qm::Error> {
         return Err(qm::Error::new("Vol surface is not unambiguously defined"))
     }
     for (instrument, _) in vols {
-        return Ok(instrument.instrument().id().to_string())
+        return Ok(instrument.id().to_string())
     }
 
     Err(qm::Error::new("No vol surface to solve for"))

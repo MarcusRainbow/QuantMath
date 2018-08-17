@@ -16,6 +16,7 @@ use risk::dependencies::DependencyCollector;
 /// Bump that defines all the supported bumps to the spot date and ex-from
 /// date. This bump has to live in risk rather than data, because it affects
 /// all market data, not just one curve at a time.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BumpTime {
     spot_date_bump: BumpSpotDate,
     _ex_from: Date

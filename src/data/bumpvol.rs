@@ -8,7 +8,7 @@ use data::bump::Bumper;
 
 /// Bump that defines all the supported bumps and risk transformations of a
 /// vol surface.
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum BumpVol {
     FlatAdditive { size: f64 },
     TimeScaled { size: f64, floor: f64 },

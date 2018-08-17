@@ -12,12 +12,17 @@ use risk::TimeBumpable;
 use risk::Saveable;
 use risk::BumpablePricingContext;
 use pricers::PricerFactory;
-use data::fixings::FixingTable;
+use data::fixings::RcFixingTable;
 use data::bump::Bump;
 use risk::bumptime::BumpTime;
+use risk::marketdata::RcMarketData;
 use risk::marketdata::MarketData;
 use dates::datetime::DateTime;
 use dates::datetime::TimeOfDay;
+use core::factories::TypeId;
+use core::factories::Qrc;
+use serde::Deserialize;
+use erased_serde as esd;
 
 /// The SelfPricer calculator uses the Priceable interface of an
 /// instrument to evaluate the instrument . It then exposes this
@@ -31,6 +36,7 @@ pub struct SelfPricer {
 /// The SelfPricerFactory is used to construct SelfPricer pricers.
 /// It means that the interface for constructing pricers is independent of
 /// what sort of pricer it is.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SelfPricerFactory {
     // no parameterisation for self-pricers
 }
@@ -39,11 +45,19 @@ impl SelfPricerFactory {
     pub fn new() -> SelfPricerFactory {
         SelfPricerFactory {}
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<PricerFactory>, esd::Error> {
+        Ok(Qrc::new(Rc::new(SelfPricerFactory::deserialize(de)?)))
+    }
+}
+
+impl TypeId for SelfPricerFactory {
+    fn type_id(&self) -> &'static str { "SelfPricerFactory" }
 }
 
 impl PricerFactory for SelfPricerFactory {
-    fn new(&self, instrument: RcInstrument, fixing_table: Rc<FixingTable>, 
-        market_data: Rc<MarketData>) -> Result<Box<Pricer>, qm::Error> {
+    fn new(&self, instrument: RcInstrument, fixing_table: RcFixingTable, 
+        market_data: RcMarketData) -> Result<Box<Pricer>, qm::Error> {
 
         // Apply the fixings to the instrument. (This is the last time we need
         // the fixings.)
@@ -157,10 +171,14 @@ mod tests {
     use data::bumpvol::BumpVol;
     use data::bumpyield::BumpYield;
     use data::bumpspotdate::SpotDynamics;
+    use data::fixings::FixingTable;
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
     use risk::marketdata::tests::sample_forward_european;
+    use pricers::RcPricerFactory;
     use core::factories::Qrc;
+    use core::factories::tests::assert_debug_eq;
+    use serde_json;
 
     fn sample_fixings() -> FixingTable {
         let today = Date::from_ymd(2017, 01, 02);
@@ -172,9 +190,9 @@ mod tests {
     #[test]
     fn self_price_european_bumped_price() {
 
-        let market_data: Rc<MarketData> = Rc::new(sample_market_data());
+        let market_data = RcMarketData::new(Rc::new(sample_market_data()));
         let instrument = RcInstrument::new(Qrc::new(sample_european()));
-        let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
+        let fixings = RcFixingTable::new(Rc::new(sample_fixings()));
 
         let factory = SelfPricerFactory::new();
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
@@ -256,9 +274,9 @@ mod tests {
     #[test]
     fn self_price_forward_european_time_bumped() {
 
-        let market_data: Rc<MarketData> = Rc::new(sample_market_data());
+        let market_data = RcMarketData::new(Rc::new(sample_market_data()));
         let instrument = RcInstrument::new(Qrc::new(sample_forward_european()));
-        let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
+        let fixings = RcFixingTable::new(Rc::new(sample_fixings()));
 
         let factory = SelfPricerFactory::new();
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
@@ -311,6 +329,21 @@ mod tests {
         pricer.as_mut_time_bumpable().bump_time(&time_bump).unwrap();
         let bumped_price = pricer.price().unwrap();
         assert_approx(bumped_price, 12.219583564604477, 1e-12);
+    }
+
+    #[test]
+    fn serde_self_pricer_roundtrip() {
+
+        // create some sample data
+        let factory = RcPricerFactory::new(Rc::new(SelfPricerFactory::new()));
+
+        // round trip it via JSON
+        let serialized = serde_json::to_string_pretty(&factory).unwrap();
+        print!("serialized: {}\n", serialized);
+        let deserialized: RcPricerFactory = serde_json::from_str(&serialized).unwrap();
+
+        // check that they match, at least in debug representation
+        assert_debug_eq(&factory, &deserialized);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

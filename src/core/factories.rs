@@ -117,8 +117,52 @@ where T: esd::Serialize + TypeId + Debug + ?Sized {
     }
 }
 
+/// Our own box type, so we can implement serialization and
+/// deserialization.
+pub struct Qbox<T: esd::Serialize + TypeId + Debug + ?Sized>(Box<T>);
+
+impl<T> Deref for Qbox<T> 
+where T: esd::Serialize + TypeId + Debug + ?Sized {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> Qbox<T> 
+where T: esd::Serialize + TypeId + Debug + ?Sized {
+    pub fn new(stored: Box<T>) -> Qbox<T> {
+        Qbox(stored)
+    }
+}
+
+impl<T> TypeId for Qbox<T> 
+where T: esd::Serialize + TypeId + Debug + ?Sized {
+    fn type_id(&self) -> &'static str {
+        self.0.type_id()
+    }
+}
+
+impl<T> Debug for Qbox<T> 
+where T: esd::Serialize + TypeId + Debug + ?Sized {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T> sd::Serialize for Qbox<T> 
+where T: esd::Serialize + TypeId + Debug + ?Sized {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: sd::Serializer,
+    {
+        sdt::ser::external::serialize(serializer, self.type_id(), &SerializeErased(&*self.0))
+    }
+}
+
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use serde_json;
     use serde;
@@ -626,7 +670,7 @@ mod tests {
 
     /// A helper function to assert that the debug representations of two objects
     /// are the same
-    fn assert_debug_eq<T>(a: &T, b: &T) where T: Debug {
+    pub fn assert_debug_eq<T>(a: &T, b: &T) where T: Debug {
         let a_debug = format!("{:?}", a);
         let b_debug = format!("{:?}", b);
         assert_eq!(a_debug, b_debug);

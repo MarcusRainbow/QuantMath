@@ -2,8 +2,12 @@ use dates::Date;
 use dates::datetime::DateTime;
 use core::qm;
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::ops::Deref;
+use serde as sd;
 
 /// A fixing table is a collection of fixing curves, keyed by instrument id.
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FixingTable {
     fixings_known_until: Date,
     fixings_by_id: HashMap<String, Fixings>
@@ -104,6 +108,40 @@ fn duplicate_fixing_curve(id: &str) -> qm::Error {
     qm::Error::new(&format!("Duplicate fixing curve supplied for {}", id))
 }
 
+/// Create a new type for a Rc<FixingTable> so we can implement serialize
+/// and deserialize functions for it.
+pub struct RcFixingTable(Rc<FixingTable>);
+
+impl RcFixingTable {
+    pub fn new(table: Rc<FixingTable>) -> RcFixingTable {
+        RcFixingTable(table)
+    }
+}
+
+impl Deref for RcFixingTable {
+    type Target = FixingTable;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl sd::Serialize for RcFixingTable {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> sd::Deserialize<'de> for RcFixingTable {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de> {
+        let stream = FixingTable::deserialize(deserializer)?;
+        Ok(RcFixingTable::new(Rc::new(stream)))
+    }
+}
+
 /// A fixings curve is a set of historical fixings for a known instrument.
 /// Fixings are identified by date and time of day. In cases where multiple
 /// different fixings are available for the same instrument at the same date
@@ -113,8 +151,62 @@ fn duplicate_fixing_curve(id: &str) -> qm::Error {
 /// Fixings in the past should always be supplied. Fixings in the future 
 /// should never be supplied (though there may be exceptions). Fixings today,
 /// on the fixings_known_until date, may be optionally supplied.
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Fixings {
-    fixing_by_date: HashMap<DateTime, f64>
+    #[serde(with = "map_as_pairs")]
+    fixing_by_date: HashMap<DateTime, f64>,
+}
+
+// By default, serde only supports HashMap with string as a key. To use DateTime
+// as a key, we need to write the serialize methods ourselves. This code is
+// modified from an example written by dtolnay. Consider changing the serialized
+// format to be less verbose.
+mod map_as_pairs {
+    use std::fmt;
+    use serde::ser::Serializer;
+    use serde::de::{Deserializer, Visitor, SeqAccess};
+    use std::collections::HashMap;
+    use dates::datetime::DateTime;
+
+    pub fn serialize<S>(map: &HashMap<DateTime, f64>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_seq(map)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<DateTime, f64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct MapVisitor {}
+
+        impl<'de> Visitor<'de> for MapVisitor {
+            type Value = HashMap<DateTime, f64>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a sequence of key-value pairs")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut map = HashMap::new();
+                loop {
+                    let next : Option<(DateTime, f64)> = seq.next_element()?;
+                    if let Some((k, v)) = next {
+                        map.insert(k, v);
+                    } else {
+                        break;
+                    }
+                }
+                Ok(map)
+            }
+        }
+
+        deserializer.deserialize_seq(MapVisitor {})
+    }
 }
 
 impl Fixings {
@@ -154,6 +246,7 @@ fn duplicate_fixing(id: &str, v1: f64, v2: f64, date_time: DateTime)
 mod tests {
     use super::*;
     use dates::datetime::TimeOfDay;
+    use serde_json;
 
     fn sample_fixings() -> FixingTable {
 
@@ -237,6 +330,34 @@ mod tests {
             assert_eq!(f, 123.1);
         } else {
             assert!(false, "missing optional fixing");
+        }
+    }
+
+    #[test]
+    fn serde_fixing_table_roundtrip() {
+
+        // create some sample data
+        let fixings = sample_fixings();
+
+        // round trip it via JSON
+        let serialized = serde_json::to_string_pretty(&fixings).unwrap();
+        print!("serialized: {}\n", serialized);
+        let deserialized: FixingTable = serde_json::from_str(&serialized).unwrap();
+
+        // check some fixings
+        let today = deserialized.fixings_known_until();
+        let fixing = deserialized.get("BT.L", DateTime::new(today, TimeOfDay::Open)).unwrap();
+        if let Some(f) = fixing {
+            assert_eq!(f, 123.4);
+        } else {
+            assert!(false, "missing fixing");
+        }
+
+        let fixing = deserialized.get("BT.L", DateTime::new(today - 7, TimeOfDay::Open)).unwrap();
+        if let Some(f) = fixing {
+            assert_eq!(f, 123.2);
+        } else {
+            assert!(false, "missing fixing");
         }
     }
 }

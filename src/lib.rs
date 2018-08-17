@@ -25,3 +25,4 @@ pub mod risk;
 pub mod models;
 pub mod pricers;
 pub mod solvers;
+pub mod facade;

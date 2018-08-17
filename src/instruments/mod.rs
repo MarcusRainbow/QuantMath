@@ -36,7 +36,6 @@ use std::hash::Hasher;
 use std::f64::NAN;
 use std::fmt::Debug;
 use std::fmt;
-use std::ops::Deref;
 use ndarray::ArrayView2;
 use erased_serde as esd;
 use serde as sd;
@@ -212,16 +211,6 @@ pub fn get_registry() -> &'static TypeRegistry {
 /// should be unique across all instrument types.
 pub type RcInstrument = Drc<Instrument, Qrc<Instrument>>;
 
-impl RcInstrument {
-    pub fn id(&self) -> &str {
-        self.deref().id()
-    }
-
-    pub fn instrument(&self) -> &Instrument {
-        self.deref()
-    }
-}
-
 impl Ord for RcInstrument {
     fn cmp(&self, other: &RcInstrument) -> Ordering {
         self.id().cmp(other.id())
@@ -251,7 +240,7 @@ impl Hash for RcInstrument {
 /// Support for deduplication of instruments when serializing and deserializing
 
 thread_local! {
-    static DEDUP_INSTRUMENT : RefCell<Dedup<Instrument, Qrc<Instrument>>> 
+    pub static DEDUP_INSTRUMENT : RefCell<Dedup<Instrument, Qrc<Instrument>>> 
         = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
 }
 

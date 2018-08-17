@@ -1,38 +1,55 @@
 use risk::Report;
+use risk::BoxReport;
 use risk::ReportGenerator;
+use risk::RcReportGenerator;
 use risk::Pricer;
 use risk::Saveable;
 use risk::bumptime::BumpTime;
 use std::any::Any;
+use std::rc::Rc;
 use core::qm;
+use core::factories::TypeId;
+use core::factories::{Qrc, Qbox};
+use serde::Deserialize;
+use erased_serde as esd;
 
 /// A report of price and risks calculated as of a future date. If no
 /// subreports are requested, it is just a Theta calculator.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TimeBumpedReport {
     price: f64,
     theta: f64,
-    subreports: Vec<Box<Report>>
+    subreports: Vec<BoxReport>
 }
 
 impl Report for TimeBumpedReport {
     fn as_any(&self) -> &Any { self }
 }
 
+impl TypeId for TimeBumpedReport {
+    fn type_id(&self) -> &'static str { "TimeBumpedReport" }
+}
+
 impl TimeBumpedReport {
-    pub fn new(price: f64, theta: f64, subreports: Vec<Box<Report>>) -> TimeBumpedReport {
+    pub fn new(price: f64, theta: f64, subreports: Vec<BoxReport>) -> TimeBumpedReport {
         TimeBumpedReport { price, theta, subreports }
+    }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qbox<Report>, esd::Error> {
+        Ok(Qbox::new(Box::new(TimeBumpedReport::deserialize(de)?)))
     }
 
     pub fn price(&self) -> f64 { self.price }
     pub fn theta(&self) -> f64 { self.theta }
-    pub fn subreports(&self) -> &[Box<Report>] { &self.subreports }
+    pub fn subreports(&self) -> &[BoxReport] { &self.subreports }
 }
 
 /// Calculator for time-forward values. The date to bump to, and which dates
 /// to bump and how are specified in a BumpTime.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TimeBumpedReportGenerator {
     bump: BumpTime,
-    subgenerators: Vec<Box<ReportGenerator>>
+    subgenerators: Vec<RcReportGenerator>
 }
 
 impl TimeBumpedReportGenerator {
@@ -44,14 +61,22 @@ impl TimeBumpedReportGenerator {
 
     /// Adds a subgenerator, for example calculating delta within the time-forward
     /// context.
-    pub fn add(&mut self, generator: Box<ReportGenerator>) {
+    pub fn add(&mut self, generator: RcReportGenerator) {
         self.subgenerators.push(generator);
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<ReportGenerator>, esd::Error> {
+        Ok(Qrc::new(Rc::new(TimeBumpedReportGenerator::deserialize(de)?)))
+    }
+}
+
+impl TypeId for TimeBumpedReportGenerator {
+    fn type_id(&self) -> &'static str { "TimeBumpedReportGenerator" }
 }
 
 impl ReportGenerator for TimeBumpedReportGenerator {
     fn generate(&self, pricer: &mut Pricer, saveable: &mut Saveable, unbumped: f64)
-        -> Result<Box<Report>, qm::Error> {
+        -> Result<BoxReport, qm::Error> {
         
         // The time bump irreversibly modifies the pricer. Make a clone of it, to ensure
         // we do not modify the original
@@ -71,7 +96,7 @@ impl ReportGenerator for TimeBumpedReportGenerator {
             subreports.push(report);
         }
 
-        Ok(Box::new(TimeBumpedReport::new(time_bumped, theta, subreports)))
+        Ok(Qbox::new(Box::new(TimeBumpedReport::new(time_bumped, theta, subreports))))
     }
 }
 
@@ -115,8 +140,8 @@ mod tests {
         let theta_date = pricer.as_bumpable().context().spot_date() + 1;
         let bump = BumpTime::new(theta_date, theta_date, SpotDynamics::StickyForward);
         let mut generator = TimeBumpedReportGenerator::new(bump);
-        generator.add(Box::new(DeltaGammaReportGenerator::new(0.01)));
-        generator.add(Box::new(VegaVolgaReportGenerator::new(BumpVol::new_flat_additive(0.01))));
+        generator.add(RcReportGenerator::new(Rc::new(DeltaGammaReportGenerator::new(0.01))));
+        generator.add(RcReportGenerator::new(Rc::new(VegaVolgaReportGenerator::new(BumpVol::new_flat_additive(0.01)))));
         let mut save = pricer.as_bumpable().new_saveable();
         let report = generator.generate(&mut *pricer, &mut *save, unbumped).unwrap();
         let results = report.as_any().downcast_ref::<TimeBumpedReport>().unwrap();

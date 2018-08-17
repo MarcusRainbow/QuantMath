@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::collections::HashMap;
 use std::any::Any;
+use std::ops::Deref;
 use data::volsurface::RcVolSurface;
 use data::forward::Forward;
 use data::curves::RcRateCurve;
@@ -149,7 +150,7 @@ fn walk_dependencies(
     for (rc_instrument, high_water_mark) in &*forward_dependencies {
 
         // fetch the forward curve
-        let instrument = rc_instrument.instrument();
+        let instrument : &Instrument = rc_instrument.deref();
         let id = instrument.id().to_string();
         let forward = context.forward_curve(instrument, *high_water_mark)?;
 
