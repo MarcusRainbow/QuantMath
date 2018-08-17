@@ -5,7 +5,7 @@ use dates::Date;
 /// data, but does not modify any instruments. As a result, you may end up with
 /// code that works most of the time, but fails when the change of spot date
 /// straddles a lifecycle event.
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BumpSpotDate {
     spot_date: Date,
     spot_dynamics: SpotDynamics
@@ -21,7 +21,7 @@ impl BumpSpotDate {
 }
 
 /// Enum that defines how spot moves when time is bumped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
 pub enum SpotDynamics {
     /// Spot stays the same, except that any dividends going ex are subtracted
     StickySpot,

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::any::Any;
+use std::ops::Deref;
 use core::qm;
 use dates::Date;
 use data::curves::RcRateCurve;
@@ -22,6 +23,7 @@ use risk::Bumpable;
 use risk::Saveable;
 use risk::BumpablePricingContext;
 use risk::dependencies::DependencyCollector;
+use serde as sd;
 
 /// The market data struct contains all the market data supplied for a
 /// valuation. It has methods for building the analytics needed for valuation
@@ -130,6 +132,41 @@ impl MarketData {
         Ok(())
     }
 
+}
+
+/// Create a new type for a Rc<MarketData> so we can implement serialize
+/// and deserialize functions for it.
+pub struct RcMarketData(Rc<MarketData>);
+
+impl RcMarketData {
+    pub fn new(table: Rc<MarketData>) -> RcMarketData {
+        RcMarketData(table)
+    }
+}
+
+impl Deref for RcMarketData {
+    type Target = MarketData;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl sd::Serialize for RcMarketData {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: sd::Serializer
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+/// Implement deserialization for subclasses of the type
+impl<'de> sd::Deserialize<'de> for RcMarketData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de> {
+        let md = MarketData::deserialize(deserializer)?;
+        Ok(RcMarketData::new(Rc::new(md)))
+    }
 }
 
 impl PricingContext for MarketData {

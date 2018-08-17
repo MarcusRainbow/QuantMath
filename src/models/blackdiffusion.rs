@@ -1,5 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::ops::Deref;
+use std::rc::Rc;
 use rand;
 use rand::StdRng;
 use nalgebra::linalg::Cholesky;
@@ -30,6 +32,10 @@ use models::MonteCarloModelFactory;
 use dates::datetime::DateDayFraction;
 use dates::datetime::DateTime;
 use dates::datetime::TimeOfDay;
+use core::factories::TypeId;
+use core::factories::Qrc;
+use serde::Deserialize;
+use erased_serde as esd;
 
 /// The BlackDiffusionFactory is able to create a BlackDiffusion model, given
 /// the timeline of the product(s) to value, and the market data to value it
@@ -37,6 +43,7 @@ use dates::datetime::TimeOfDay;
 /// itself, and there are only two: the time-stepping to use when converting
 /// local correlations from the market data to the integrated correlations
 /// needed by the model, and the number of paths.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BlackDiffusionFactory {
     /// Substep size in business days for correlation calculation
     correlation_substep: usize,
@@ -51,6 +58,14 @@ impl BlackDiffusionFactory {
         BlackDiffusionFactory { correlation_substep: correlation_substep,
             path_substep: path_substep, number_of_paths: number_of_paths }
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<MonteCarloModelFactory>, esd::Error> {
+        Ok(Qrc::new(Rc::new(BlackDiffusionFactory::deserialize(de)?)))
+    }
+}
+
+impl TypeId for BlackDiffusionFactory {
+    fn type_id(&self) -> &'static str { "BlackDiffusionFactory" }
 }
 
 impl MonteCarloModelFactory for BlackDiffusionFactory {
@@ -203,7 +218,7 @@ impl BlackDiffusion {
             if let Some(s) = saved_paths {
                 s.insert(*asset, path.to_owned());
             }
-            fetch_path(self.instruments[*asset].instrument(), 
+            fetch_path(self.instruments[*asset].deref(), 
                 self.context.as_pricing_context(), &self.observations,
                 self.correlated_gaussians.subview(Axis(2), *asset),
                 &self.substepping,
@@ -251,7 +266,7 @@ pub fn calculate_substepping(
     // through them all.
     for instrument in instruments.iter() {
 
-        let instr = instrument.instrument();
+        let instr : &Instrument = instrument.deref();
         let fwd = context.forward_curve(instr, hwm)?;
         let surface = context.vol_surface(instr, hwm, &|| Ok(fwd.clone()))?;
 
@@ -304,9 +319,9 @@ pub fn fetch_correlated_gaussians(
     // fills in the diagonals.
     let mut correl = Array2::<f64>::eye(n_assets);
     for i in 0..n_assets {
-        let first = instruments[i].instrument();
+        let first = instruments[i].deref();
         for j in 0..i {
-            let second = instruments[j].instrument();
+            let second = instruments[j].deref();
             let c = context.correlation(first, second)?;
             correl[(i, j)] = c;
             correl[(j, i)] = c;
@@ -382,7 +397,8 @@ pub fn fetch_paths(
         correlated_gaussians.axis_iter(Axis(2))).zip(
         paths.axis_iter_mut(Axis(2))) {
 
-        fetch_path(asset.instrument(), context, &observations, gaussians,
+        let instr: &Instrument = asset.deref();
+        fetch_path(instr, context, &observations, gaussians,
             substepping, path)?;
     }
 

@@ -172,24 +172,6 @@ impl<'de> sd::Deserialize<'de> for RcCurrency {
     }
 }
 
-/*
-impl sd::Serialize for RcCurrency {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: sd::Serializer
-    {
-        self.0.serialize(serializer)
-    }
-}
-
-impl<'de> sd::Deserialize<'de> for RcCurrency {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: sd::Deserializer<'de> {
-        let ccy = Currency::deserialize(deserializer)?;
-        Ok(RcCurrency::new(Rc::new(ccy)))
-    }
-}
-*/
-
 /// Represents an equity single name or index. Can also be used to represent
 /// funds and ETFs,
 

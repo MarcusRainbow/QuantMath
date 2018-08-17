@@ -11,20 +11,25 @@ use risk::Bumpable;
 use risk::TimeBumpable;
 use risk::Saveable;
 use pricers::PricerFactory;
-use data::fixings::FixingTable;
+use data::fixings::RcFixingTable;
 use data::bump::Bump;
 use risk::bumptime::BumpTime;
+use risk::marketdata::RcMarketData;
 use risk::marketdata::MarketData;
 use models::MonteCarloModel;
-use models::MonteCarloModelFactory;
+use models::RcMonteCarloModelFactory;
 use models::MonteCarloTimeline;
+use core::factories::TypeId;
+use core::factories::Qrc;
+use serde::Deserialize;
+use erased_serde as esd;
 
 /// The MonteCarlo calculator uses the MonteCarloPriceable interface of an
 /// instrument to evaluate the instrument . It then exposes this
 /// interface as a Pricer, allowing bumping for risk calculation.
 #[derive(Clone)]
 pub struct MonteCarloPricer {
-    model_factory: Rc<MonteCarloModelFactory>,
+    model_factory: RcMonteCarloModelFactory,
     instruments: Vec<(f64, RcInstrument)>,
     model: Box<MonteCarloModel>
 }
@@ -32,8 +37,9 @@ pub struct MonteCarloPricer {
 /// The MonteCarloPricerFactory is used to construct MonteCarloPricer pricers.
 /// It means that the interface for constructing pricers is independent of
 /// what sort of pricer it is.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MonteCarloPricerFactory {
-    model_factory: Rc<MonteCarloModelFactory>
+    model_factory: RcMonteCarloModelFactory
 }
 
 impl MonteCarloPricerFactory {
@@ -44,16 +50,24 @@ impl MonteCarloPricerFactory {
     /// model (BlackDiffusion, LocalVol etc), allowing us to configure the
     /// model used for the simulation.
 
-    pub fn new(model_factory: Rc<MonteCarloModelFactory>)
+    pub fn new(model_factory: RcMonteCarloModelFactory)
         -> MonteCarloPricerFactory {
 
         MonteCarloPricerFactory { model_factory: model_factory }
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<PricerFactory>, esd::Error> {
+        Ok(Qrc::new(Rc::new(MonteCarloPricerFactory::deserialize(de)?)))
+    }
+}
+
+impl TypeId for MonteCarloPricerFactory {
+    fn type_id(&self) -> &'static str { "MonteCarloPricerFactory" }
 }
 
 impl PricerFactory for MonteCarloPricerFactory {
-    fn new(&self, instrument: RcInstrument, fixing_table: Rc<FixingTable>, 
-        market_data: Rc<MarketData>) -> Result<Box<Pricer>, qm::Error> {
+    fn new(&self, instrument: RcInstrument, fixing_table: RcFixingTable, 
+        market_data: RcMarketData) -> Result<Box<Pricer>, qm::Error> {
 
         // Apply the fixings to the instrument. (This is the last time we need
         // the fixings.)
@@ -65,12 +79,11 @@ impl PricerFactory for MonteCarloPricerFactory {
         let pricer = MonteCarloPricer::new(instruments, self.model_factory.clone(), &*market_data)?;
         Ok(Box::new(pricer))
     }
-
 }
 
 impl MonteCarloPricer {
     pub fn new(instruments:  Vec<(f64, RcInstrument)>,
-        model_factory: Rc<MonteCarloModelFactory>, market_data: &MarketData)
+        model_factory: RcMonteCarloModelFactory, market_data: &MarketData)
         -> Result<MonteCarloPricer, qm::Error> {
 
         // Find the dependencies of the resulting vector of instruments,
@@ -179,6 +192,7 @@ mod tests {
     use data::bumpdivs::BumpDivs;
     use data::bumpvol::BumpVol;
     use data::bumpyield::BumpYield;
+    use data::fixings::FixingTable;
     use data::bumpspotdate::SpotDynamics;
     use risk::marketdata::tests::sample_market_data;
     use risk::marketdata::tests::sample_european;
@@ -201,15 +215,15 @@ mod tests {
         // from the self-pricer bumped prices. Thus all these tests validate
         // the Monte-Carlo pricing against analytic.
 
-        let market_data: Rc<MarketData> = Rc::new(sample_market_data());
+        let market_data = RcMarketData::new(Rc::new(sample_market_data()));
         let instrument = RcInstrument::new(Qrc::new(sample_european()));
-        let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
+        let fixings = RcFixingTable::new(Rc::new(sample_fixings()));
 
         let n_paths = 100000;
         let correlation_substep = 20;
         let path_substep = 0.01;
-        let model_factory = Rc::new(BlackDiffusionFactory::new(
-            correlation_substep, path_substep, n_paths));
+        let model_factory = RcMonteCarloModelFactory::new(Rc::new(BlackDiffusionFactory::new(
+            correlation_substep, path_substep, n_paths)));
         let factory = MonteCarloPricerFactory::new(model_factory);
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
         let mut save = pricer.as_bumpable().new_saveable();
@@ -295,15 +309,15 @@ mod tests {
         // from the self-pricer bumped prices. Thus all these tests validate
         // the Monte-Carlo pricing against analytic.
 
-        let market_data: Rc<MarketData> = Rc::new(sample_market_data());
+        let market_data = RcMarketData::new(Rc::new(sample_market_data()));
         let instrument = RcInstrument::new(Qrc::new(sample_forward_european()));
-        let fixings: Rc<FixingTable> = Rc::new(sample_fixings());
+        let fixings = RcFixingTable::new(Rc::new(sample_fixings()));
 
         let n_paths = 100000;
         let correlation_substep = 20;
         let path_substep = 0.01;
-        let model_factory = Rc::new(BlackDiffusionFactory::new(
-            correlation_substep, path_substep, n_paths));
+        let model_factory = RcMonteCarloModelFactory::new(Rc::new(BlackDiffusionFactory::new(
+            correlation_substep, path_substep, n_paths)));
         let factory = MonteCarloPricerFactory::new(model_factory);
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
 

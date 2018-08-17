@@ -6,13 +6,21 @@ pub mod deltagamma;
 pub mod timebumped;
 pub mod vegavolga;
 
+use risk::timebumped::{TimeBumpedReportGenerator, TimeBumpedReport};
+use risk::deltagamma::{DeltaGammaReportGenerator, DeltaGammaReport};
+use risk::vegavolga::{VegaVolgaReportGenerator, VegaVolgaReport};
 use core::qm;
+use core::factories::{Qrc, Qbox, TypeId, Registry};
 use data::bump::Bump;
 use risk::bumptime::BumpTime;
 use risk::marketdata::MarketData;
 use instruments::PricingContext;
 use risk::dependencies::DependencyCollector;
-//use dates::Date;
+use erased_serde as esd;
+use serde as sd;
+use serde_tagged as sdt;
+use serde_tagged::de::BoxFnSeed;
+use std::fmt::Debug;
 use std::any::Any;
 
 /// Interface that defines all bumps of simple underlying market data. This
@@ -125,20 +133,77 @@ pub trait Saveable : Any {
 /// 
 /// Reports are designed to be nested and grouped together, to avoid
 /// unnecessary cloning and bumping.
-pub trait Report : Any {
+pub trait Report : esd::Serialize + TypeId + Debug + Any {
     fn as_any(&self) -> &Any;
 }
 
 /// A report generator performs all the calculations needed to produce a
 /// report.
-pub trait ReportGenerator {
+pub trait ReportGenerator : esd::Serialize + TypeId + Debug {
     /// Perform all the calculations, bumping, pricing and possibly cloning
     /// the input pricer to generate the result. Normally the pricer is left
     /// in the same state as it started, unless it documents otherwise.
     /// Similarly, the saveable is normally expected to be initially empty
     /// and is left empty on exit, unless documented otherwise.
     fn generate(&self, pricer: &mut Pricer, saveable: &mut Saveable, unbumped: f64)
-        -> Result<Box<Report>, qm::Error>;
+        -> Result<BoxReport, qm::Error>;
+}
+
+// Get serialization to work recursively for report generators by using the
+// technology defined in core/factories.
+pub type RcReportGenerator = Qrc<ReportGenerator>;
+pub type GeneratorTypeRegistry = Registry<BoxFnSeed<Qrc<ReportGenerator>>>;
+
+/// Implement deserialization for subclasses of the type
+impl<'de> sd::Deserialize<'de> for Qrc<ReportGenerator> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de>
+    {
+        sdt::de::external::deserialize(deserializer, get_generator_registry())
+    }
+}
+
+/// Return the type registry required for deserialization.
+pub fn get_generator_registry() -> &'static GeneratorTypeRegistry {
+    lazy_static! {
+        static ref REG: GeneratorTypeRegistry = {
+            let mut reg = GeneratorTypeRegistry::new();
+            reg.insert("DeltaGammaReportGenerator", BoxFnSeed::new(DeltaGammaReportGenerator::from_serial));
+            reg.insert("VegaVolgaReportGenerator", BoxFnSeed::new(VegaVolgaReportGenerator::from_serial));
+            reg.insert("TimeBumpedReportGenerator", BoxFnSeed::new(TimeBumpedReportGenerator::from_serial));
+            reg
+        };
+    }
+    &REG
+}
+
+// Get serialization to work recursively for instruments by using the
+// technology defined in core/factories. RcInstrument is a container
+// class holding an RcInstrument
+pub type BoxReport = Qbox<Report>;
+pub type ReportTypeRegistry = Registry<BoxFnSeed<BoxReport>>;
+
+/// Implement deserialization for subclasses of the type
+impl<'de> sd::Deserialize<'de> for BoxReport {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de>
+    {
+        sdt::de::external::deserialize(deserializer, get_report_registry())
+    }
+}
+
+/// Return the type registry required for deserialization.
+pub fn get_report_registry() -> &'static ReportTypeRegistry {
+    lazy_static! {
+        static ref REG: ReportTypeRegistry = {
+            let mut reg = ReportTypeRegistry::new();
+            reg.insert("DeltaGammaReport", BoxFnSeed::new(DeltaGammaReport::from_serial));
+            reg.insert("VegaVolgaReport", BoxFnSeed::new(VegaVolgaReport::from_serial));
+            reg.insert("TimeBumpedReport", BoxFnSeed::new(TimeBumpedReport::from_serial));
+            reg
+        };
+    }
+    &REG
 }
 
 /// Useful method for report generators. Bumps a pricer and reprices it if necessary,

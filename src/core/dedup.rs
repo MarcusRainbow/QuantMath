@@ -301,6 +301,24 @@ where
     deserializer.deserialize_any(StringOrStruct(PhantomData))
 }
 
+/// Utility function to convert a slice of objects that support InstanceId into a
+/// HashMap. We do this rather than using a HashSet and relying on the object's own
+/// equality and hash methods, because we do not want to force every user of dedup
+/// to apply equality and hash only to its id.
+pub fn dedup_map_from_slice<T, R>(slice: &[Drc<T, R>]) -> HashMap<String, Drc<T, R>>
+where
+    T: InstanceId + Debug + ?Sized,
+    R: Deref<Target = T> + Clone,
+    Drc<T, R>: FromId
+{
+    let mut map = HashMap::new();
+    for item in slice.iter() {
+        let id = item.id();
+        map.insert(id.to_string(), item.clone());
+    }
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

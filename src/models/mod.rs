@@ -1,7 +1,6 @@
 pub mod blackdiffusion;
 
-use std::collections::HashMap;
-use std::clone::Clone;
+use models::blackdiffusion::BlackDiffusionFactory;
 use core::qm;
 use instruments::RcInstrument;
 use instruments::MonteCarloDependencies;
@@ -11,10 +10,18 @@ use risk::BumpablePricingContext;
 use risk::marketdata::MarketData;
 use dates::Date;
 use dates::datetime::DateDayFraction;
+use core::factories::{TypeId, Qrc, Registry};
+use std::collections::HashMap;
+use std::clone::Clone;
+use erased_serde as esd;
+use serde as sd;
+use serde_tagged as sdt;
+use serde_tagged::de::BoxFnSeed;
+use std::fmt::Debug;
 
 /// Interface that must be implemented by a model factory in order to support
 /// Monte-Carlo pricing.
-pub trait MonteCarloModelFactory {
+pub trait MonteCarloModelFactory : esd::Serialize + TypeId + Debug {
  
     /// Given a timeline (which also specifies the underlyings we need to
     /// evolve), and a pricing context, create a Monte-Carlo model.
@@ -22,6 +29,34 @@ pub trait MonteCarloModelFactory {
         context: Box<BumpablePricingContext>)
         -> Result<Box<MonteCarloModel>, qm::Error>;
 }
+
+// Get serialization to work recursively for instruments by using the
+// technology defined in core/factories. RcInstrument is a container
+// class holding an RcInstrument
+pub type TypeRegistry = Registry<BoxFnSeed<Qrc<MonteCarloModelFactory>>>;
+
+/// Implement deserialization for subclasses of the type
+impl<'de> sd::Deserialize<'de> for Qrc<MonteCarloModelFactory> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: sd::Deserializer<'de>
+    {
+        sdt::de::external::deserialize(deserializer, get_registry())
+    }
+}
+
+/// Return the type registry required for deserialization.
+pub fn get_registry() -> &'static TypeRegistry {
+    lazy_static! {
+        static ref REG: TypeRegistry = {
+            let mut reg = TypeRegistry::new();
+            reg.insert("BlackDiffusionFactory", BoxFnSeed::new(BlackDiffusionFactory::from_serial));
+            reg
+        };
+    }
+    &REG
+}
+
+pub type RcMonteCarloModelFactory = Qrc<MonteCarloModelFactory>;
 
 /// Interface that must be implemented by a model in order to support
 /// Monte-Carlo pricing.

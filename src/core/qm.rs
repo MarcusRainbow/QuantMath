@@ -5,6 +5,7 @@ use std::fmt;
 use std::io;
 use std::num;
 use ndarray;
+use serde_json;
 
 /// Error returned by any rfin method
 #[derive(Debug)]
@@ -47,6 +48,12 @@ impl From<num::ParseIntError> for Error {
 impl From<ndarray::ShapeError> for Error {
     fn from(error: ndarray::ShapeError) -> Self {
         Error::new(&format!("Error {} when converting array", error))
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Error::new(&format!("Error {} when serializing/deserializing", error))
     }
 }
 

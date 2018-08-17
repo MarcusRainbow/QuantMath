@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::any::Any;
+use std::rc::Rc;
 use risk::Report;
+use risk::BoxReport;
 use risk::ReportGenerator;
 use risk::Pricer;
 use risk::Saveable;
@@ -8,11 +10,16 @@ use risk::bumped_price;
 use data::bump::Bump;
 use data::bumpspot::BumpSpot;
 use core::qm;
+use core::factories::TypeId;
+use core::factories::{Qrc, Qbox};
+use serde::Deserialize;
+use erased_serde as esd;
 
 /// Delta is the first derivative of price with respect to the spot value
 /// of an underlying. Gamma is the second derivative. This report shows
 /// the delta and gamma with respect to each of the underlyings
 /// that affect the price.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DeltaGammaReport {
     results: HashMap<String, DeltaGamma>
 }
@@ -21,10 +28,19 @@ impl Report for DeltaGammaReport {
     fn as_any(&self) -> &Any { self }
 }
 
+impl TypeId for DeltaGammaReport {
+    fn type_id(&self) -> &'static str { "DeltaGammaReport" }
+}
+
 impl DeltaGammaReport {
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qbox<Report>, esd::Error> {
+        Ok(Qbox::new(Box::new(DeltaGammaReport::deserialize(de)?)))
+    }
+
     pub fn results(&self) -> &HashMap<String, DeltaGamma> { &self.results }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DeltaGamma {
     delta: f64,
     gamma: f64
@@ -37,6 +53,7 @@ impl DeltaGamma {
 
 /// Calculator for delta and gamma by bumping. The bump size is specified as
 /// a fraction of the current spot.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DeltaGammaReportGenerator {
     bumpsize: f64
 }
@@ -45,11 +62,19 @@ impl DeltaGammaReportGenerator {
     pub fn new(bumpsize: f64) -> DeltaGammaReportGenerator {
         DeltaGammaReportGenerator { bumpsize: bumpsize }
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<ReportGenerator>, esd::Error> {
+        Ok(Qrc::new(Rc::new(DeltaGammaReportGenerator::deserialize(de)?)))
+    }
+}
+
+impl TypeId for DeltaGammaReportGenerator {
+    fn type_id(&self) -> &'static str { "DeltaGammaReportGenerator" }
 }
 
 impl ReportGenerator for DeltaGammaReportGenerator {
     fn generate(&self, pricer: &mut Pricer, saveable: &mut Saveable, unbumped: f64)
-        -> Result<Box<Report>, qm::Error> {
+        -> Result<BoxReport, qm::Error> {
 
         // We first bump up by 1 + bumpsize, then down by (1 - bumpsize) / (1 + bumpsize)
         // so we cancel out the original up bump. This saves time compared
@@ -84,7 +109,7 @@ impl ReportGenerator for DeltaGammaReportGenerator {
             results.insert(id.to_string(), DeltaGamma {delta, gamma});
         }
 
-        Ok(Box::new(DeltaGammaReport { results: results }))
+        Ok(Qbox::new(Box::new(DeltaGammaReport { results: results })))
     }
 }
 
@@ -103,9 +128,13 @@ pub mod tests {
     use instruments::PricingContext;
     use instruments::RcInstrument;
     use risk::cache::tests::create_dependencies;
+    use risk::RcReportGenerator;
+    use risk::BoxReport;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
     use core::factories::Qrc;
+    use core::factories::tests::assert_debug_eq;
+    use serde_json;
 
     // a sample pricer that evaluates european options
     #[derive(Clone)]
@@ -203,6 +232,40 @@ pub mod tests {
         let delta_gamma = results.get("BP.L").unwrap();
         assert_approx(delta_gamma.delta(), 0.6281335819139144, 1e-12);
         assert_approx(delta_gamma.gamma(), 0.01017907258926698, 1e-12);
+    }
+
+    #[test]
+    fn serde_delta_gamma_generator_roundtrip() {
+
+        // create some sample data
+        let generator = RcReportGenerator::new(Rc::new(DeltaGammaReportGenerator::new(0.01)));
+
+        // round trip it via JSON
+        let serialized = serde_json::to_string_pretty(&generator).unwrap();
+        print!("serialized: {}\n", serialized);
+        let deserialized: RcReportGenerator = serde_json::from_str(&serialized).unwrap();
+
+        // check that they match, at least in debug representation
+        assert_debug_eq(&generator, &deserialized);
+    }
+
+    #[test]
+    fn serde_delta_gamma_report_roundtrip() {
+
+        // create some sample data
+        let mut pricer = sample_pricer();
+        let unbumped = pricer.price().unwrap();
+        let generator = DeltaGammaReportGenerator::new(0.01);
+        let mut save = pricer.as_bumpable().new_saveable();
+        let report = generator.generate(&mut *pricer, &mut *save, unbumped).unwrap();
+
+        // round trip it via JSON
+        let serialized = serde_json::to_string_pretty(&report).unwrap();
+        print!("serialized: {}\n", serialized);
+        let deserialized: BoxReport = serde_json::from_str(&serialized).unwrap();
+
+        // check that they match, at least in debug representation
+        assert_debug_eq(&report, &deserialized);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

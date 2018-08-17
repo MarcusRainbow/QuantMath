@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::any::Any;
+use std::rc::Rc;
 use risk::Report;
+use risk::BoxReport;
 use risk::ReportGenerator;
 use risk::Pricer;
 use risk::Saveable;
@@ -8,6 +10,10 @@ use risk::bumped_price;
 use data::bump::Bump;
 use data::bumpvol::BumpVol;
 use core::qm;
+use core::factories::TypeId;
+use core::factories::{Qrc, Qbox};
+use serde::Deserialize;
+use erased_serde as esd;
 
 // Implementation note. This file is very similar to deltagamma, and one possibility
 // would have been to common code them, perhaps templated by bump type. However,
@@ -22,6 +28,7 @@ use core::qm;
 /// than volatility, so there is some flexibility in what we choose to define
 /// as volatility. We use the volatilities as used internally by the vol
 /// surface. See data::voldecorators for details.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct VegaVolgaReport {
     results: HashMap<String, VegaVolga>
 }
@@ -30,10 +37,19 @@ impl Report for VegaVolgaReport {
     fn as_any(&self) -> &Any { self }
 }
 
+impl TypeId for VegaVolgaReport {
+    fn type_id(&self) -> &'static str { "VegaVolgaReport" }
+}
+
 impl VegaVolgaReport {
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qbox<Report>, esd::Error> {
+        Ok(Qbox::new(Box::new(VegaVolgaReport::deserialize(de)?)))
+    }
+
     pub fn results(&self) -> &HashMap<String, VegaVolga> { &self.results }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct VegaVolga {
     vega: f64,
     volga: f64
@@ -46,6 +62,7 @@ impl VegaVolga {
 
 /// Calculator for vega and volga by bumping. The bump size is specified as
 /// a fraction of the current spot.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct VegaVolgaReportGenerator {
     bump: BumpVol
 }
@@ -54,11 +71,19 @@ impl VegaVolgaReportGenerator {
     pub fn new(bump: BumpVol) -> VegaVolgaReportGenerator {
         VegaVolgaReportGenerator { bump: bump }
     }
+
+    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<ReportGenerator>, esd::Error> {
+        Ok(Qrc::new(Rc::new(VegaVolgaReportGenerator::deserialize(de)?)))
+    }
+}
+
+impl TypeId for VegaVolgaReportGenerator {
+    fn type_id(&self) -> &'static str { "VegaVolgaReportGenerator" }
 }
 
 impl ReportGenerator for VegaVolgaReportGenerator {
     fn generate(&self, pricer: &mut Pricer, saveable: &mut Saveable, unbumped: f64)
-        -> Result<Box<Report>, qm::Error> {
+        -> Result<BoxReport, qm::Error> {
 
         // Find the underlyings we should have vega to. Note that we need to
         // clone the list of instruments, to avoid borrowing problems.
@@ -84,7 +109,7 @@ impl ReportGenerator for VegaVolgaReportGenerator {
             results.insert(id.to_string(), VegaVolga {vega, volga});
         }
 
-        Ok(Box::new(VegaVolgaReport { results: results }))
+        Ok(Qbox::new(Box::new(VegaVolgaReport { results: results })))
     }
 }
 
