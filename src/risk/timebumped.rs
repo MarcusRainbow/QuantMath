@@ -4,9 +4,12 @@ use risk::ReportGenerator;
 use risk::RcReportGenerator;
 use risk::Pricer;
 use risk::Saveable;
+use risk::ApproxEqReport;
 use risk::bumptime::BumpTime;
 use std::any::Any;
 use std::rc::Rc;
+use std::fmt;
+use math::numerics::{ApproxEq, approx_eq};
 use core::qm;
 use core::factories::TypeId;
 use core::factories::{Qrc, Qbox};
@@ -42,6 +45,51 @@ impl TimeBumpedReport {
     pub fn price(&self) -> f64 { self.price }
     pub fn theta(&self) -> f64 { self.theta }
     pub fn subreports(&self) -> &[BoxReport] { &self.subreports }
+}
+
+impl ApproxEq<TimeBumpedReport> for TimeBumpedReport {
+    fn validate(&self, other: &TimeBumpedReport, tol_a: f64, tol_b: f64, 
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+
+
+        // In general, we can scale the price tolerance by the price, but not in the
+        // case of a swap-like product which is the difference between two large numbers.
+        // As an interim solution, take the max of the price and one.
+        //
+        // Use the same tolerance for theta, as Monte-Carlo may not use the same random numbers for
+        // bumped and unbumped in this case.
+        let notional = self.price.abs().max(1.0);
+        let tolerance = tol_a * notional;
+
+        if !approx_eq(self.price, other.price, tolerance) {
+            writeln!(diffs, "TimeBumpedReport: price {} != {} tol={}", self.price, other.price, tolerance)?;
+        }
+        if !approx_eq(self.theta, other.theta, tolerance) {
+            writeln!(diffs, "TimeBumpedReport: theta {} != {} tol={}", self.theta, other.theta, tolerance)?;
+        }
+
+        if self.subreports.len() != other.subreports.len() {
+            writeln!(diffs, "TimeBumpedReport: number of subreports {} != {}", self.subreports.len(), other.subreports.len())?;
+        }
+
+        for (subreport, other_subreport) in self.subreports.iter().zip(other.subreports.iter()) {
+            subreport.validate(other_subreport, tol_a, tol_b, msg, diffs)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl ApproxEqReport for TimeBumpedReport {
+    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(other_report) = other.as_any().downcast_ref::<TimeBumpedReport>() {
+            self.validate(other_report, tol_a, tol_b, msg, diffs)
+        } else {
+            write!(diffs, "TimeBumpedReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
+            Ok(())
+        }
+    }
 }
 
 /// Calculator for time-forward values. The date to bump to, and which dates

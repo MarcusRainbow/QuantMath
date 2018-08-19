@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use std::any::Any;
 use std::rc::Rc;
+use std::fmt;
+use math::numerics::{ApproxEq, approx_eq};
 use risk::Report;
 use risk::BoxReport;
 use risk::ReportGenerator;
 use risk::Pricer;
 use risk::Saveable;
 use risk::bumped_price;
+use risk::ApproxEqReport;
 use data::bump::Bump;
 use data::bumpvol::BumpVol;
 use core::qm;
@@ -30,6 +33,8 @@ use erased_serde as esd;
 /// surface. See data::voldecorators for details.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VegaVolgaReport {
+    vega_tolerance: f64,
+    volga_tolerance: f64,
     results: HashMap<String, VegaVolga>
 }
 
@@ -49,6 +54,42 @@ impl VegaVolgaReport {
     pub fn results(&self) -> &HashMap<String, VegaVolga> { &self.results }
 }
 
+impl ApproxEq<VegaVolgaReport> for VegaVolgaReport {
+    fn validate(&self, other: &VegaVolgaReport, _tol: f64, tol: f64, 
+        _msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+
+        if self.results.len() != other.results.len() {
+            write!(diffs, "VegaVolgaReport: number of reports {} != {}", self.results.len(), other.results.len())?;
+        }
+
+        // Both vega and volga are based on diffs, so should use the second tolerance. Both need scaling
+        // given price and bumpsize.
+        let tol_vega = tol * self.vega_tolerance;
+        let tol_volga = tol * self.volga_tolerance;
+        for (id, vega_volga) in &self.results {
+            if let Some(other_vega_volga) = other.results.get(id) {
+                vega_volga.validate(other_vega_volga, tol_vega, tol_volga, &id, diffs)?;
+            } else {
+                write!(diffs, "VegaVolgaReport: {} is missing", id)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl ApproxEqReport for VegaVolgaReport {
+    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(other_report) = other.as_any().downcast_ref::<VegaVolgaReport>() {
+            self.validate(other_report, tol_a, tol_b, msg, diffs)
+        } else {
+            write!(diffs, "VegaVolgaReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
+            Ok(())
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct VegaVolga {
     vega: f64,
@@ -58,6 +99,20 @@ pub struct VegaVolga {
 impl VegaVolga {
     pub fn vega(&self) -> f64 { self.vega }
     pub fn volga(&self) -> f64 { self.volga }
+}
+
+impl ApproxEq<VegaVolga> for VegaVolga {
+    fn validate(&self, other: &VegaVolga, tol_vega: f64, tol_volga: f64,
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+
+        if !approx_eq(self.vega, other.vega, tol_vega) {
+            writeln!(diffs, "VegaVolga: {} vega {} != {} tol={}", msg, self.vega, other.vega, tol_vega)?;
+        }
+        if !approx_eq(self.volga, other.volga, tol_volga) {
+            writeln!(diffs, "VegaVolga: {} volga {} != {} tol={}", msg, self.volga, other.volga, tol_volga)?;
+        }
+        Ok(())
+    }
 }
 
 /// Calculator for vega and volga by bumping. The bump size is specified as
@@ -85,6 +140,9 @@ impl ReportGenerator for VegaVolgaReportGenerator {
     fn generate(&self, pricer: &mut Pricer, saveable: &mut Saveable, unbumped: f64)
         -> Result<BoxReport, qm::Error> {
 
+        let bumpsize = self.bump.bumpsize();
+        let bumpsize_2 = bumpsize.powi(2);
+
         // Find the underlyings we should have vega to. Note that we need to
         // clone the list of instruments, to avoid borrowing problems.
         let instruments = pricer.as_bumpable().dependencies()?.instruments_clone();
@@ -103,13 +161,19 @@ impl ReportGenerator for VegaVolgaReportGenerator {
             saveable.clear();
 
             // vega and volga calculations
-            let bumpsize = self.bump.bumpsize();
             let vega = (upbumped - downbumped) / (2.0 * bumpsize);
-            let volga = (upbumped + downbumped - 2.0 * unbumped) / bumpsize.powi(2);
+            let volga = (upbumped + downbumped - 2.0 * unbumped) / bumpsize_2;
             results.insert(id.to_string(), VegaVolga {vega, volga});
         }
 
-        Ok(Qbox::new(Box::new(VegaVolgaReport { results: results })))
+        // scale the tolerance for vega by price / bumpsize
+        // scale the tolerance for volga by price / bumpsize^2
+        // cope with the case of swaps, by flooring the price at one.
+        let notional = unbumped.abs().max(1.0);
+        let vega_tolerance = notional / bumpsize;
+        let volga_tolerance = notional / bumpsize_2;
+
+        Ok(Qbox::new(Box::new(VegaVolgaReport { vega_tolerance, volga_tolerance, results })))
     }
 }
 
