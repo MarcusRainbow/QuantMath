@@ -22,6 +22,9 @@ use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
 use std::fmt::Debug;
 use std::any::Any;
+use std::fmt;
+use std::ops::Deref;
+use math::numerics::ApproxEq;
 
 /// Interface that defines all bumps of simple underlying market data. This
 /// defines most risks that the analytics outputs. Most methods take a save
@@ -133,8 +136,15 @@ pub trait Saveable : Any {
 /// 
 /// Reports are designed to be nested and grouped together, to avoid
 /// unnecessary cloning and bumping.
-pub trait Report : esd::Serialize + TypeId + Debug + Any {
+pub trait Report : esd::Serialize + ApproxEqReport + TypeId + Debug + Any {
     fn as_any(&self) -> &Any;
+}
+
+/// Redefine ApproxEqReport because Rust complains about circular type
+/// references otherwise
+pub trait ApproxEqReport {
+    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result;
 }
 
 /// A report generator performs all the calculations needed to produce a
@@ -189,6 +199,16 @@ impl<'de> sd::Deserialize<'de> for BoxReport {
     where D: sd::Deserializer<'de>
     {
         sdt::de::external::deserialize(deserializer, get_report_registry())
+    }
+}
+
+impl ApproxEq<BoxReport> for BoxReport {
+    fn validate(&self, other: &BoxReport, tol_a: f64, tol_b: f64, 
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+        
+        let self_report : &Report = self.deref();
+        let other_report : &Report = other.deref();
+        self_report.validate_report(other_report, tol_a, tol_b, msg, diffs)
     }
 }
 

@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use std::any::Any;
 use std::rc::Rc;
+use std::fmt;
+use math::numerics::{ApproxEq, approx_eq};
 use risk::Report;
 use risk::BoxReport;
 use risk::ReportGenerator;
 use risk::Pricer;
 use risk::Saveable;
 use risk::bumped_price;
+use risk::ApproxEqReport;
 use data::bump::Bump;
 use data::bumpspot::BumpSpot;
 use core::qm;
@@ -21,6 +24,7 @@ use erased_serde as esd;
 /// that affect the price.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeltaGammaReport {
+    bumpsize: f64,
     results: HashMap<String, DeltaGamma>
 }
 
@@ -40,6 +44,42 @@ impl DeltaGammaReport {
     pub fn results(&self) -> &HashMap<String, DeltaGamma> { &self.results }
 }
 
+impl ApproxEq<DeltaGammaReport> for DeltaGammaReport {
+    fn validate(&self, other: &DeltaGammaReport, _tol: f64, tol: f64, 
+        _msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+
+        if self.results.len() != other.results.len() {
+            write!(diffs, "DeltaGammaReport: number of reports {} != {}", self.results.len(), other.results.len())?;
+        }
+
+        // Both delta and gamma are based on diffs, so should use the second tolerance. Scale delta
+        // by one over bumpsize, and gamma by this squared.
+        let tol_delta = tol / self.bumpsize;
+        let tol_gamma = tol / (self.bumpsize * self.bumpsize);
+        for (id, delta_gamma) in &self.results {
+            if let Some(other_delta_gamma) = other.results.get(id) {
+                delta_gamma.validate(other_delta_gamma, tol_delta, tol_gamma, &id, diffs)?;
+            } else {
+                write!(diffs, "DeltaGammaReport: {} is missing", id)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl ApproxEqReport for DeltaGammaReport {
+    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(other_report) = other.as_any().downcast_ref::<DeltaGammaReport>() {
+            self.validate(other_report, tol_a, tol_b, msg, diffs)
+        } else {
+            write!(diffs, "DeltaGammaReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
+            Ok(())
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeltaGamma {
     delta: f64,
@@ -49,6 +89,20 @@ pub struct DeltaGamma {
 impl DeltaGamma {
     pub fn delta(&self) -> f64 { self.delta }
     pub fn gamma(&self) -> f64 { self.gamma }
+}
+
+impl ApproxEq<DeltaGamma> for DeltaGamma {
+    fn validate(&self, other: &DeltaGamma, tol_delta: f64, tol_gamma: f64, 
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+
+        if !approx_eq(self.delta, other.delta, tol_delta) {
+            writeln!(diffs, "DeltaGamma: {} delta {} != {} tol={}", msg, self.delta, other.delta, tol_delta)?;
+        }
+        if !approx_eq(self.gamma, other.gamma, tol_gamma) {
+            writeln!(diffs, "DeltaGamma: {} gamma {} != {} tol={}", msg, self.gamma, other.gamma, tol_gamma)?;
+        }
+        Ok(())
+    }
 }
 
 /// Calculator for delta and gamma by bumping. The bump size is specified as
@@ -109,7 +163,7 @@ impl ReportGenerator for DeltaGammaReportGenerator {
             results.insert(id.to_string(), DeltaGamma {delta, gamma});
         }
 
-        Ok(Qbox::new(Box::new(DeltaGammaReport { results: results })))
+        Ok(Qbox::new(Box::new(DeltaGammaReport { bumpsize: self.bumpsize, results: results })))
     }
 }
 

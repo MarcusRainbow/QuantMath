@@ -148,8 +148,11 @@ where T: Serialize {
 mod tests {
     use super::*;
     use std::io::Cursor;
-    use math::numerics::approx_eq;
+    use math::numerics::{approx_eq, ApproxEq};
+    use serde_json;
+    use risk::BoxReport;
     use std::str::from_utf8;
+    use std::fmt;
 
     #[test]
     fn facade_forward_starting_european_price() {
@@ -177,11 +180,30 @@ mod tests {
 
         assert_approx(price, 3.7505621830857376, 1e-12);
 
-        // We need a way of comparing two JSON strings for equality, allowing for
-        // some approximation of floating point numbers, and possibly some flexibility
-        // in things like the ordering of elements.
+        // compare the results with a hard-coded JSON result
+        assert_approx_json(&buffer, sample_results_json(), 1e-12, 1e-12, "");
+    }
+
+    pub struct Fmt<F>(pub F) where F: Fn(&mut fmt::Formatter) -> fmt::Result;
+
+    impl<F> fmt::Display for Fmt<F>
+        where F: Fn(&mut fmt::Formatter) -> fmt::Result
+    {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            (self.0)(f)
+        }
+    }
+
+    fn assert_approx_json(buffer: &[u8], expected: &[u8], tol_price: f64, tol_risk: f64, msg: &str) {
         let output = from_utf8(&buffer).unwrap();
         print!("{}", output);
+
+        let results: Vec<BoxReport> = serde_json::from_slice(&buffer).unwrap();
+        let baseline: Vec<BoxReport> = serde_json::from_slice(expected).unwrap();
+
+        let diffs = format!("{}", Fmt(|f| results.validate(&baseline, tol_price, tol_risk, msg, f)));
+
+        assert!(diffs.is_empty(), "{}", diffs);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {
@@ -480,5 +502,21 @@ mod tests {
         br###"{
   "SelfPricerFactory": {}
 }"###
+    }
+
+    fn sample_results_json() -> &'static [u8] {
+        br###"[
+  {
+    "DeltaGammaReport": {
+      "bumpsize": 0.01,
+      "results": {
+        "BP.L": {
+          "delta": 0.038328385673875,
+          "gamma": 0.0
+        }
+      }
+    }
+  }
+]"###
     }
 }

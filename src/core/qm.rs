@@ -57,6 +57,12 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+impl From<fmt::Error> for Error {
+    fn from(error: fmt::Error) -> Self {
+        Error::new(&format!("Error {} when formatting", error))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
