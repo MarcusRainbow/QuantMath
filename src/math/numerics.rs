@@ -15,25 +15,22 @@ pub fn approx_eq(first: f64, second: f64, tolerance: f64) -> bool {
 /// number in the calculation. For example, if we are comparing (a - b) with c,
 /// the largest acceptable difference is max(a, b, c) * tol. This means
 /// that gamma calculations have a tolerance much greater than tol * gamma.
-/// The meanings of the two parameters tol_a and tol_b depend on the object.
-/// For example, for top-level risk reports, tol_a means the price tolerance,
-/// and tol_b means the tolerance for risks (which may be scaled by the bump
-/// size).
-pub trait ApproxEq<Rhs: ?Sized = Self> {
+pub trait ApproxEq<T, Rhs: ?Sized = Self> {
 
     /// Are the two objects approximately the same? If so, return without doing anything. If they are
     /// different, write a description of the differences to the diffs parameter. If the diffs ends up
     /// not having been written to, treat this as success. Returns an error if the formatter fails or
-    /// if the objects are so different they cannot be compared.
-    fn validate(&self, other: &Rhs, tol_a: f64, tol_b: f64,
+    /// if the objects are so different they cannot be compared. The tol parameter changes its type and
+    /// meaning depending on what is being valued.
+    fn validate(&self, other: &Rhs, tol: &T,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result;
 }
 
-impl<T> ApproxEq<Vec<T>> for Vec<T>
+impl<T, V> ApproxEq<T, Vec<V>> for Vec<V>
 where 
-    T: ApproxEq<T>
+    V: ApproxEq<T, V>
 {
-    fn validate(&self, other: &Vec<T>, tol_a: f64, tol_b: f64,
+    fn validate(&self, other: &Vec<V>, tol: &T,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if self.len() != other.len() {
@@ -41,7 +38,7 @@ where
         }
 
         for (self_item, other_item) in self.iter().zip(other.iter()) {
-            self_item.validate(other_item, tol_a, tol_b, msg, diffs)?;
+            self_item.validate(other_item, tol, msg, diffs)?;
         }
 
         Ok(())

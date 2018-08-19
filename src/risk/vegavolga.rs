@@ -6,6 +6,7 @@ use math::numerics::{ApproxEq, approx_eq};
 use risk::Report;
 use risk::BoxReport;
 use risk::ReportGenerator;
+use risk::ReportTolerances;
 use risk::Pricer;
 use risk::Saveable;
 use risk::bumped_price;
@@ -33,8 +34,7 @@ use erased_serde as esd;
 /// surface. See data::voldecorators for details.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VegaVolgaReport {
-    vega_tolerance: f64,
-    volga_tolerance: f64,
+    bumpsize: f64,
     results: HashMap<String, VegaVolga>
 }
 
@@ -54,21 +54,22 @@ impl VegaVolgaReport {
     pub fn results(&self) -> &HashMap<String, VegaVolga> { &self.results }
 }
 
-impl ApproxEq<VegaVolgaReport> for VegaVolgaReport {
-    fn validate(&self, other: &VegaVolgaReport, _tol: f64, tol: f64, 
+impl ApproxEq<ReportTolerances, VegaVolgaReport> for VegaVolgaReport {
+    fn validate(&self, other: &VegaVolgaReport, tol: &ReportTolerances, 
         _msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if self.results.len() != other.results.len() {
             write!(diffs, "VegaVolgaReport: number of reports {} != {}", self.results.len(), other.results.len())?;
         }
 
-        // Both vega and volga are based on diffs, so should use the second tolerance. Both need scaling
-        // given price and bumpsize.
-        let tol_vega = tol * self.vega_tolerance;
-        let tol_volga = tol * self.volga_tolerance;
+        // Both vega and volga are based on diffs, so should use the currency risk tolerance.
+        let vega = tol.currency_risk() / self.bumpsize;
+        let volga = vega / self.bumpsize;
+        let tolerances = VegaVolgaTolerances { vega, volga };
+
         for (id, vega_volga) in &self.results {
             if let Some(other_vega_volga) = other.results.get(id) {
-                vega_volga.validate(other_vega_volga, tol_vega, tol_volga, &id, diffs)?;
+                vega_volga.validate(other_vega_volga, &tolerances, &id, diffs)?;
             } else {
                 write!(diffs, "VegaVolgaReport: {} is missing", id)?;
             }
@@ -79,10 +80,10 @@ impl ApproxEq<VegaVolgaReport> for VegaVolgaReport {
 }
 
 impl ApproxEqReport for VegaVolgaReport {
-    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+    fn validate_report(&self, other: &Report, tol: &ReportTolerances,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
         if let Some(other_report) = other.as_any().downcast_ref::<VegaVolgaReport>() {
-            self.validate(other_report, tol_a, tol_b, msg, diffs)
+            self.validate(other_report, tol, msg, diffs)
         } else {
             write!(diffs, "VegaVolgaReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
             Ok(())
@@ -101,15 +102,20 @@ impl VegaVolga {
     pub fn volga(&self) -> f64 { self.volga }
 }
 
-impl ApproxEq<VegaVolga> for VegaVolga {
-    fn validate(&self, other: &VegaVolga, tol_vega: f64, tol_volga: f64,
+struct VegaVolgaTolerances {
+    vega: f64,
+    volga: f64
+}
+
+impl ApproxEq<VegaVolgaTolerances, VegaVolga> for VegaVolga {
+    fn validate(&self, other: &VegaVolga, tol: &VegaVolgaTolerances,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
-        if !approx_eq(self.vega, other.vega, tol_vega) {
-            writeln!(diffs, "VegaVolga: {} vega {} != {} tol={}", msg, self.vega, other.vega, tol_vega)?;
+        if !approx_eq(self.vega, other.vega, tol.vega) {
+            writeln!(diffs, "VegaVolga: {} vega {} != {} tol={}", msg, self.vega, other.vega, tol.vega)?;
         }
-        if !approx_eq(self.volga, other.volga, tol_volga) {
-            writeln!(diffs, "VegaVolga: {} volga {} != {} tol={}", msg, self.volga, other.volga, tol_volga)?;
+        if !approx_eq(self.volga, other.volga, tol.volga) {
+            writeln!(diffs, "VegaVolga: {} volga {} != {} tol={}", msg, self.volga, other.volga, tol.volga)?;
         }
         Ok(())
     }
@@ -166,14 +172,7 @@ impl ReportGenerator for VegaVolgaReportGenerator {
             results.insert(id.to_string(), VegaVolga {vega, volga});
         }
 
-        // scale the tolerance for vega by price / bumpsize
-        // scale the tolerance for volga by price / bumpsize^2
-        // cope with the case of swaps, by flooring the price at one.
-        let notional = unbumped.abs().max(1.0);
-        let vega_tolerance = notional / bumpsize;
-        let volga_tolerance = notional / bumpsize_2;
-
-        Ok(Qbox::new(Box::new(VegaVolgaReport { vega_tolerance, volga_tolerance, results })))
+        Ok(Qbox::new(Box::new(VegaVolgaReport { bumpsize, results })))
     }
 }
 

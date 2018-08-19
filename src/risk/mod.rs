@@ -143,8 +143,29 @@ pub trait Report : esd::Serialize + ApproxEqReport + TypeId + Debug + Any {
 /// Redefine ApproxEqReport because Rust complains about circular type
 /// references otherwise
 pub trait ApproxEqReport {
-    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+    fn validate_report(&self, other: &Report, tol: &ReportTolerances,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result;
+}
+
+/// Tolerances for comparing risk reports. The price_tol is used for comparing
+/// prices, and things that behave like prices such as bumped prices. The
+/// currency_risk_tol is used for comparing risks that are in units of currency
+/// and measure the change in price for a given bump, such as Vega or Volga. The
+/// unit_risk_tol is used for comparing risks that have no units, and measure the
+/// percentage change in price for a given bump, such as Delta or Gamma.
+pub struct ReportTolerances {
+    price: f64,
+    currency_risk: f64,
+    unit_risk: f64
+}
+
+impl ReportTolerances {
+    pub fn new(price: f64, currency_risk: f64, unit_risk: f64) -> ReportTolerances {
+        ReportTolerances { price, currency_risk, unit_risk }
+    }
+    pub fn price(&self) -> f64 { self.price }
+    pub fn currency_risk(&self) -> f64 { self.currency_risk }
+    pub fn unit_risk(&self) -> f64 { self.unit_risk }
 }
 
 /// A report generator performs all the calculations needed to produce a
@@ -202,13 +223,13 @@ impl<'de> sd::Deserialize<'de> for BoxReport {
     }
 }
 
-impl ApproxEq<BoxReport> for BoxReport {
-    fn validate(&self, other: &BoxReport, tol_a: f64, tol_b: f64, 
+impl ApproxEq<ReportTolerances, BoxReport> for BoxReport {
+    fn validate(&self, other: &BoxReport, tol: &ReportTolerances, 
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
         
         let self_report : &Report = self.deref();
         let other_report : &Report = other.deref();
-        self_report.validate_report(other_report, tol_a, tol_b, msg, diffs)
+        self_report.validate_report(other_report, tol, msg, diffs)
     }
 }
 

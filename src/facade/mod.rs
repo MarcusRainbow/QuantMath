@@ -151,6 +151,7 @@ mod tests {
     use math::numerics::{approx_eq, ApproxEq};
     use serde_json;
     use risk::BoxReport;
+    use risk::ReportTolerances;
     use std::str::from_utf8;
     use std::fmt;
 
@@ -181,7 +182,7 @@ mod tests {
         assert_approx(price, 3.7505621830857376, 1e-12);
 
         // compare the results with a hard-coded JSON result
-        assert_approx_json(&buffer, sample_results_json(), 1e-12, 1e-12, "");
+        assert_approx_json(&buffer, sample_results_json(), 1e-12, 1e-12, 1e-12, "");
     }
 
     pub struct Fmt<F>(pub F) where F: Fn(&mut fmt::Formatter) -> fmt::Result;
@@ -194,14 +195,17 @@ mod tests {
         }
     }
 
-    fn assert_approx_json(buffer: &[u8], expected: &[u8], tol_price: f64, tol_risk: f64, msg: &str) {
+    fn assert_approx_json(buffer: &[u8], expected: &[u8], 
+        tol_price: f64, tol_ccy_risk: f64, tol_unit_risk: f64, msg: &str) {
+
         let output = from_utf8(&buffer).unwrap();
         print!("{}", output);
 
         let results: Vec<BoxReport> = serde_json::from_slice(&buffer).unwrap();
         let baseline: Vec<BoxReport> = serde_json::from_slice(expected).unwrap();
 
-        let diffs = format!("{}", Fmt(|f| results.validate(&baseline, tol_price, tol_risk, msg, f)));
+        let tolerances = ReportTolerances::new(tol_price, tol_ccy_risk, tol_unit_risk);
+        let diffs = format!("{}", Fmt(|f| results.validate(&baseline, &tolerances, msg, f)));
 
         assert!(diffs.is_empty(), "{}", diffs);
     }

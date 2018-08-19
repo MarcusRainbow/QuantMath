@@ -6,6 +6,7 @@ use risk::Pricer;
 use risk::Saveable;
 use risk::ApproxEqReport;
 use risk::bumptime::BumpTime;
+use risk::ReportTolerances;
 use std::any::Any;
 use std::rc::Rc;
 use std::fmt;
@@ -47,19 +48,13 @@ impl TimeBumpedReport {
     pub fn subreports(&self) -> &[BoxReport] { &self.subreports }
 }
 
-impl ApproxEq<TimeBumpedReport> for TimeBumpedReport {
-    fn validate(&self, other: &TimeBumpedReport, tol_a: f64, tol_b: f64, 
+impl ApproxEq<ReportTolerances, TimeBumpedReport> for TimeBumpedReport {
+    fn validate(&self, other: &TimeBumpedReport, tol: &ReportTolerances, 
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
-
-        // In general, we can scale the price tolerance by the price, but not in the
-        // case of a swap-like product which is the difference between two large numbers.
-        // As an interim solution, take the max of the price and one.
-        //
-        // Use the same tolerance for theta, as Monte-Carlo may not use the same random numbers for
-        // bumped and unbumped in this case.
-        let notional = self.price.abs().max(1.0);
-        let tolerance = tol_a * notional;
+        // Use the price tolerance for theta as well as bumped price, as Monte-Carlo may not use the 
+        // same random numbers for bumped and unbumped in this case.
+        let tolerance = tol.price();
 
         if !approx_eq(self.price, other.price, tolerance) {
             writeln!(diffs, "TimeBumpedReport: price {} != {} tol={}", self.price, other.price, tolerance)?;
@@ -73,7 +68,7 @@ impl ApproxEq<TimeBumpedReport> for TimeBumpedReport {
         }
 
         for (subreport, other_subreport) in self.subreports.iter().zip(other.subreports.iter()) {
-            subreport.validate(other_subreport, tol_a, tol_b, msg, diffs)?;
+            subreport.validate(other_subreport, tol, msg, diffs)?;
         }
 
         Ok(())
@@ -81,10 +76,10 @@ impl ApproxEq<TimeBumpedReport> for TimeBumpedReport {
 }
 
 impl ApproxEqReport for TimeBumpedReport {
-    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+    fn validate_report(&self, other: &Report, tol: &ReportTolerances,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
         if let Some(other_report) = other.as_any().downcast_ref::<TimeBumpedReport>() {
-            self.validate(other_report, tol_a, tol_b, msg, diffs)
+            self.validate(other_report, tol, msg, diffs)
         } else {
             write!(diffs, "TimeBumpedReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
             Ok(())

@@ -10,6 +10,7 @@ use risk::Pricer;
 use risk::Saveable;
 use risk::bumped_price;
 use risk::ApproxEqReport;
+use risk::ReportTolerances;
 use data::bump::Bump;
 use data::bumpspot::BumpSpot;
 use core::qm;
@@ -44,21 +45,22 @@ impl DeltaGammaReport {
     pub fn results(&self) -> &HashMap<String, DeltaGamma> { &self.results }
 }
 
-impl ApproxEq<DeltaGammaReport> for DeltaGammaReport {
-    fn validate(&self, other: &DeltaGammaReport, _tol: f64, tol: f64, 
+impl ApproxEq<ReportTolerances, DeltaGammaReport> for DeltaGammaReport {
+    fn validate(&self, other: &DeltaGammaReport, tol: &ReportTolerances, 
         _msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if self.results.len() != other.results.len() {
             write!(diffs, "DeltaGammaReport: number of reports {} != {}", self.results.len(), other.results.len())?;
         }
 
-        // Both delta and gamma are based on diffs, so should use the second tolerance. Scale delta
-        // by one over bumpsize, and gamma by this squared.
-        let tol_delta = tol / self.bumpsize;
-        let tol_gamma = tol / (self.bumpsize * self.bumpsize);
+        // Both delta and gamma are based on diffs, so should use the unit_risk tolerance. Scale delta
+        // by one over bumpsize, and gamma by one over bumpsize squared.
+        let delta = tol.unit_risk() / self.bumpsize;
+        let gamma = delta / self.bumpsize;
+        let tolerances = DeltaGammaTolerances { delta, gamma };
         for (id, delta_gamma) in &self.results {
             if let Some(other_delta_gamma) = other.results.get(id) {
-                delta_gamma.validate(other_delta_gamma, tol_delta, tol_gamma, &id, diffs)?;
+                delta_gamma.validate(other_delta_gamma, &tolerances, &id, diffs)?;
             } else {
                 write!(diffs, "DeltaGammaReport: {} is missing", id)?;
             }
@@ -69,10 +71,10 @@ impl ApproxEq<DeltaGammaReport> for DeltaGammaReport {
 }
 
 impl ApproxEqReport for DeltaGammaReport {
-    fn validate_report(&self, other: &Report, tol_a: f64, tol_b: f64,
+    fn validate_report(&self, other: &Report, tol: &ReportTolerances,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
         if let Some(other_report) = other.as_any().downcast_ref::<DeltaGammaReport>() {
-            self.validate(other_report, tol_a, tol_b, msg, diffs)
+            self.validate(other_report, tol, msg, diffs)
         } else {
             write!(diffs, "DeltaGammaReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
             Ok(())
@@ -91,15 +93,20 @@ impl DeltaGamma {
     pub fn gamma(&self) -> f64 { self.gamma }
 }
 
-impl ApproxEq<DeltaGamma> for DeltaGamma {
-    fn validate(&self, other: &DeltaGamma, tol_delta: f64, tol_gamma: f64, 
+struct DeltaGammaTolerances {
+    delta: f64,
+    gamma: f64
+}
+
+impl ApproxEq<DeltaGammaTolerances, DeltaGamma> for DeltaGamma {
+    fn validate(&self, other: &DeltaGamma, tol: &DeltaGammaTolerances, 
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
-        if !approx_eq(self.delta, other.delta, tol_delta) {
-            writeln!(diffs, "DeltaGamma: {} delta {} != {} tol={}", msg, self.delta, other.delta, tol_delta)?;
+        if !approx_eq(self.delta, other.delta, tol.delta) {
+            writeln!(diffs, "DeltaGamma: {} delta {} != {} tol={}", msg, self.delta, other.delta, tol.delta)?;
         }
-        if !approx_eq(self.gamma, other.gamma, tol_gamma) {
-            writeln!(diffs, "DeltaGamma: {} gamma {} != {} tol={}", msg, self.gamma, other.gamma, tol_gamma)?;
+        if !approx_eq(self.gamma, other.gamma, tol.gamma) {
+            writeln!(diffs, "DeltaGamma: {} gamma {} != {} tol={}", msg, self.gamma, other.gamma, tol.gamma)?;
         }
         Ok(())
     }
