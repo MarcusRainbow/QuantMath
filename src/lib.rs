@@ -14,6 +14,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 extern crate void;
+extern crate libc;
 
 // listed in dependency order, though this is not essential for compilation
 pub mod core;

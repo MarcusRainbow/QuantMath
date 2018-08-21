@@ -54,8 +54,8 @@ impl VegaVolgaReport {
     pub fn results(&self) -> &HashMap<String, VegaVolga> { &self.results }
 }
 
-impl ApproxEq<ReportTolerances, VegaVolgaReport> for VegaVolgaReport {
-    fn validate(&self, other: &VegaVolgaReport, tol: &ReportTolerances, 
+impl<'v> ApproxEq<ReportTolerances, &'v VegaVolgaReport> for &'v VegaVolgaReport {
+    fn validate(self, other: &'v VegaVolgaReport, tol: &ReportTolerances, 
         _msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if self.results.len() != other.results.len() {
@@ -67,7 +67,7 @@ impl ApproxEq<ReportTolerances, VegaVolgaReport> for VegaVolgaReport {
         let volga = vega / self.bumpsize;
         let tolerances = VegaVolgaTolerances { vega, volga };
 
-        for (id, vega_volga) in &self.results {
+        for (id, ref vega_volga) in &self.results {
             if let Some(other_vega_volga) = other.results.get(id) {
                 vega_volga.validate(other_vega_volga, &tolerances, &id, diffs)?;
             } else {
@@ -107,8 +107,8 @@ struct VegaVolgaTolerances {
     volga: f64
 }
 
-impl ApproxEq<VegaVolgaTolerances, VegaVolga> for VegaVolga {
-    fn validate(&self, other: &VegaVolga, tol: &VegaVolgaTolerances,
+impl<'v> ApproxEq<VegaVolgaTolerances, &'v VegaVolga> for &'v VegaVolga {
+    fn validate(self, other: &'v VegaVolga, tol: &VegaVolgaTolerances,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if !approx_eq(self.vega, other.vega, tol.vega) {

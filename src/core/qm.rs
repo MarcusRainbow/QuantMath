@@ -4,11 +4,12 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::num;
+use std::str;
 use ndarray;
 use serde_json;
 
 /// Error returned by any rfin method
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Error {
     message: String 
 }
@@ -60,6 +61,12 @@ impl From<serde_json::Error> for Error {
 impl From<fmt::Error> for Error {
     fn from(error: fmt::Error) -> Self {
         Error::new(&format!("Error {} when formatting", error))
+    }
+}
+
+impl From<str::Utf8Error> for Error {
+    fn from(error: str::Utf8Error) -> Self {
+        Error::new(&format!("Error {} when converting", error))
     }
 }
 

@@ -136,6 +136,7 @@ impl MarketData {
 
 /// Create a new type for a Rc<MarketData> so we can implement serialize
 /// and deserialize functions for it.
+#[derive(Clone)]
 pub struct RcMarketData(Rc<MarketData>);
 
 impl RcMarketData {
