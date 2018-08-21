@@ -223,13 +223,29 @@ impl<'de> sd::Deserialize<'de> for BoxReport {
     }
 }
 
-impl ApproxEq<ReportTolerances, BoxReport> for BoxReport {
-    fn validate(&self, other: &BoxReport, tol: &ReportTolerances, 
+impl<'v> ApproxEq<ReportTolerances, &'v BoxReport> for &'v BoxReport {
+    fn validate(self, other: &'v BoxReport, tol: &ReportTolerances, 
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
         
         let self_report : &Report = self.deref();
         let other_report : &Report = other.deref();
         self_report.validate_report(other_report, tol, msg, diffs)
+    }
+}
+
+impl<'v> ApproxEq<ReportTolerances, &'v [BoxReport]> for &'v [BoxReport] {
+    fn validate(self, other: &'v [BoxReport], tol: &ReportTolerances,
+        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+
+        if self.len() != other.len() {
+            write!(diffs, "Slice: length {} != {}", self.len(), other.len())?;
+        }
+
+        for (self_item, other_item) in self.iter().zip(other.iter()) {
+            self_item.validate(other_item, tol, msg, diffs)?;
+        }
+
+        Ok(())
     }
 }
 

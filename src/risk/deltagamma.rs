@@ -45,8 +45,8 @@ impl DeltaGammaReport {
     pub fn results(&self) -> &HashMap<String, DeltaGamma> { &self.results }
 }
 
-impl ApproxEq<ReportTolerances, DeltaGammaReport> for DeltaGammaReport {
-    fn validate(&self, other: &DeltaGammaReport, tol: &ReportTolerances, 
+impl<'v> ApproxEq<ReportTolerances, &'v DeltaGammaReport> for &'v DeltaGammaReport {
+    fn validate(self, other: &'v DeltaGammaReport, tol: &ReportTolerances, 
         _msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if self.results.len() != other.results.len() {
@@ -58,7 +58,7 @@ impl ApproxEq<ReportTolerances, DeltaGammaReport> for DeltaGammaReport {
         let delta = tol.unit_risk() / self.bumpsize;
         let gamma = delta / self.bumpsize;
         let tolerances = DeltaGammaTolerances { delta, gamma };
-        for (id, delta_gamma) in &self.results {
+        for (id, ref delta_gamma) in &self.results {
             if let Some(other_delta_gamma) = other.results.get(id) {
                 delta_gamma.validate(other_delta_gamma, &tolerances, &id, diffs)?;
             } else {
@@ -98,8 +98,8 @@ struct DeltaGammaTolerances {
     gamma: f64
 }
 
-impl ApproxEq<DeltaGammaTolerances, DeltaGamma> for DeltaGamma {
-    fn validate(&self, other: &DeltaGamma, tol: &DeltaGammaTolerances, 
+impl<'v> ApproxEq<DeltaGammaTolerances, &'v DeltaGamma> for &'v DeltaGamma {
+    fn validate(self, other: &'v DeltaGamma, tol: &DeltaGammaTolerances, 
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if !approx_eq(self.delta, other.delta, tol.delta) {

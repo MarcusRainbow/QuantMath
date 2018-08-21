@@ -22,19 +22,23 @@ pub trait ApproxEq<T, Rhs: ?Sized = Self> {
     /// not having been written to, treat this as success. Returns an error if the formatter fails or
     /// if the objects are so different they cannot be compared. The tol parameter changes its type and
     /// meaning depending on what is being valued.
-    fn validate(&self, other: &Rhs, tol: &T,
+    fn validate(self, other: Rhs, tol: &T,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result;
 }
 
-impl<T, V> ApproxEq<T, Vec<V>> for Vec<V>
+/*
+ * I cannot get this to work, I think because of the lifetime qualifier required on
+ * ApproxEq for the underlying type. For now, we implement it specifically for
+ * BoxReport, which is the only place that needs it.
+impl<'v, T, V> ApproxEq<T, &'v [V]> for &'v [V]
 where 
-    V: ApproxEq<T, V>
+    V: ApproxEq<T, &'v V>
 {
-    fn validate(&self, other: &Vec<V>, tol: &T,
+    fn validate(self, other: &'v [V], tol: &T,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         if self.len() != other.len() {
-            write!(diffs, "Vec: length {} != {}", self.len(), other.len())?;
+            write!(diffs, "Slice: length {} != {}", self.len(), other.len())?;
         }
 
         for (self_item, other_item) in self.iter().zip(other.iter()) {
@@ -44,6 +48,7 @@ where
         Ok(())
     }
 } 
+*/
 
 #[cfg(test)]
 mod tests {

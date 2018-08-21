@@ -48,8 +48,8 @@ impl TimeBumpedReport {
     pub fn subreports(&self) -> &[BoxReport] { &self.subreports }
 }
 
-impl ApproxEq<ReportTolerances, TimeBumpedReport> for TimeBumpedReport {
-    fn validate(&self, other: &TimeBumpedReport, tol: &ReportTolerances, 
+impl<'v> ApproxEq<ReportTolerances, &'v TimeBumpedReport> for &'v TimeBumpedReport {
+    fn validate(self, other: &'v TimeBumpedReport, tol: &ReportTolerances, 
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
 
         // Use the price tolerance for theta as well as bumped price, as Monte-Carlo may not use the 
