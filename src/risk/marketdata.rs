@@ -37,7 +37,7 @@ use serde as sd;
 /// As new forms of market data are required, they should be added to this
 /// struct. They may also need to be added to PricingContext, so they can be
 /// accessed during pricing.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MarketData {
     spot_date: Date, 
     spots: HashMap<String, f64>,
@@ -136,7 +136,7 @@ impl MarketData {
 
 /// Create a new type for a Rc<MarketData> so we can implement serialize
 /// and deserialize functions for it.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RcMarketData(Rc<MarketData>);
 
 impl RcMarketData {

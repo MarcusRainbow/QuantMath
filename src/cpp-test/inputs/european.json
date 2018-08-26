@@ -1,0 +1,36 @@
+{
+    "ForwardStartingEuropean": {
+        "id": "SampleEuropean",
+        "credit_id": "OPT",
+        "underlying": "BT.L",
+        "settlement": {
+            "BusinessDays": {
+                "calendar": {
+                    "WeekdayCalendar": []
+                },
+                "step": 2,
+                "slip_forward": true
+            }
+        },
+        "expiry": {
+            "date": "2018-12-01",
+            "time_of_day": "Close"
+        },
+        "put_or_call": "Call",
+        "cash_or_physical": "Cash",
+        "expiry_time": {
+            "date": "2018-12-01",
+            "day_fraction": 0.8
+        },
+        "pay_date": "2018-12-05",
+        "strike_fraction": 1.15170375,
+        "strike_date": {
+            "date": "2018-06-08",
+            "time_of_day": "Close"
+        },
+        "strike_time": {
+            "date": "2018-06-08",
+            "day_fraction": 0.8
+        }
+    }
+}

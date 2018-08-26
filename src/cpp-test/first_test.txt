@@ -1,0 +1,23 @@
+# lines beginning with # are ignored, as are blank lines
+
+# each section starts with a title, ending with a colon
+Currencies:
+inputs/usd.json
+inputs/gbp.json
+
+Instruments:
+inputs/bt.json
+inputs/az.json
+inputs/european.json
+
+Market Data:
+inputs/market.json
+
+Fixings:
+inputs/fixings.json
+
+Pricer:
+inputs/pricer.json
+
+Reports:
+inputs/delta_gamma.json

@@ -1,0 +1,12 @@
+{
+    "id": "USD",
+    "settlement": {
+        "BusinessDays": {
+            "calendar": {
+                "WeekdayCalendar": []
+            },
+            "step": 2,
+            "slip_forward": true
+        }
+    }
+}

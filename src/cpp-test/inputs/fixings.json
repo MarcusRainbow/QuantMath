@@ -1,0 +1,37 @@
+{
+    "fixings_known_until": "2018-01-01",
+    "fixings_by_id": {
+        "BT.L": {
+            "fixing_by_date": [
+                [
+                    {
+                        "date": "2017-12-25",
+                        "time_of_day": "Close"
+                    },
+                    123.3
+                ],
+                [
+                    {
+                        "date": "2017-12-23",
+                        "time_of_day": "Open"
+                    },
+                    123.1
+                ],
+                [
+                    {
+                        "date": "2018-01-01",
+                        "time_of_day": "Open"
+                    },
+                    123.4
+                ],
+                [
+                    {
+                        "date": "2017-12-25",
+                        "time_of_day": "Open"
+                    },
+                    123.2
+                ]
+            ]
+        }
+    }
+}
