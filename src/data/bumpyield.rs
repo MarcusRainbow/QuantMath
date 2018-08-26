@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use data::curves::AnnualisedFlatBump;
 use data::curves::ContinuouslyCompoundedFlatBump;
 use data::bump::Bumper;
@@ -26,14 +26,14 @@ impl Bumper<RcRateCurve> for BumpYield {
     fn apply(&self, surface: RcRateCurve) -> RcRateCurve {
         match self {
             &BumpYield::FlatAnnualised { size }
-                => RcRateCurve::new(Rc::new(AnnualisedFlatBump::new(
+                => RcRateCurve::new(Arc::new(AnnualisedFlatBump::new(
                     surface.clone(), size))),
 
             // Note that an alternative methodology here would be to
             // bump the pillars. Consider this if profiling shows this
             // to be a bottleneck.
             &BumpYield::FlatContinuouslyCompounded { size }
-                => RcRateCurve::new(Rc::new(ContinuouslyCompoundedFlatBump::new(
+                => RcRateCurve::new(Arc::new(ContinuouslyCompoundedFlatBump::new(
                     surface.clone(), size)))
         }
     }

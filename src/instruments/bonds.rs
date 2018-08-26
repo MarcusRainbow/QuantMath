@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::rc::Rc;
+use std::sync::Arc;
 use instruments::Instrument;
 use instruments::Priceable;
 use instruments::PricingContext;
@@ -56,7 +56,7 @@ impl ZeroCoupon {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
-        Ok(Qrc::new(Rc::new(ZeroCoupon::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(ZeroCoupon::deserialize(de)?)))
     }
 }
 
@@ -155,17 +155,17 @@ mod tests {
     use dates::rules::BusinessDays;
     use dates::Date;
     use dates::datetime::TimeOfDay;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     fn sample_currency(step: u32) -> Currency {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
     fn sample_zero_coupon(currency: RcCurrency, step: u32) -> ZeroCoupon {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)));
         ZeroCoupon::new("GBP.2018-07-05", "OPT", currency,
             DateTime::new(Date::from_ymd(2018, 07, 03), TimeOfDay::Open),
             Date::from_ymd(2018, 07, 05), settlement)
@@ -187,7 +187,7 @@ mod tests {
                 (d + 112, 0.085), (d + 224, 0.082)];
             let c = RateCurveAct365::new(d, &points,
                 Extrap::Flat, Extrap::Flat)?;
-            Ok(RcRateCurve::new(Rc::new(c)))
+            Ok(RcRateCurve::new(Arc::new(c)))
         }
 
         fn spot(&self, _id: &str) -> Result<f64, qm::Error> {
@@ -195,12 +195,12 @@ mod tests {
         }
 
         fn forward_curve(&self, _instrument: &Instrument, 
-            _high_water_mark: Date) -> Result<Rc<Forward>, qm::Error> {
+            _high_water_mark: Date) -> Result<Arc<Forward>, qm::Error> {
             Err(qm::Error::new("Forward not supported"))
         }
 
         fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
             -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("VolSurface not supported"))
         }
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn zero_coupon() {
         let val_date = DateTime::new(Date::from_ymd(2018, 06, 05), TimeOfDay::Open);
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
         let zero = sample_zero_coupon(currency, 2);
         let context = sample_pricing_context();
         let price = zero.price(&context, val_date).unwrap();

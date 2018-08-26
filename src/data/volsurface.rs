@@ -19,7 +19,7 @@ use core::qm;
 use core::factories::TypeId;
 use core::factories::Registry;
 use core::factories::Qrc;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt::Debug;
 use std::error::Error as stdError;
 use std::f64::NAN;
@@ -36,7 +36,7 @@ use serde::de::Error as Error;
 /// to the vol surface. (For example, it may differ from underlier to 
 /// underlier.)
 
-pub trait VolSurface : esd::Serialize + TypeId + Debug {
+pub trait VolSurface : esd::Serialize + TypeId + Send + Sync + Debug {
 
     /// This is the call that implementers of VolSurface must implement to
     /// supply variances, and which decorator patterns should wrap. It has
@@ -331,11 +331,11 @@ impl VolTimeDynamics {
 
         match self {
             &VolTimeDynamics::ConstantExpiry => {
-                *surface = Qrc::new(Rc::new(ConstantExpiryTimeEvolution::new(
+                *surface = Qrc::new(Arc::new(ConstantExpiryTimeEvolution::new(
                     surface.clone(), year_fraction, target)));
             }
             &VolTimeDynamics::RollingExpiry => {
-                *surface = Qrc::new(Rc::new(RollingExpiryTimeEvolution::new(
+                *surface = Qrc::new(Arc::new(RollingExpiryTimeEvolution::new(
                     surface.clone(), year_fraction, target)));
             }
         };
@@ -357,7 +357,7 @@ impl VolForwardDynamics {
     /// Decorate or modify a vol surface to cope with a change from the forward
     /// when the surface was calibrated to the forward now.
     pub fn modify(&self, surface: &mut RcVolSurface, 
-        forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+        forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
         -> Result<(), qm::Error> {
 
         // Sticky strike surfaces are unaffected by changes to the forward.
@@ -389,7 +389,7 @@ impl VolForwardDynamics {
         }
 
         // decorator for sticky delta or other non-sticky-strike needed
-        *surface = Qrc::new(Rc::new(StickyDeltaBumpVol::new(surface.clone(), forward)));
+        *surface = Qrc::new(Arc::new(StickyDeltaBumpVol::new(surface.clone(), forward)));
  
         Ok(())
     }
@@ -471,7 +471,7 @@ impl FlatVolSurface {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
-        Ok(Qrc::new(Rc::new(FlatVolSurface::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(FlatVolSurface::deserialize(de)?)))
     }
 }
 
@@ -540,7 +540,7 @@ impl<T> TypeId for VolByProbability<T> where T: VolSmile + Clone {
     }
 }
 
-impl<T: VolSmile + Clone + Debug> VolSurface for VolByProbability<T> {
+impl<T: VolSmile + Clone + Sync + Send + Debug> VolSurface for VolByProbability<T> {
 
     fn volatilities(&self,
         date_time: DateDayFraction,
@@ -800,7 +800,7 @@ impl VolByProbabilityFlatSmile {
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
         let input = VolByProbabilityInput::<FlatSmile>::deserialize(de)?;
         match VolByProbability::new(input) {
-            Ok(surface) => Ok(Qrc::new(Rc::new(surface))),
+            Ok(surface) => Ok(Qrc::new(Arc::new(surface))),
             Err(e) => Err(esd::Error::custom(e.description()))
         }
     }
@@ -854,7 +854,7 @@ impl VolByProbabilityCubicSplineSmile {
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
         let input = VolByProbabilityInput::<CubicSplineSmile>::deserialize(de)?;
         match VolByProbability::new(input) {
-            Ok(surface) => Ok(Qrc::new(Rc::new(surface))),
+            Ok(surface) => Ok(Qrc::new(Arc::new(surface))),
             Err(e) => Err(esd::Error::custom(e.description()))
         }
     }
@@ -908,7 +908,7 @@ pub mod tests {
 
     #[test]
     fn flat_vol_surface() {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar()));
         let base_date = Date::from_ymd(2012, 05, 25);
         let base = DateDayFraction::new(base_date, 0.2);
         let expiry = DateDayFraction::new(base_date + 10, 0.9);
@@ -923,7 +923,7 @@ pub mod tests {
 
     pub fn sample_vol_surface(base: DateDayFraction) -> VolByProbabilityCubicSplineSmile {
 
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar()));
         let base_date = base.date();
  
         let d = base_date;
@@ -1014,7 +1014,7 @@ pub mod tests {
 
         // a vol surface
         let base_date = Date::from_ymd(2012, 05, 25);
-        let surface = RcVolSurface::new(Rc::new(
+        let surface = RcVolSurface::new(Arc::new(
             sample_vol_surface(DateDayFraction::new(base_date, 0.2))));
 
         // Convert the surface to a JSON string.

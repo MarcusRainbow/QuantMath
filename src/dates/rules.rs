@@ -3,7 +3,7 @@ use dates::calendar::RcCalendar;
 use core::factories::TypeId;
 use core::factories::Registry;
 use core::factories::Qrc;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt::Debug;
 use erased_serde as esd;
 use serde as sd;
@@ -14,7 +14,7 @@ use serde::Deserialize;
 /// Date rules are used for rolling out schedules of dates and for adjusting
 /// dates to move them onto business dates.
 
-pub trait DateRule : esd::Serialize + TypeId + Debug{
+pub trait DateRule : esd::Serialize + TypeId + Sync + Send + Debug {
 
     /// Applies this date rule to the given date, returning an adjusted date.
     fn apply(&self, date: Date) -> Date;
@@ -66,7 +66,7 @@ impl NullRule {
     pub fn new() -> NullRule { NullRule { } }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
-        Ok(Qrc::new(Rc::new(NullRule::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(NullRule::deserialize(de)?)))
     }
 }
 
@@ -119,7 +119,7 @@ impl BusinessDays {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
-        Ok(Qrc::new(Rc::new(BusinessDays::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(BusinessDays::deserialize(de)?)))
     }
 }
 
@@ -146,7 +146,7 @@ impl ModifiedFollowing {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
-        Ok(Qrc::new(Rc::new(ModifiedFollowing::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(ModifiedFollowing::deserialize(de)?)))
     }
 }
 
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn next_business_date() {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar{}));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar{}));
         let rule = BusinessDays::new_next(calendar);
 
         let start = Date::from_str("2017-01-01").unwrap();
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn prev_business_date() {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar{}));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar{}));
         let rule = BusinessDays::new_prev(calendar);
 
         let start = Date::from_str("2017-01-01").unwrap();
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn step_forward_business_date() {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar{}));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar{}));
         let rule = BusinessDays::new_step(calendar, 2);
 
         let start = Date::from_str("2017-01-01").unwrap();
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn step_back_business_date() {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar{}));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar{}));
         let rule = BusinessDays::new_back(calendar, 2);
 
         let start = Date::from_str("2017-01-01").unwrap();
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn modified_following() {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar{}));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar{}));
         let rule = ModifiedFollowing::new(calendar);
 
         let start1 = Date::from_str("2016-12-31").unwrap();

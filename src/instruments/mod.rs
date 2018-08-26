@@ -27,7 +27,7 @@ use core::factories::Registry;
 use core::factories::Qrc;
 use core::dedup::{Dedup, DedupControl, Drc, FromId, InstanceId};
 use math::interpolation::Interpolate;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::hash::Hash;
 use std::collections::HashMap;
 use std::cell::RefCell;
@@ -49,7 +49,7 @@ use serde_tagged::de::BoxFnSeed;
 /// and rather specious, so I have classed all tradeable instruments together,
 /// as Instrument.
 
-pub trait Instrument : esd::Serialize + TypeId + InstanceId + Debug {
+pub trait Instrument : esd::Serialize + TypeId + InstanceId + Sync + Send + Debug {
 
     /// The currency you receive when this instrument pays cashflows.
     /// For those such as equities and physically-settled options, it is
@@ -467,8 +467,7 @@ impl<'a> Forward for ForwardFromPriceable<'a> {
 /// A pricing context contains the market data needed for an instrument to
 /// price itself. As we add new types of market data, we can add new methods to
 /// this interface.
-
-pub trait PricingContext {
+pub trait PricingContext : Sync + Send {
     /// Gets the date that spot is associated with. Note this is the
     /// date when that spot value is shown on a Bloomberg screen (other
     /// financial data suppliers exist), not when the payment is made.
@@ -486,13 +485,13 @@ pub trait PricingContext {
     /// specify a high water mark, beyond which we never directly ask for
     /// forwards.
     fn forward_curve(&self, instrument: &Instrument, high_water_mark: Date)
-        -> Result<Rc<Forward>, qm::Error>;
+        -> Result<Arc<Forward>, qm::Error>;
 
     /// Gets a Vol Surface, given any instrument, for example an equity.  Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
     fn vol_surface(&self, instrument: &Instrument, high_water_mark: Date,
-        forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+        forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
          -> Result<RcVolSurface, qm::Error>;
 
     /// Gets an instantaneous correlation between two instruments. At present,

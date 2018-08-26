@@ -5,7 +5,7 @@ use data::curves::RelativeBump;
 use data::forward::log_discount_with_borrow;
 use data::forward::discount_with_borrow;
 use core::qm;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::f64::NAN;
 use std::ops::Deref;
 use serde as sd;
@@ -113,7 +113,7 @@ impl DividendStream {
            div.bump_all_relative(one_plus_bump);
         }
 
-        let bumped_yield = RcRateCurve::new(Rc::new(RelativeBump::new(divs.div_yield(), bump))); 
+        let bumped_yield = RcRateCurve::new(Arc::new(RelativeBump::new(divs.div_yield(), bump))); 
 
         DividendStream {
             dividends: bumped_divs,
@@ -129,10 +129,10 @@ impl DividendStream {
 /// Create a type RcDividendStream to allow us to implement serialization
 /// and deserialization
 #[derive(Clone, Debug)]
-pub struct RcDividendStream(Rc<DividendStream>);
+pub struct RcDividendStream(Arc<DividendStream>);
 
 impl RcDividendStream {
-    pub fn new(stream: Rc<DividendStream>) -> RcDividendStream {
+    pub fn new(stream: Arc<DividendStream>) -> RcDividendStream {
         RcDividendStream(stream)
     }
 }
@@ -157,7 +157,7 @@ impl<'de> sd::Deserialize<'de> for RcDividendStream {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: sd::Deserializer<'de> {
         let stream = DividendStream::deserialize(deserializer)?;
-        Ok(RcDividendStream::new(Rc::new(stream)))
+        Ok(RcDividendStream::new(Arc::new(stream)))
     }
 }
 
@@ -486,7 +486,7 @@ mod tests {
             (d + 365 * 5, 0.01), (d + 365 * 10, 0.015)];
         let curve = RateCurveAct365::new(d + 365 * 2, &points,
             Extrap::Zero, Extrap::Flat).unwrap();
-        let div_yield = RcRateCurve::new(Rc::new(curve));
+        let div_yield = RcRateCurve::new(Arc::new(curve));
 
         DividendStream::new(&divs, div_yield) 
     }

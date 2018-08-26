@@ -6,7 +6,7 @@ use core::qm;
 use core::factories::TypeId;
 use core::factories::Registry;
 use core::factories::Qrc;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt::Debug;
 use erased_serde as esd;
 use serde as sd;
@@ -21,7 +21,7 @@ use serde::Deserialize;
 /// calculated. It contains yields, represented by the letter r, which is
 /// a function of time such that the discount factor between time t1 and t2
 /// (fractions of a year) is exp(-r(t2) * t2) / exp(-r(t1) * t1).
-pub trait RateCurve : esd::Serialize + TypeId + Debug {
+pub trait RateCurve : esd::Serialize + TypeId + Sync + Send + Debug {
 
     /// Returns the base date
     fn base_date(&self) -> Date;
@@ -111,7 +111,7 @@ impl ZeroRateCurve {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
-        Ok(Qrc::new(Rc::new(ZeroRateCurve::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(ZeroRateCurve::deserialize(de)?)))
     }
 }
 
@@ -166,7 +166,7 @@ impl RateCurveAct365 {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
-        Ok(Qrc::new(Rc::new(RateCurveAct365::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(RateCurveAct365::deserialize(de)?)))
     }
 }
 
@@ -212,7 +212,7 @@ impl AnnualisedFlatBump {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
-        Ok(Qrc::new(Rc::new(AnnualisedFlatBump::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(AnnualisedFlatBump::deserialize(de)?)))
     }
 }
 
@@ -246,7 +246,7 @@ impl ContinuouslyCompoundedFlatBump {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
-        Ok(Qrc::new(Rc::new(ContinuouslyCompoundedFlatBump::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(ContinuouslyCompoundedFlatBump::deserialize(de)?)))
     }
 }
 
@@ -280,7 +280,7 @@ impl RelativeBump {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
-        Ok(Qrc::new(Rc::new(RelativeBump::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(RelativeBump::deserialize(de)?)))
     }
 }
 
@@ -346,10 +346,10 @@ mod tests {
         let base = Date::from_ymd(2017, 01, 01);
         let d = base;
         let points = [(d, 0.05), (d + 14, 0.08)];
-        let curve = RcRateCurve::new(Rc::new(RateCurveAct365::new(base, &points,
+        let curve = RcRateCurve::new(Arc::new(RateCurveAct365::new(base, &points,
             Extrap::Flat, Extrap::Flat).unwrap()));
         
-        let bumped = RcRateCurve::new(Rc::new(RelativeBump::new(curve, 0.01)));
+        let bumped = RcRateCurve::new(Arc::new(RelativeBump::new(curve, 0.01)));
 
         // Convert the curve to a JSON string.
         let serialized = serde_json::to_string(&bumped).unwrap();

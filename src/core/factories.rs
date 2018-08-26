@@ -1,7 +1,7 @@
 //! Technology for registering factories of types and recognising
 //! the types.
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt;
@@ -62,17 +62,17 @@ pub trait RegistrySource<T> {
 
 /// Our own reference counted type, so we can implement serialization and
 /// deserialization.
-pub struct Qrc<T: esd::Serialize + TypeId + Debug + ?Sized>(Rc<T>);
+pub struct Qrc<T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized>(Arc<T>);
 
 impl<T> Clone for Qrc<T>
-where T: esd::Serialize + TypeId + Debug + ?Sized {
+where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
     fn clone(&self) -> Qrc<T> {
         Qrc::new(self.0.clone())
     }
 }
 
 impl<T> Deref for Qrc<T> 
-where T: esd::Serialize + TypeId + Debug + ?Sized {
+where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -81,28 +81,28 @@ where T: esd::Serialize + TypeId + Debug + ?Sized {
 }
 
 impl<T> Qrc<T> 
-where T: esd::Serialize + TypeId + Debug + ?Sized {
-    pub fn new(stored: Rc<T>) -> Qrc<T> {
+where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
+    pub fn new(stored: Arc<T>) -> Qrc<T> {
         Qrc(stored)
     }
 }
 
 impl<T> TypeId for Qrc<T> 
-where T: esd::Serialize + TypeId + Debug + ?Sized {
+where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
     fn type_id(&self) -> &'static str {
         self.0.type_id()
     }
 }
 
 impl<T> Debug for Qrc<T> 
-where T: esd::Serialize + TypeId + Debug + ?Sized {
+where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
 impl<T> sd::Serialize for Qrc<T> 
-where T: esd::Serialize + TypeId + Debug + ?Sized {
+where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: sd::Serializer,
@@ -172,7 +172,7 @@ pub mod tests {
     use serde::Serialize;
     use core::dedup::{Dedup, DedupControl, Drc, InstanceId, FromId};
     use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     // An example for de-/serialization of trait objects.
     // 
@@ -244,12 +244,12 @@ pub mod tests {
     // The subtrait InstanceId is required for deduplication only.
 
     /// The trait we actually want to store as trait object.
-    pub trait Stored: esd::Serialize + TypeId + InstanceId + Debug {}
+    pub trait Stored: esd::Serialize + TypeId + InstanceId + Sync + Send + Debug {}
 
     // In this case, we also want to automatically implement it for all types which
     // meet our requirements.
     impl<T> Stored for T
-    where T: esd::Serialize + TypeId + InstanceId + Debug
+    where T: esd::Serialize + TypeId + InstanceId + Sync + Send + Debug
     {}
 
     // Now we can implement `Serialize` and `Deserialize` for our trait objects.
@@ -315,17 +315,17 @@ pub mod tests {
 
         /// Deserialize a value of type `A` as trait-object.
         pub fn a<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
-            Ok(RcStored::new(Rc::new(A::deserialize(de)?)))
+            Ok(RcStored::new(Arc::new(A::deserialize(de)?)))
         }
 
         /// Deserialize a value of type `B` as trait-object.
         pub fn b<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
-            Ok(RcStored::new(Rc::new(B::deserialize(de)?)))
+            Ok(RcStored::new(Arc::new(B::deserialize(de)?)))
         }
 
         /// Deserialize a value of type `B` as trait-object.
         pub fn c<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
-            Ok(RcStored::new(Rc::new(C::deserialize(de)?)))
+            Ok(RcStored::new(Arc::new(C::deserialize(de)?)))
         }
     }
 
@@ -333,9 +333,9 @@ pub mod tests {
     fn serde_tagged_serialize() {
 
         // Let's begin by creating our test data ...
-        let a : Rc<Stored> = Rc::new(A { foo: "bar".to_owned() });
-        let b : Rc<Stored> = Rc::new(B::Str("Hello World".to_owned()));
-        let c : Rc<Stored> = Rc::new(B::Int(42));
+        let a : Arc<Stored> = Arc::new(A { foo: "bar".to_owned() });
+        let b : Arc<Stored> = Arc::new(B::Str("Hello World".to_owned()));
+        let c : Arc<Stored> = Arc::new(B::Int(42));
 
         // ... and then transform it to trait objects.
         // We use clone here so we can later assert that de-/serialization does not
@@ -384,9 +384,9 @@ pub mod tests {
     fn serde_tagged_roundtrip() {
 
         // Let's begin by creating our test data ...
-        let a : Rc<Stored> = Rc::new(A { foo: "bar".to_owned() });
-        let b : Rc<Stored> = Rc::new(B::Str("Hello World".to_owned()));
-        let c : Rc<Stored> = Rc::new(B::Int(42));
+        let a : Arc<Stored> = Arc::new(A { foo: "bar".to_owned() });
+        let b : Arc<Stored> = Arc::new(B::Str("Hello World".to_owned()));
+        let c : Arc<Stored> = Arc::new(B::Int(42));
 
         // ... and then transform it to trait objects.
         // We use clone here so we can later assert that de-/serialization does not
@@ -563,13 +563,13 @@ pub mod tests {
     #[test]
     fn serde_tagged_dedup_roundtrip_error_if_missing() {
 
-        let a : Rc<Stored> = Rc::new(A { foo: "a".to_owned() });
+        let a : Arc<Stored> = Arc::new(A { foo: "a".to_owned() });
         let rc_a = DrcStored::new(RcStored::new(a.clone()));
-        let b : Rc<Stored> = Rc::new(B::Str("b".to_owned()));
+        let b : Arc<Stored> = Arc::new(B::Str("b".to_owned()));
         let rc_b = DrcStored::new(RcStored::new(b.clone()));
-        let c : Rc<Stored> = Rc::new(C { id: "c".to_string(), left: rc_a.clone(), right: rc_b.clone() });
+        let c : Arc<Stored> = Arc::new(C { id: "c".to_string(), left: rc_a.clone(), right: rc_b.clone() });
         let rc_c = DrcStored::new(RcStored::new(c.clone()));
-        let d : Rc<Stored> = Rc::new(C { id: "d".to_string(), left: rc_c.clone(), right: rc_c.clone() });
+        let d : Arc<Stored> = Arc::new(C { id: "d".to_string(), left: rc_c.clone(), right: rc_c.clone() });
         let rc_d = DrcStored::new(RcStored::new(d.clone()));
         
         let mut map = HashMap::new();
@@ -609,13 +609,13 @@ pub mod tests {
     fn serde_tagged_dedup_roundtrip(control: DedupControl, map: HashMap<String, DrcStored>, expected: &str) {
 
         // Let's begin by creating our test data ...
-        let a : Rc<Stored> = Rc::new(A { foo: "a".to_owned() });
+        let a : Arc<Stored> = Arc::new(A { foo: "a".to_owned() });
         let rc_a = DrcStored::new(RcStored::new(a.clone()));
-        let b : Rc<Stored> = Rc::new(B::Str("b".to_owned()));
+        let b : Arc<Stored> = Arc::new(B::Str("b".to_owned()));
         let rc_b = DrcStored::new(RcStored::new(b.clone()));
-        let c : Rc<Stored> = Rc::new(C { id: "c".to_string(), left: rc_a.clone(), right: rc_b.clone() });
+        let c : Arc<Stored> = Arc::new(C { id: "c".to_string(), left: rc_a.clone(), right: rc_b.clone() });
         let rc_c = DrcStored::new(RcStored::new(c.clone()));
-        let d : Rc<Stored> = Rc::new(C { id: "d".to_string(), left: rc_c.clone(), right: rc_c.clone() });
+        let d : Arc<Stored> = Arc::new(C { id: "d".to_string(), left: rc_c.clone(), right: rc_c.clone() });
         let rc_d = DrcStored::new(RcStored::new(d.clone()));
 
         // Now we can serialize our trait-objects.

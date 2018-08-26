@@ -170,7 +170,7 @@ impl ReportTolerances {
 
 /// A report generator performs all the calculations needed to produce a
 /// report.
-pub trait ReportGenerator : esd::Serialize + TypeId + Debug {
+pub trait ReportGenerator : esd::Serialize + TypeId + Sync + Send + Debug {
     /// Perform all the calculations, bumping, pricing and possibly cloning
     /// the input pricer to generate the result. Normally the pricer is left
     /// in the same state as it started, unless it documents otherwise.

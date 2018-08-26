@@ -16,7 +16,7 @@ use serde::Serialize;
 use serde_json as sdj;
 use risk::ReportTolerances;
 use std::io::{Read, Write};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt;
 
 /// An instrument in QuantMath represents any tradable item. At simplest, it can be
@@ -43,7 +43,7 @@ pub fn instrument_from_json(source: &mut Read,
     let currencies_map = dedup_map_from_slice(currencies);
     let instruments_map = dedup_map_from_slice(instruments);
 
-    let mut ccy = Dedup::<Currency, Rc<Currency>>::new(ccy_dedup, currencies_map);
+    let mut ccy = Dedup::<Currency, Arc<Currency>>::new(ccy_dedup, currencies_map);
     let mut opt = Dedup::<Instrument, Qrc<Instrument>>::new(instr_dedup, instruments_map);
     let instr = ccy.with(&DEDUP_CURRENCY, 
         || opt.with(&DEDUP_INSTRUMENT,

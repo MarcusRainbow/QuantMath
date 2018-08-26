@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt::Display;
 use std::fmt;
 use std::cmp::Ordering;
@@ -43,7 +43,7 @@ impl Currency {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
-        Ok(Qrc::new(Rc::new(Currency::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(Currency::deserialize(de)?)))
     }
 }
 
@@ -143,10 +143,10 @@ pub fn dependence_on_spot_discount(instrument: &Instrument,
     context.yield_curve(instrument.credit_id(), pay_date);
 }
 
-pub type RcCurrency = Drc<Currency, Rc<Currency>>;
+pub type RcCurrency = Drc<Currency, Arc<Currency>>;
 
 thread_local! {
-    pub static DEDUP_CURRENCY : RefCell<Dedup<Currency, Rc<Currency>>> 
+    pub static DEDUP_CURRENCY : RefCell<Dedup<Currency, Arc<Currency>>> 
         = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
 }
 
@@ -168,7 +168,7 @@ impl<'de> sd::Deserialize<'de> for RcCurrency {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: sd::Deserializer<'de> {
         Self::deserialize_with_dedup(deserializer, &DEDUP_CURRENCY, 
-            |d| string_or_struct::<Currency, Rc<Currency>, D>(d))
+            |d| string_or_struct::<Currency, Arc<Currency>, D>(d))
     }
 }
 
@@ -200,7 +200,7 @@ impl Equity {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
-        Ok(Qrc::new(Rc::new(Equity::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(Equity::deserialize(de)?)))
     }
 }
 
@@ -324,7 +324,7 @@ impl CreditEntity {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
-        Ok(Qrc::new(Rc::new(CreditEntity::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(CreditEntity::deserialize(de)?)))
     }
 }
 
@@ -420,17 +420,17 @@ pub mod tests {
     use dates::rules::BusinessDays;
     use dates::Date;
     use data::forward::DriftlessForward;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     pub fn sample_currency(step: u32) -> Currency {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
     pub fn sample_equity(currency: RcCurrency, name: &str, step: u32) -> Equity {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)));
         Equity::new(name, "LSE", currency, settlement)
     }
 
@@ -451,7 +451,7 @@ pub mod tests {
                 (d + 112, 0.085), (d + 224, 0.082)];
             let c = RateCurveAct365::new(d, &points,
                 Extrap::Flat, Extrap::Flat)?;
-            Ok(RcRateCurve::new(Rc::new(c)))
+            Ok(RcRateCurve::new(Arc::new(c)))
         }
 
         fn spot(&self, _id: &str) -> Result<f64, qm::Error> {
@@ -459,12 +459,12 @@ pub mod tests {
         }
 
         fn forward_curve(&self, _instrument: &Instrument, 
-            _high_water_mark: Date) -> Result<Rc<Forward>, qm::Error> {
-            Ok(Rc::new(DriftlessForward::new(self.spot)))
+            _high_water_mark: Date) -> Result<Arc<Forward>, qm::Error> {
+            Ok(Arc::new(DriftlessForward::new(self.spot)))
         }
 
         fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
             -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }
@@ -482,7 +482,7 @@ pub mod tests {
     #[test]
     fn test_equity_price_on_spot() {
         let spot = 123.4;
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
         let equity = sample_equity(currency, "BP.L", 2);
         let context = sample_pricing_context(spot);
         let val_date = DateTime::new(context.spot_date(), TimeOfDay::Open);
@@ -502,7 +502,7 @@ pub mod tests {
     #[test]
     fn test_equity_price_mismatching_dates() {
         let spot = 123.4;
-        let currency = RcCurrency::new(Rc::new(sample_currency(3)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(3)));
         let equity = sample_equity(currency, "BP.L", 3);
         let context = sample_pricing_context(spot);
         let val_date = DateTime::new(context.spot_date() + 3, TimeOfDay::Open);
