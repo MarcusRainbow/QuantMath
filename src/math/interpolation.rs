@@ -10,7 +10,7 @@ use core::qm;
 
 /// To use interpolation, the types along the x axis must be Interpolable
 
-pub trait Interpolable<T> {
+pub trait Interpolable<T> : Sync + Send {
 
     /// Expresses the difference between two points on the x-axis as a
     /// floating point number.
@@ -63,7 +63,7 @@ pub trait FlyweightInterpolate<T> where T : Interpolable<T> {
 /// Interpolation with date or number for the abscissa and number for the
 /// ordinal. In this implementation, the array of points is supplied in
 /// the constructor to the interpolation object.
-pub trait Interpolate<T> where T : Interpolable<T> {
+pub trait Interpolate<T> : Sync + Send where T : Interpolable<T> {
     fn interpolate(&self, x: T) -> Result<f64, qm::Error>;
 }
 

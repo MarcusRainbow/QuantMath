@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::rc::Rc;
+use std::sync::Arc;
 use rand;
 use rand::StdRng;
 use nalgebra::linalg::Cholesky;
@@ -60,7 +60,7 @@ impl BlackDiffusionFactory {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<MonteCarloModelFactory>, esd::Error> {
-        Ok(Qrc::new(Rc::new(BlackDiffusionFactory::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(BlackDiffusionFactory::deserialize(de)?)))
     }
 }
 

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::fmt;
@@ -19,8 +18,8 @@ use serde::de::Visitor;
 /// during serialization and deserialization.
 pub struct Dedup<T, R>
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId,
 {
     control: DedupControl,
@@ -29,8 +28,8 @@ where
 
 impl<T, R> Dedup<T, R>
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId,
 {
     pub fn new(control: DedupControl, map: HashMap<String, Drc<T, R>>) -> Self {
@@ -98,16 +97,10 @@ pub trait InstanceId {
     fn id(&self) -> &str;
 }
 
-/// Wrap a type T in a container R so it can be used in a Drp<T, R>.
+/// Wrap a type T in a container R so it can be used in a Drc<T, R>.
 /// For example, R may be an Rc or Arc
 pub trait Wrap<R> {
     fn wrap(self) -> R;
-}
-
-impl<T> Wrap<Rc<T>> for T {
-    fn wrap(self) -> Rc<T> {
-        Rc::new(self)
-    }
 }
 
 impl<T> Wrap<Arc<T>> for T {
@@ -120,14 +113,14 @@ impl<T> Wrap<Arc<T>> for T {
 /// can implement our serialize/deserialize methods on it.
 pub struct Drc<T, R>(R)
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId;
     
 impl<T, R> Drc<T, R> 
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId,
 {
     pub fn new(value: R) -> Drc<T, R> {
@@ -207,8 +200,8 @@ where
 
 impl<T, R> Clone for Drc<T, R>
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId,
 {
     fn clone(&self) -> Self {
@@ -218,8 +211,8 @@ where
 
 impl<T, R> Deref for Drc<T, R> 
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId,
 {
     type Target = T;
@@ -231,8 +224,8 @@ where
 
 impl<T, R> Debug for Drc<T, R> 
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -248,9 +241,9 @@ pub trait FromId where Self: Sized {
 // Code based on the example 'string_or_struct' given in the serde documentation
 pub fn string_or_struct<'de, T, R, D>(deserializer: D) -> Result<Drc<T, R>, D::Error>
 where
-    T: InstanceId + Wrap<R> + Debug + ?Sized,
+    T: InstanceId + Wrap<R> + Debug + Send + Sync + ?Sized,
     for<'de2> T: sd::Deserialize<'de2>,
-    R: Deref<Target = T> + Clone,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId,
     D: Deserializer<'de>,
 {
@@ -263,9 +256,9 @@ where
 
     impl<'de, T, R> Visitor<'de> for StringOrStruct<T, R>
     where
-        T: InstanceId + Wrap<R> + Debug + ?Sized,
+        T: InstanceId + Wrap<R> + Debug + Send + Sync + ?Sized,
         for<'de2> T: sd::Deserialize<'de2>,
-        R: Deref<Target = T> + Clone,
+        R: Deref<Target = T> + Clone + Send + Sync,
         Drc<T, R>: FromId,
     {
         type Value = Drc<T, R>;
@@ -307,8 +300,8 @@ where
 /// to apply equality and hash only to its id.
 pub fn dedup_map_from_slice<T, R>(slice: &[Drc<T, R>]) -> HashMap<String, Drc<T, R>>
 where
-    T: InstanceId + Debug + ?Sized,
-    R: Deref<Target = T> + Clone,
+    T: InstanceId + Debug + Send + Sync + ?Sized,
+    R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId
 {
     let mut map = HashMap::new();
@@ -331,16 +324,16 @@ mod tests {
     struct Node {
         id: String,
         data: i32,
-        left: Option<Drc<Node, Rc<Node>>>,
-        right: Option<Drc<Node, Rc<Node>>>
+        left: Option<Drc<Node, Arc<Node>>>,
+        right: Option<Drc<Node, Arc<Node>>>
     }
 
     thread_local! {
-        static DEDUP_NODE : RefCell<Dedup<Node, Rc<Node>>> 
+        static DEDUP_NODE : RefCell<Dedup<Node, Arc<Node>>> 
             = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
     }
 
-    type DrcNode = Drc<Node, Rc<Node>>;
+    type DrcNode = Drc<Node, Arc<Node>>;
 
     impl InstanceId for Node {
         fn id(&self) -> &str { &self.id }
@@ -364,7 +357,7 @@ mod tests {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where D: sd::Deserializer<'de> {
             Self::deserialize_with_dedup(deserializer, &DEDUP_NODE, 
-                |d| string_or_struct::<Node, Rc<Node>, D>(d))
+                |d| string_or_struct::<Node, Arc<Node>, D>(d))
         }
     }
 
@@ -412,10 +405,10 @@ mod tests {
     #[test]
     fn serde_dedup_error_if_missing() {
 
-        let a = DrcNode::new(Rc::new(Node { id: "a".to_string(), data: 0, left: None, right: None }));
-        let b = DrcNode::new(Rc::new(Node { id: "b".to_string(), data: 1, left: None, right: None }));
-        let c = DrcNode::new(Rc::new(Node { id: "c".to_string(), data: 2, left: Some(a.clone()), right: Some(b.clone()) }));
-        let d = DrcNode::new(Rc::new(Node { id: "d".to_string(), data: 3, left: Some(a.clone()), right: Some(b.clone()) }));
+        let a = DrcNode::new(Arc::new(Node { id: "a".to_string(), data: 0, left: None, right: None }));
+        let b = DrcNode::new(Arc::new(Node { id: "b".to_string(), data: 1, left: None, right: None }));
+        let c = DrcNode::new(Arc::new(Node { id: "c".to_string(), data: 2, left: Some(a.clone()), right: Some(b.clone()) }));
+        let d = DrcNode::new(Arc::new(Node { id: "d".to_string(), data: 3, left: Some(a.clone()), right: Some(b.clone()) }));
         
         let mut map = HashMap::new();
         map.insert("a".to_string(), a);
@@ -464,17 +457,17 @@ mod tests {
     fn test_dedup(control: DedupControl, map: HashMap<String, DrcNode>, expected: &str) {
 
         // create a sample graph
-        let a = DrcNode::new(Rc::new(Node { id: "a".to_string(), data: 0, left: None, right: None }));
-        let b = DrcNode::new(Rc::new(Node { id: "b".to_string(), data: 1, left: None, right: None }));
-        let c = DrcNode::new(Rc::new(Node { id: "c".to_string(), data: 2, left: Some(a.clone()), right: Some(b.clone()) }));
-        let d = DrcNode::new(Rc::new(Node { id: "d".to_string(), data: 3, left: Some(a.clone()), right: Some(b.clone()) }));
+        let a = DrcNode::new(Arc::new(Node { id: "a".to_string(), data: 0, left: None, right: None }));
+        let b = DrcNode::new(Arc::new(Node { id: "b".to_string(), data: 1, left: None, right: None }));
+        let c = DrcNode::new(Arc::new(Node { id: "c".to_string(), data: 2, left: Some(a.clone()), right: Some(b.clone()) }));
+        let d = DrcNode::new(Arc::new(Node { id: "d".to_string(), data: 3, left: Some(a.clone()), right: Some(b.clone()) }));
         let e = Node { id: "e".to_string(), data: 4, left: Some(c.clone()), right: Some(d.clone()) };
 
         // write it out and read it back in
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut seed = Dedup::<Node, Rc<Node>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Node, Arc<Node>>::new(control.clone(), map.clone());
             seed.with(&DEDUP_NODE, || e.serialize(&mut serializer)).unwrap();
         }
 
@@ -484,7 +477,7 @@ mod tests {
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut seed = Dedup::<Node, Rc<Node>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Node, Arc<Node>>::new(control.clone(), map.clone());
             seed.with(&DEDUP_NODE, || DrcNode::deserialize(&mut deserializer)).unwrap()
         };
 

@@ -2,7 +2,7 @@ use dates::Date;
 use dates::datetime::DateTime;
 use core::qm;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::ops::Deref;
 use serde as sd;
 
@@ -111,10 +111,10 @@ fn duplicate_fixing_curve(id: &str) -> qm::Error {
 /// Create a new type for a Rc<FixingTable> so we can implement serialize
 /// and deserialize functions for it.
 #[derive(Clone, Debug)]
-pub struct RcFixingTable(Rc<FixingTable>);
+pub struct RcFixingTable(Arc<FixingTable>);
 
 impl RcFixingTable {
-    pub fn new(table: Rc<FixingTable>) -> RcFixingTable {
+    pub fn new(table: Arc<FixingTable>) -> RcFixingTable {
         RcFixingTable(table)
     }
 }
@@ -139,7 +139,7 @@ impl<'de> sd::Deserialize<'de> for RcFixingTable {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: sd::Deserializer<'de> {
         let stream = FixingTable::deserialize(deserializer)?;
-        Ok(RcFixingTable::new(Rc::new(stream)))
+        Ok(RcFixingTable::new(Arc::new(stream)))
     }
 }
 

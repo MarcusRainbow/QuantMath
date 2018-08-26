@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::any::Any;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt;
 use math::numerics::{ApproxEq, approx_eq};
 use risk::Report;
@@ -125,7 +125,7 @@ impl DeltaGammaReportGenerator {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<ReportGenerator>, esd::Error> {
-        Ok(Qrc::new(Rc::new(DeltaGammaReportGenerator::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(DeltaGammaReportGenerator::deserialize(de)?)))
     }
 }
 
@@ -299,7 +299,7 @@ pub mod tests {
     fn serde_delta_gamma_generator_roundtrip() {
 
         // create some sample data
-        let generator = RcReportGenerator::new(Rc::new(DeltaGammaReportGenerator::new(0.01)));
+        let generator = RcReportGenerator::new(Arc::new(DeltaGammaReportGenerator::new(0.01)));
 
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&generator).unwrap();

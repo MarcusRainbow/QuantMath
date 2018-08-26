@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use std::f64::NAN;
 use instruments::Instrument;
 use instruments::RcInstrument;
@@ -244,7 +244,7 @@ impl SpotStartingEuropean {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
-        Ok(Qrc::new(Rc::new(SpotStartingEuropean::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(SpotStartingEuropean::deserialize(de)?)))
     }
 }
 
@@ -274,7 +274,7 @@ impl ForwardStartingEuropean {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
-        Ok(Qrc::new(Rc::new(ForwardStartingEuropean::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(ForwardStartingEuropean::deserialize(de)?)))
     }
 }
 
@@ -361,9 +361,9 @@ impl Instrument for SpotStartingEuropean {
                 OptionSettlement::Cash => {
                     let payment = sign * (spot_fixing - strike);
                     if payment > 0.0 {
-                        decomp.push((payment, RcInstrument::new(Qrc::new(Rc::new(ZeroCoupon::new(
+                        decomp.push((payment, RcInstrument::new(Qrc::new(Arc::new(ZeroCoupon::new(
                             &payment_id, self.credit_id(), 
-                            RcCurrency::new(Rc::new(self.payoff_currency().clone())),
+                            RcCurrency::new(Arc::new(self.payoff_currency().clone())),
                             self.vanilla.expiry, 
                             self.vanilla.pay_date,
                             self.vanilla.settlement.clone()))))));
@@ -372,9 +372,9 @@ impl Instrument for SpotStartingEuropean {
 
                 OptionSettlement::Physical => {
                     if sign * (spot_fixing - strike) > 0.0 {
-                        decomp.push((-strike * sign, RcInstrument::new(Qrc::new(Rc::new(ZeroCoupon::new(
+                        decomp.push((-strike * sign, RcInstrument::new(Qrc::new(Arc::new(ZeroCoupon::new(
                             &payment_id, self.credit_id(), 
-                            RcCurrency::new(Rc::new(self.payoff_currency().clone())), 
+                            RcCurrency::new(Arc::new(self.payoff_currency().clone())), 
                             self.vanilla.expiry,
                             self.vanilla.pay_date,
                             self.vanilla.settlement.clone()))))));
@@ -430,7 +430,7 @@ impl Instrument for ForwardStartingEuropean {
             if let Some(_) = further {
                 Ok(further)
             } else {
-                decomp.push((1.0, RcInstrument::new(Qrc::new(Rc::new(spot_starting)))));
+                decomp.push((1.0, RcInstrument::new(Qrc::new(Arc::new(spot_starting)))));
                 Ok(Some(decomp))
             }
         } else {
@@ -486,12 +486,12 @@ impl MonteCarloPriceable for SpotStartingEuropean {
         output.observation(&self.vanilla.underlying, self.vanilla.expiry_time);
 
         // TODO this feels inefficient and ugly
-        let currency = RcCurrency::new(Rc::new(self.payoff_currency().clone()));
+        let currency = RcCurrency::new(Arc::new(self.payoff_currency().clone()));
 
         // For the purposes of Monte-Carlo valuation we treat all vanillas as
         // if they paid cash at the pay date. (Physically settled vanillas pay
         // stock as well, but that does not affect the price before expiry.)
-        let payment : RcInstrument = RcInstrument::new(Qrc::new(Rc::new(
+        let payment : RcInstrument = RcInstrument::new(Qrc::new(Arc::new(
             ZeroCoupon::new(&format!("{}:Expiry", self.vanilla.id),
             &self.vanilla.credit_id, currency, self.vanilla.expiry, self.vanilla.pay_date,
             self.vanilla.settlement.clone()))));
@@ -552,12 +552,12 @@ impl MonteCarloPriceable for ForwardStartingEuropean {
         output.observation(&self.vanilla.underlying, self.vanilla.expiry_time);
 
         // TODO this feels inefficient and ugly
-        let currency = RcCurrency::new(Rc::new(self.payoff_currency().clone()));
+        let currency = RcCurrency::new(Arc::new(self.payoff_currency().clone()));
 
         // For the purposes of Monte-Carlo valuation we treat all vanillas as
         // if they paid cash at the pay date. (Physically settled vanillas pay
         // stock as well, but that does not affect the price before expiry.)
-        let payment : RcInstrument = RcInstrument::new(Qrc::new(Rc::new(
+        let payment : RcInstrument = RcInstrument::new(Qrc::new(Arc::new(
             ZeroCoupon::new(&format!("{}:Expiry", self.vanilla.id),
             &self.vanilla.credit_id, currency, self.vanilla.expiry, self.vanilla.pay_date,
             self.vanilla.settlement.clone()))));
@@ -651,7 +651,7 @@ mod tests {
                 (d + 112, 0.085), (d + 224, 0.082)];
             let c = RateCurveAct365::new(d, &points,
                 Extrap::Flat, Extrap::Flat)?;
-            Ok(RcRateCurve::new(Rc::new(c)))
+            Ok(RcRateCurve::new(Arc::new(c)))
         }
 
         fn spot(&self, id: &str) -> Result<f64, qm::Error> {
@@ -660,7 +660,7 @@ mod tests {
         }
 
         fn forward_curve(&self, instrument: &Instrument, 
-            _high_water_mark: Date) -> Result<Rc<Forward>, qm::Error> {
+            _high_water_mark: Date) -> Result<Arc<Forward>, qm::Error> {
  
             print!("forward for {}", instrument.id());
 
@@ -672,18 +672,18 @@ mod tests {
             let cs = Box::new(CubicSpline::new(&points,
                 Extrap::Natural, Extrap::Natural).unwrap());
             let fwd = InterpolatedForward::new(cs);
-            Ok(Rc::new(fwd))
+            Ok(Arc::new(fwd))
         }
 
         fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
             -> Result<RcVolSurface, qm::Error> {
 
-            let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
+            let calendar = RcCalendar::new(Arc::new(WeekdayCalendar()));
             let base_date = Date::from_ymd(2018, 05, 30);
             let base = DateDayFraction::new(base_date, 0.2);
             let vol = FlatVolSurface::new(0.3, calendar, base);
-            Ok(RcVolSurface::new(Rc::new(vol)))
+            Ok(RcVolSurface::new(Arc::new(vol)))
         }
 
         fn correlation(&self, _first: &Instrument, _second: &Instrument)
@@ -875,8 +875,8 @@ mod tests {
     fn check_european_value(spot: f64, strike: f64, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
-        let equity = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, "BP.L", 2))));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
+        let equity = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency, "BP.L", 2))));
         let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = SpotStartingEuropean::new("SampleEuropean", "OPT",
@@ -892,11 +892,11 @@ mod tests {
     fn check_basket_european_value(spot: f64, strike: f64, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
-        let az = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "AZ.L", 2))));
-        let bp = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "BP.L", 2))));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
+        let az = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "AZ.L", 2))));
+        let bp = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "BP.L", 2))));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
-        let ul = RcInstrument::new(Qrc::new(Rc::new(Basket::new(
+        let ul = RcInstrument::new(Qrc::new(Arc::new(Basket::new(
             "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap())));
         let settlement = ul.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
@@ -914,8 +914,8 @@ mod tests {
         strike_date: DateTime, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
-        let equity = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, "BP.L", 2))));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
+        let equity = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency, "BP.L", 2))));
         let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
@@ -932,11 +932,11 @@ mod tests {
         strike_date: DateTime, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
-        let az = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "AZ.L", 2))));
-        let bp = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "BP.L", 2))));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
+        let az = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "AZ.L", 2))));
+        let bp = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "BP.L", 2))));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
-        let ul = RcInstrument::new(Qrc::new(Rc::new(Basket::new(
+        let ul = RcInstrument::new(Qrc::new(Arc::new(Basket::new(
             "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap())));
         let settlement = ul.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
@@ -954,8 +954,8 @@ mod tests {
         strike_date: DateTime, expiry: DateTime,
         put_or_call: PutOrCall, expected: f64) {
 
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
-        let equity = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, "BP.L", 2))));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
+        let equity = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency, "BP.L", 2))));
         let settlement = equity.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
         let european = ForwardStartingEuropean::new("SampleEuropean", "OPT",
@@ -987,11 +987,11 @@ mod tests {
             Date::from_ymd(2018, 06, 08), TimeOfDay::Close);
         let expiry = DateTime::new(
             Date::from_ymd(2018, 12, 01), TimeOfDay::Close);
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
-        let az = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "AZ.L", 2))));
-        let bp = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "BP.L", 2))));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
+        let az = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "AZ.L", 2))));
+        let bp = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "BP.L", 2))));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
-        let ul = RcInstrument::new(Qrc::new(Rc::new(Basket::new(
+        let ul = RcInstrument::new(Qrc::new(Arc::new(Basket::new(
             "basket", az.credit_id(), currency.clone(), az.settlement().clone(), basket).unwrap())));
         let settlement = ul.settlement().clone();
         let cash_or_physical = OptionSettlement::Cash;
@@ -1262,7 +1262,7 @@ mod tests {
 
     #[test]
     fn european_tagged_serde_dedup_error_if_missing() {
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
         let mut map = HashMap::new();
         map.insert("GBP".to_string(), currency);
 
@@ -1373,13 +1373,13 @@ mod tests {
         let price = european.price(&context, val_date).unwrap();
 
         // Serialize to a JSON string.
-        let instrument = RcInstrument::new(Qrc::new(Rc::new(european)));
+        let instrument = RcInstrument::new(Qrc::new(Arc::new(european)));
 
         // write it out and read it back in
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut seed = Dedup::<Currency, Rc<Currency>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Currency, Arc<Currency>>::new(control.clone(), map.clone());
             seed.with(&DEDUP_CURRENCY, || instrument.serialize(&mut serializer)).unwrap();
         }
 
@@ -1389,7 +1389,7 @@ mod tests {
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut seed = Dedup::<Currency, Rc<Currency>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Currency, Arc<Currency>>::new(control.clone(), map.clone());
             seed.with(&DEDUP_CURRENCY, || RcInstrument::deserialize(&mut deserializer)).unwrap()
         };
 
@@ -1851,13 +1851,13 @@ mod tests {
 
     #[test]
     fn basket_tagged_serde_dedup_error_if_missing() {
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
         let mut currencies = HashMap::new();
         currencies.insert("GBP".to_string(), currency);
 
-        let european1 = RcInstrument::new(Qrc::new(Rc::new(
+        let european1 = RcInstrument::new(Qrc::new(Arc::new(
             sample_forward_starting_european(1.15, "Option1"))));
-        let european2 = RcInstrument::new(Qrc::new(Rc::new(
+        let european2 = RcInstrument::new(Qrc::new(Arc::new(
             sample_forward_starting_european(0.85, "Option2"))));
         let mut instruments = HashMap::new();
         instruments.insert("Option1".to_string(), european1);
@@ -1899,12 +1899,12 @@ mod tests {
         // and the deduplication of the shared components.
 
         let spot = 100.0;
-        let european1 = RcInstrument::new(Qrc::new(Rc::new(
+        let european1 = RcInstrument::new(Qrc::new(Arc::new(
             sample_forward_starting_european(1.15, "Option1"))));
-        let european2 = RcInstrument::new(Qrc::new(Rc::new(
+        let european2 = RcInstrument::new(Qrc::new(Arc::new(
             sample_forward_starting_european(0.85, "Option2"))));
         let basket = vec![(0.4f64, european1.clone()), (0.6f64, european2.clone())];
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
 
         let option_basket = Basket::new(
             "OptionBasket", european1.credit_id(), currency, 
@@ -1919,7 +1919,7 @@ mod tests {
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut ccy_seed = Dedup::<Currency, Rc<Currency>>::new(control.clone(), currencies.clone());
+            let mut ccy_seed = Dedup::<Currency, Arc<Currency>>::new(control.clone(), currencies.clone());
             let mut opt_seed = Dedup::<Instrument, Qrc<Instrument>>::new(control.clone(), instruments.clone());
             ccy_seed.with(&DEDUP_CURRENCY, 
                 || opt_seed.with(&DEDUP_INSTRUMENT,
@@ -1932,7 +1932,7 @@ mod tests {
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut ccy_seed = Dedup::<Currency, Rc<Currency>>::new(control.clone(), currencies.clone());
+            let mut ccy_seed = Dedup::<Currency, Arc<Currency>>::new(control.clone(), currencies.clone());
             let mut opt_seed = Dedup::<Instrument, Qrc<Instrument>>::new(control.clone(), instruments.clone());
             ccy_seed.with(&DEDUP_CURRENCY, 
                 || opt_seed.with(&DEDUP_INSTRUMENT,

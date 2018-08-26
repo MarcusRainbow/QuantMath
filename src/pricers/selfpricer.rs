@@ -1,5 +1,5 @@
 use core::qm;
-use std::rc::Rc;
+use std::sync::Arc;
 use instruments::RcInstrument;
 use instruments::PricingContext;
 use instruments::DependencyContext;
@@ -47,7 +47,7 @@ impl SelfPricerFactory {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<PricerFactory>, esd::Error> {
-        Ok(Qrc::new(Rc::new(SelfPricerFactory::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(SelfPricerFactory::deserialize(de)?)))
     }
 }
 
@@ -89,7 +89,7 @@ impl SelfPricer {
 
         // Create a cached pricing context, prefetching the data to price them
         let context = PricingContextPrefetch::new(&*market_data,
-            Rc::new(dependencies))?;
+            Arc::new(dependencies))?;
 
         Ok(SelfPricer { instruments: instruments, context: context })
     }
@@ -161,7 +161,7 @@ impl TimeBumpable for SelfPricer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
+    use std::sync::Arc;
     use dates::Date;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
@@ -190,9 +190,9 @@ mod tests {
     #[test]
     fn self_price_european_bumped_price() {
 
-        let market_data = RcMarketData::new(Rc::new(sample_market_data()));
+        let market_data = RcMarketData::new(Arc::new(sample_market_data()));
         let instrument = RcInstrument::new(Qrc::new(sample_european()));
-        let fixings = RcFixingTable::new(Rc::new(sample_fixings()));
+        let fixings = RcFixingTable::new(Arc::new(sample_fixings()));
 
         let factory = SelfPricerFactory::new();
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
@@ -274,9 +274,9 @@ mod tests {
     #[test]
     fn self_price_forward_european_time_bumped() {
 
-        let market_data = RcMarketData::new(Rc::new(sample_market_data()));
+        let market_data = RcMarketData::new(Arc::new(sample_market_data()));
         let instrument = RcInstrument::new(Qrc::new(sample_forward_european()));
-        let fixings = RcFixingTable::new(Rc::new(sample_fixings()));
+        let fixings = RcFixingTable::new(Arc::new(sample_fixings()));
 
         let factory = SelfPricerFactory::new();
         let mut pricer = factory.new(instrument, fixings, market_data).unwrap();
@@ -335,7 +335,7 @@ mod tests {
     fn serde_self_pricer_roundtrip() {
 
         // create some sample data
-        let factory = RcPricerFactory::new(Rc::new(SelfPricerFactory::new()));
+        let factory = RcPricerFactory::new(Arc::new(SelfPricerFactory::new()));
 
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&factory).unwrap();

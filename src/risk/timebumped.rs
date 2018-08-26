@@ -8,7 +8,7 @@ use risk::ApproxEqReport;
 use risk::bumptime::BumpTime;
 use risk::ReportTolerances;
 use std::any::Any;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt;
 use math::numerics::{ApproxEq, approx_eq};
 use core::qm;
@@ -109,7 +109,7 @@ impl TimeBumpedReportGenerator {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<ReportGenerator>, esd::Error> {
-        Ok(Qrc::new(Rc::new(TimeBumpedReportGenerator::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(TimeBumpedReportGenerator::deserialize(de)?)))
     }
 }
 
@@ -183,8 +183,8 @@ mod tests {
         let theta_date = pricer.as_bumpable().context().spot_date() + 1;
         let bump = BumpTime::new(theta_date, theta_date, SpotDynamics::StickyForward);
         let mut generator = TimeBumpedReportGenerator::new(bump);
-        generator.add(RcReportGenerator::new(Rc::new(DeltaGammaReportGenerator::new(0.01))));
-        generator.add(RcReportGenerator::new(Rc::new(VegaVolgaReportGenerator::new(BumpVol::new_flat_additive(0.01)))));
+        generator.add(RcReportGenerator::new(Arc::new(DeltaGammaReportGenerator::new(0.01))));
+        generator.add(RcReportGenerator::new(Arc::new(VegaVolgaReportGenerator::new(BumpVol::new_flat_additive(0.01)))));
         let mut save = pricer.as_bumpable().new_saveable();
         let report = generator.generate(&mut *pricer, &mut *save, unbumped).unwrap();
         let results = report.as_any().downcast_ref::<TimeBumpedReport>().unwrap();

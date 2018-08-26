@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use data::volsurface::VolSurface;
 use data::volsurface::RcVolSurface;
 use data::forward::Forward;
@@ -35,7 +35,7 @@ impl ConstantExpiryTimeEvolution {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
-        Ok(Qrc::new(Rc::new(ConstantExpiryTimeEvolution::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(ConstantExpiryTimeEvolution::deserialize(de)?)))
     }
 }
 
@@ -107,7 +107,7 @@ impl RollingExpiryTimeEvolution {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
-        Ok(Qrc::new(Rc::new(RollingExpiryTimeEvolution::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(RollingExpiryTimeEvolution::deserialize(de)?)))
     }
 }
 
@@ -180,7 +180,7 @@ impl ParallelBumpVol {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
-        Ok(Qrc::new(Rc::new(ParallelBumpVol::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(ParallelBumpVol::deserialize(de)?)))
     }
 }
 
@@ -247,7 +247,7 @@ impl TimeScaledBumpVol {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
-        Ok(Qrc::new(Rc::new(TimeScaledBumpVol::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(TimeScaledBumpVol::deserialize(de)?)))
     }
 }
 
@@ -300,7 +300,7 @@ impl VolSurface for TimeScaledBumpVol {
 pub struct StickyDeltaBumpVol {
     base_vol: RcVolSurface,
     #[serde(skip)]
-    bumped_forward: Rc<Forward>
+    bumped_forward: Arc<Forward>
 }
 
 impl TypeId for StickyDeltaBumpVol {
@@ -308,7 +308,7 @@ impl TypeId for StickyDeltaBumpVol {
 }
 
 impl StickyDeltaBumpVol {
-    pub fn new(base_vol: RcVolSurface, bumped_forward: Rc<Forward>)
+    pub fn new(base_vol: RcVolSurface, bumped_forward: Arc<Forward>)
         -> StickyDeltaBumpVol {
         StickyDeltaBumpVol { base_vol: base_vol, 
             bumped_forward: bumped_forward }
@@ -401,7 +401,7 @@ mod tests {
     fn constant_expiry_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 2.0 / 252.0;
         let bumped_base = base_date + 2;
         let bumped = ConstantExpiryTimeEvolution::new(unbumped.clone(), bump,
@@ -429,7 +429,7 @@ mod tests {
         // to do the modification. Note that we add four days because 
         // 2012-05-25 is a Friday and we want to add two business days.
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let dynamics = VolTimeDynamics::ConstantExpiry;
         let mut bumped = unbumped.clone();
         dynamics.modify(&mut bumped, base_date.date() + 4).unwrap();
@@ -457,7 +457,7 @@ mod tests {
     fn rolling_expiry_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
-        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 5.0 / 252.0;
         let bumped = RollingExpiryTimeEvolution::new(unbumped.clone(), bump,
             base_date + 7);
@@ -489,7 +489,7 @@ mod tests {
         // same as the previous test, but this time we use the dynamics enum
         // to do the modification
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
-        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let dynamics = VolTimeDynamics::RollingExpiry;
         let mut bumped = unbumped.clone();
         dynamics.modify(&mut bumped, base_date.date() + 7).unwrap();
@@ -519,7 +519,7 @@ mod tests {
     fn parallel_bumped_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 0.01;
         let bumped = ParallelBumpVol::new(unbumped.clone(), bump);
 
@@ -540,7 +540,7 @@ mod tests {
     fn scaled_bumped_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
-        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 0.01;
         let floor = 1.0 / 12.0;
         let bumped = TimeScaledBumpVol::new(unbumped.clone(), bump, floor);
@@ -563,7 +563,7 @@ mod tests {
     fn sticky_delta_bumped_vol_surface() {
 
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
-        let unbumped = RcVolSurface::new(Rc::new(sample_vol_surface(base_date)));
+        let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
     
         // these points are 10% larger than those in the sample surface
         let d = base_date.date();
@@ -571,7 +571,7 @@ mod tests {
             (d+120, 99.0), (d+240, 98.89), (d+480, 98.78), (d+960, 98.78)];
         let cs = Box::new(Linear::new(&points,
             Extrap::Natural, Extrap::Natural).unwrap());
-        let fwd = Rc::new(InterpolatedForward::new(cs));
+        let fwd = Arc::new(InterpolatedForward::new(cs));
 
         let bumped = StickyDeltaBumpVol::new(unbumped.clone(), fwd);
 

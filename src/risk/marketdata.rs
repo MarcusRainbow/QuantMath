@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::any::Any;
 use std::ops::Deref;
 use core::qm;
@@ -137,10 +137,10 @@ impl MarketData {
 /// Create a new type for a Rc<MarketData> so we can implement serialize
 /// and deserialize functions for it.
 #[derive(Clone, Debug)]
-pub struct RcMarketData(Rc<MarketData>);
+pub struct RcMarketData(Arc<MarketData>);
 
 impl RcMarketData {
-    pub fn new(table: Rc<MarketData>) -> RcMarketData {
+    pub fn new(table: Arc<MarketData>) -> RcMarketData {
         RcMarketData(table)
     }
 }
@@ -166,7 +166,7 @@ impl<'de> sd::Deserialize<'de> for RcMarketData {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: sd::Deserializer<'de> {
         let md = MarketData::deserialize(deserializer)?;
-        Ok(RcMarketData::new(Rc::new(md)))
+        Ok(RcMarketData::new(Arc::new(md)))
     }
 }
 
@@ -186,7 +186,7 @@ impl PricingContext for MarketData {
     }
 
     fn forward_curve(&self, instrument: &Instrument, high_water_mark: Date)
-        -> Result<Rc<Forward>, qm::Error> {
+        -> Result<Arc<Forward>, qm::Error> {
 
         // This assumes the instrument is an equity. Need handling for other
         // types of underlying that may not have dividends or borrow, or may
@@ -206,14 +206,14 @@ impl PricingContext for MarketData {
         let settlement = instrument.settlement().clone();
         let forward = EquityForward::new(self.spot_date, spot, settlement,
             yield_curve, borrow, &*divs, high_water_mark)?;
-        Ok(Rc::new(forward))
+        Ok(Arc::new(forward))
     }
 
     /// Gets a Vol Surface, given any instrument, for example an equity.  Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
     fn vol_surface(&self, instrument: &Instrument, _high_water_mark: Date,
-        forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+        forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
          -> Result<RcVolSurface, qm::Error> {
 
         let id = instrument.id();
@@ -388,7 +388,7 @@ pub mod tests {
     use super::*;
     use instruments::assets::Currency;
     use instruments::assets::RcCurrency;
-    use std::rc::Rc;
+    use std::sync::Arc;
     use dates::datetime::DateTime;
     use dates::datetime::TimeOfDay;
     use dates::datetime::DateDayFraction;
@@ -418,14 +418,14 @@ pub mod tests {
     use serde_json;
 
     pub fn sample_currency(step: u32) -> Currency {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
     pub fn sample_settlement(step: u32) -> RcDateRule {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)))
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)))
     }
 
     pub fn sample_equity(currency: RcCurrency, step: u32) -> Equity {
@@ -433,22 +433,22 @@ pub mod tests {
         Equity::new("BP.L", "LSE", currency, settlement)
     }
 
-    pub fn sample_european() -> Rc<SpotStartingEuropean> {
+    pub fn sample_european() -> Arc<SpotStartingEuropean> {
 
         let strike = 100.0;
         let put_or_call = PutOrCall::Call;
         let expiry = DateTime::new(
             Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, 2))));
+        let equity = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency, 2))));
         let european = SpotStartingEuropean::new("SampleSpotEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike, put_or_call, OptionSettlement::Cash).unwrap();
-        Rc::new(european)
+        Arc::new(european)
     }
 
-    pub fn sample_forward_european() -> Rc<ForwardStartingEuropean> {
+    pub fn sample_forward_european() -> Arc<ForwardStartingEuropean> {
 
         let strike_fraction = 0.95;
         let strike_date = DateTime::new(
@@ -456,13 +456,13 @@ pub mod tests {
         let put_or_call = PutOrCall::Call;
         let expiry = DateTime::new(
             Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, 2))));
+        let equity = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency, 2))));
         let european = ForwardStartingEuropean::new("SampleForwardEuropean", "OPT",
             equity.clone(), settlement, expiry,
             strike_fraction, strike_date, put_or_call, OptionSettlement::Cash).unwrap();
-        Rc::new(european)
+        Arc::new(european)
     }
 
     pub fn create_sample_divstream() -> RcDividendStream {
@@ -481,16 +481,16 @@ pub mod tests {
             (d + 365 * 5, 0.01), (d + 365 * 10, 0.015)];
         let curve = RateCurveAct365::new(d + 365 * 2, &points,
             Extrap::Zero, Extrap::Flat).unwrap();
-        let div_yield = RcRateCurve::new(Rc::new(curve));
+        let div_yield = RcRateCurve::new(Arc::new(curve));
 
-        RcDividendStream::new(Rc::new(DividendStream::new(&divs, div_yield)))
+        RcDividendStream::new(Arc::new(DividendStream::new(&divs, div_yield)))
     }
 
     pub fn create_sample_rate() -> RcRateCurve {
         let d = Date::from_ymd(2016, 12, 30);
         let rate_points = [(d, 0.05), (d + 14, 0.08), (d + 182, 0.09),
             (d + 364, 0.085), (d + 728, 0.082)];
-        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &rate_points,
+        RcRateCurve::new(Arc::new(RateCurveAct365::new(d, &rate_points,
             Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
@@ -498,15 +498,15 @@ pub mod tests {
         let d = Date::from_ymd(2016, 12, 30);
         let borrow_points = [(d, 0.01), (d + 196, 0.012),
             (d + 364, 0.0125), (d + 728, 0.012)];
-        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &borrow_points,
+        RcRateCurve::new(Arc::new(RateCurveAct365::new(d, &borrow_points,
             Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
     pub fn create_sample_flat_vol() -> RcVolSurface {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar()));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar()));
         let base_date = Date::from_ymd(2016, 12, 30);
         let base = DateDayFraction::new(base_date, 0.2);
-        RcVolSurface::new(Rc::new(FlatVolSurface::new(0.3, calendar, base)))
+        RcVolSurface::new(Arc::new(FlatVolSurface::new(0.3, calendar, base)))
     }
 
     pub fn sample_market_data() -> MarketData {

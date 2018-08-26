@@ -10,7 +10,7 @@ use core::qm;
 /// Forward curve. This represents the expectation value of some asset over
 /// time. It is implemented in different ways for futures (generally driftless)
 /// equities and other assets.
-pub trait Forward : Interpolate<Date> {
+pub trait Forward : Interpolate<Date> + Sync + Send {
 
     /// Allows this forward to be treated as an interpolator
     fn as_interp(&self) -> &Interpolate<Date>;
@@ -185,7 +185,7 @@ pub fn log_discount_with_borrow(rate: &RateCurve, borrow: &RateCurve,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
+    use std::sync::Arc;
     use math::numerics::approx_eq;
     use math::interpolation::Extrap;
     use math::interpolation::CubicSpline;
@@ -228,8 +228,8 @@ mod tests {
         let divs = create_sample_divstream();
         let rate = create_sample_rate();
         let borrow = create_sample_borrow();
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar{}));
-        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, 2)));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar{}));
+        let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, 2)));
 
         let fwd = EquityForward::new(d, spot, settlement, rate, borrow, &divs,
             d + 1500).unwrap();
@@ -269,7 +269,7 @@ mod tests {
             (d + 365 * 5, 0.01), (d + 365 * 10, 0.015)];
         let curve = RateCurveAct365::new(d + 365 * 2, &points,
             Extrap::Zero, Extrap::Flat).unwrap();
-        let div_yield = RcRateCurve::new(Rc::new(curve));
+        let div_yield = RcRateCurve::new(Arc::new(curve));
 
         DividendStream::new(&divs, div_yield)
     }
@@ -278,7 +278,7 @@ mod tests {
         let d = Date::from_ymd(2016, 12, 30);
         let rate_points = [(d, 0.05), (d + 14, 0.08), (d + 182, 0.09),
             (d + 364, 0.085), (d + 728, 0.082)];
-        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &rate_points,
+        RcRateCurve::new(Arc::new(RateCurveAct365::new(d, &rate_points,
             Extrap::Flat, Extrap::Flat).unwrap()))
     }
 
@@ -286,7 +286,7 @@ mod tests {
         let d = Date::from_ymd(2016, 12, 30);
         let borrow_points = [(d, 0.01), (d + 196, 0.012),
             (d + 364, 0.0125), (d + 728, 0.012)];
-        RcRateCurve::new(Rc::new(RateCurveAct365::new(d, &borrow_points,
+        RcRateCurve::new(Arc::new(RateCurveAct365::new(d, &borrow_points,
             Extrap::Flat, Extrap::Flat).unwrap()))
     }
 

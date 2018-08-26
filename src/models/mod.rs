@@ -21,7 +21,7 @@ use std::fmt::Debug;
 
 /// Interface that must be implemented by a model factory in order to support
 /// Monte-Carlo pricing.
-pub trait MonteCarloModelFactory : esd::Serialize + TypeId + Debug {
+pub trait MonteCarloModelFactory : esd::Serialize + TypeId + Sync + Send + Debug {
  
     /// Given a timeline (which also specifies the underlyings we need to
     /// evolve), and a pricing context, create a Monte-Carlo model.

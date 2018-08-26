@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::any::Any;
 use std::ops::Deref;
@@ -25,8 +25,8 @@ use core::qm;
 #[derive(Clone)]
 pub struct PricingContextPrefetch {
     context: MarketData,
-    dependencies: Rc<DependencyCollector>,
-    forward_curves: HashMap<String, Rc<Forward>>,
+    dependencies: Arc<DependencyCollector>,
+    forward_curves: HashMap<String, Arc<Forward>>,
     vol_surfaces: HashMap<String, RcVolSurface>,
 }
 
@@ -38,7 +38,7 @@ impl PricingContextPrefetch {
     /// immutable.
     pub fn new(
         context: &MarketData,
-        dependencies: Rc<DependencyCollector>)
+        dependencies: Arc<DependencyCollector>)
         -> Result<PricingContextPrefetch, qm::Error> {
 
         // prefetch the forward curves and vol surfaces
@@ -70,7 +70,7 @@ impl PricingContextPrefetch {
     pub fn refetch(&mut self, id: &str,
         bumped_forward: bool,
         bumped_vol: bool,
-        saved_forward_curves: Option<&mut HashMap<String, Rc<Forward>>>,
+        saved_forward_curves: Option<&mut HashMap<String, Arc<Forward>>>,
         saved_vol_surfaces: Option<&mut HashMap<String, RcVolSurface>>)
         -> Result<bool, qm::Error> {
 
@@ -139,8 +139,8 @@ impl PricingContextPrefetch {
 
 fn walk_dependencies(
     context: &MarketData,
-    dependencies: &Rc<DependencyCollector>,
-    forward_curves: &mut HashMap<String, Rc<Forward>>,
+    dependencies: &Arc<DependencyCollector>,
+    forward_curves: &mut HashMap<String, Arc<Forward>>,
     vol_surfaces: &mut HashMap<String, RcVolSurface>)
     -> Result<(), qm::Error> {
 
@@ -186,7 +186,7 @@ impl PricingContext for PricingContextPrefetch {
     }
 
     fn forward_curve(&self, instrument: &Instrument, _high_water_mark: Date)
-        -> Result<Rc<Forward>, qm::Error> {
+        -> Result<Arc<Forward>, qm::Error> {
         find_cached_data(instrument.id(), &self.forward_curves, "Forward")
     }
 
@@ -194,7 +194,7 @@ impl PricingContext for PricingContextPrefetch {
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
     fn vol_surface(&self, instrument: &Instrument, _high_water_mark: Date,
-        _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+        _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
         -> Result<RcVolSurface, qm::Error> {
         find_cached_data(instrument.id(), &self.vol_surfaces, "Vol Surface")
     }
@@ -233,7 +233,7 @@ impl Bumpable for PricingContextPrefetch {
         let saved = to_saved(any_saved)?;
         let (saved_data, saved_forward_curves, saved_vol_surfaces) 
             : (Option<&mut Saveable>
-            , Option<&mut HashMap<String, Rc<Forward>>>
+            , Option<&mut HashMap<String, Arc<Forward>>>
             , Option<&mut HashMap<String, RcVolSurface>>)
             = if let Some(s) = saved {
             (Some(&mut s.saved_data), Some(&mut s.forward_curves), Some(&mut s.vol_surfaces))
@@ -346,7 +346,7 @@ fn to_saved(opt_any_saved: Option<&mut Saveable>)
 /// can be restored later on.
 pub struct SavedPrefetch {
     saved_data: SavedData,
-    forward_curves: HashMap<String, Rc<Forward>>,
+    forward_curves: HashMap<String, Arc<Forward>>,
     vol_surfaces: HashMap<String, RcVolSurface>
 }
 
@@ -379,7 +379,7 @@ impl Saveable for SavedPrefetch {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use std::rc::Rc;
+    use std::sync::Arc;
     use instruments::DependencyContext;
     use instruments::Priceable;
     use instruments::RcInstrument;
@@ -395,11 +395,11 @@ pub mod tests {
     use core::factories::Qrc;
 
     pub fn create_dependencies(instrument: &RcInstrument, spot_date: Date)
-        -> Rc<DependencyCollector> {
+        -> Arc<DependencyCollector> {
 
         let mut collector = DependencyCollector::new(spot_date);
         collector.spot(instrument);
-        Rc::new(collector)
+        Arc::new(collector)
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::any::Any;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt;
 use math::numerics::{ApproxEq, approx_eq};
 use risk::Report;
@@ -134,7 +134,7 @@ impl VegaVolgaReportGenerator {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<ReportGenerator>, esd::Error> {
-        Ok(Qrc::new(Rc::new(VegaVolgaReportGenerator::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(VegaVolgaReportGenerator::deserialize(de)?)))
     }
 }
 

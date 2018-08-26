@@ -209,17 +209,17 @@ mod tests {
     use instruments::options::OptionSettlement;
     use dates::rules::RcDateRule;
     use core::factories::Qrc;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     fn sample_currency(step: u32) -> Currency {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        let settlement = RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)));
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)));
         Currency::new("GBP", settlement)
     }
 
     fn sample_settlement(step: u32) -> RcDateRule {
-        let calendar = RcCalendar::new(Rc::new(WeekdayCalendar::new()));
-        RcDateRule::new(Rc::new(BusinessDays::new_step(calendar, step)))
+        let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
+        RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)))
     }
 
     fn sample_equity(currency: RcCurrency, step: u32) -> Equity {
@@ -235,14 +235,14 @@ mod tests {
         let short_expiry = DateTime::new(d+70, TimeOfDay::Close);
         let long_expiry = DateTime::new(d+210, TimeOfDay::Close);
 
-        let currency = RcCurrency::new(Rc::new(sample_currency(2)));
+        let currency = RcCurrency::new(Arc::new(sample_currency(2)));
         let settlement = sample_settlement(2);
-        let equity: RcInstrument = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency, 2))));
-        let short_european: RcInstrument = RcInstrument::new(Qrc::new(Rc::new(SpotStartingEuropean::new(
+        let equity: RcInstrument = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency, 2))));
+        let short_european: RcInstrument = RcInstrument::new(Qrc::new(Arc::new(SpotStartingEuropean::new(
             "ShortDatedEquity",
             "OPT", equity.clone(), settlement.clone(), short_expiry,
             strike, PutOrCall::Call, OptionSettlement::Cash).unwrap())));
-        let long_european: RcInstrument = RcInstrument::new(Qrc::new(Rc::new(SpotStartingEuropean::new(
+        let long_european: RcInstrument = RcInstrument::new(Qrc::new(Arc::new(SpotStartingEuropean::new(
             "LongDatedEquity",
             "OPT", equity.clone(), settlement, long_expiry,
             strike, PutOrCall::Call, OptionSettlement::Cash).unwrap())));

@@ -1,6 +1,6 @@
 use core::factories::TypeId;
 use instruments::fix_all;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::fmt::Display;
 use std::fmt;
 use std::cmp::Ordering;
@@ -56,7 +56,7 @@ impl Basket {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
-        Ok(Qrc::new(Rc::new(Basket::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(Basket::deserialize(de)?)))
     }
 }
 
@@ -99,7 +99,7 @@ impl Instrument for Basket {
         match fix_all(&self.basket, fixing_table)? {
             Some(basket) => {
                 let id = format!("{}:fixed", self.id());
-                let replacement : RcInstrument = RcInstrument::new(Qrc::new(Rc::new(
+                let replacement : RcInstrument = RcInstrument::new(Qrc::new(Arc::new(
                     Basket::new(&id, self.credit_id(), self.currency.clone(), self.settlement().clone(), basket)?)));
                 Ok(Some(vec![(1.0, replacement)]))
             },
@@ -181,14 +181,14 @@ pub mod tests {
     use data::forward::EquityForward;
     use data::curves::ZeroRateCurve;
     use data::divstream::DividendStream;
-    use std::rc::Rc;
+    use std::sync::Arc;
     use instruments::assets::tests::sample_currency;
     use instruments::assets::tests::sample_equity;
 
     pub fn sample_basket(step: u32) -> Basket {
-        let currency = RcCurrency::new(Rc::new(sample_currency(step)));
-        let az = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "AZ.L", step))));
-        let bp = RcInstrument::new(Qrc::new(Rc::new(sample_equity(currency.clone(), "BP.L", step))));
+        let currency = RcCurrency::new(Arc::new(sample_currency(step)));
+        let az = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "AZ.L", step))));
+        let bp = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency.clone(), "BP.L", step))));
         let basket = vec![(0.4, az.clone()), (0.6, bp.clone())];
         Basket::new("basket", az.credit_id(), currency, az.settlement().clone(), basket).unwrap()
     }
@@ -211,7 +211,7 @@ pub mod tests {
                 (d + 112, 0.085), (d + 224, 0.082)];
             let c = RateCurveAct365::new(d, &points,
                 Extrap::Flat, Extrap::Flat)?;
-            Ok(RcRateCurve::new(Rc::new(c)))
+            Ok(RcRateCurve::new(Arc::new(c)))
         }
 
         fn spot(&self, id: &str) -> Result<f64, qm::Error> {
@@ -225,20 +225,20 @@ pub mod tests {
         }
 
         fn forward_curve(&self, instrument: &Instrument, 
-            high_water_mark: Date) -> Result<Rc<Forward>, qm::Error> {
+            high_water_mark: Date) -> Result<Arc<Forward>, qm::Error> {
             let spot = self.spot(instrument.id())?;
             let base_date = self.spot_date();
             let settlement = instrument.settlement().clone();
             let rate = self.yield_curve(instrument.credit_id(), high_water_mark)?;
-            let borrow = RcRateCurve::new(Rc::new(ZeroRateCurve::new(base_date)));
-            let divs = DividendStream::new(&Vec::new(), RcRateCurve::new(Rc::new(ZeroRateCurve::new(base_date))));
+            let borrow = RcRateCurve::new(Arc::new(ZeroRateCurve::new(base_date)));
+            let divs = DividendStream::new(&Vec::new(), RcRateCurve::new(Arc::new(ZeroRateCurve::new(base_date))));
             let forward = EquityForward::new(
                 base_date, spot, settlement, rate, borrow, &divs, high_water_mark)?;
-            Ok(Rc::new(forward))
+            Ok(Arc::new(forward))
         }
 
         fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Rc<Forward>, qm::Error>)
+            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
             -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }

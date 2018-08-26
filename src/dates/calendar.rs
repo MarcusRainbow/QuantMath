@@ -2,7 +2,7 @@ use dates::Date;
 use dates::datetime::DateDayFraction;
 use std::cmp::max;
 use std::fmt::Debug;
-use std::rc::Rc;
+use std::sync::Arc;
 use erased_serde as esd;
 use serde as sd;
 use serde_tagged as sdt;
@@ -16,7 +16,7 @@ use core::factories::Qrc;
 /// business day volatility, settlement calculations, and the roll-out of
 /// schedules for exotic products and swaps.
   
-pub trait Calendar : esd::Serialize + TypeId + Debug {
+pub trait Calendar : esd::Serialize + TypeId + Sync + Send + Debug {
     /// The name of this calendar. Conventionally, the name is a three-letter
     /// upper-case string such as "TGT" or "NYS", though this is not required.
     fn name(&self) -> &str;
@@ -123,7 +123,7 @@ impl EveryDayCalendar {
     pub fn new() -> EveryDayCalendar { EveryDayCalendar {} }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
-        Ok(Qrc::new(Rc::new(EveryDayCalendar::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(EveryDayCalendar::deserialize(de)?)))
     }
 }
 
@@ -178,7 +178,7 @@ impl WeekdayCalendar {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
-        Ok(Qrc::new(Rc::new(WeekdayCalendar::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(WeekdayCalendar::deserialize(de)?)))
     }
 }
 
@@ -304,7 +304,7 @@ impl WeekdayAndHolidayCalendar {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
-        Ok(Qrc::new(Rc::new(WeekdayAndHolidayCalendar::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(WeekdayAndHolidayCalendar::deserialize(de)?)))
     }
 
     // Finds the next holiday, including the day we start from, and returns
@@ -501,7 +501,7 @@ impl VolatilityCalendar {
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
-        Ok(Qrc::new(Rc::new(VolatilityCalendar::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(VolatilityCalendar::deserialize(de)?)))
     }
 }
 
@@ -937,7 +937,7 @@ mod tests {
 
     fn new_test_volatility_calendar() -> VolatilityCalendar {
         let calendar = new_test_calendar();
-        VolatilityCalendar::new("VOL", Qrc::new(Rc::new(calendar)), 0.25)
+        VolatilityCalendar::new("VOL", Qrc::new(Arc::new(calendar)), 0.25)
     }
 }
 

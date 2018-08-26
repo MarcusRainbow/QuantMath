@@ -17,7 +17,7 @@ use std::fmt::Debug;
 
 /// Pricers are always constructed using a pricer factory. This means that the
 /// code to create the pricer is independent of what sort of pricer it is.
-pub trait PricerFactory : esd::Serialize + TypeId + Debug {
+pub trait PricerFactory : esd::Serialize + TypeId + Sync + Send + Debug {
     /// Creates a pricer, given all the data that is needed to get a price.
     /// All the inputs are shared pointers to const objects, which allows them
     /// to be shared across multiple pricers. (Consider making them Arc rather
