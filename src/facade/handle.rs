@@ -9,6 +9,7 @@ use pricers::RcPricerFactory;
 /// A handle is used when passing objects or errors into or out of
 /// quantmath to other languages such as C or Python, where they
 /// appear as a u64 (long in C).
+#[derive(Debug)]
 pub enum Handle {
     Empty,
     Instrument(RcInstrument),
@@ -198,16 +199,15 @@ pub mod extern_handle {
     use risk::marketdata::RcMarketData;
     use data::fixings::RcFixingTable;
     use pricers::RcPricerFactory;
+    use facade::write_results;
+    use std::error::Error;
+    use std::io::Cursor;
 
     /// Converts a result containing either a handle or an error
     /// into a u64. The u64 is the address of a small heap-allocated object
     /// that contains the reference counted pointer to the object. Thus, the
     /// handle *must* be freed or the reference count will remain incremented and
     /// the object itself will never be deleted.
-    /// 
-    /// The as_... calls free the object as well as returning it, so a
-    /// from_instrument call back to back with an as_instrument call will not
-    /// leak memory. (No additional free is required.)
     pub fn from_handle(result: Result<Handle, qm::Error>) -> u64 {
         let boxed = Box::new( match result {
             Ok(handle) => handle,
@@ -216,62 +216,69 @@ pub mod extern_handle {
     }
 
     pub fn clone_handle(handle: u64) -> u64 {
-        // reconstitute the original handle
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-    
+        println!("clone_handle: {}", handle);
         // create a clone, which will be returned
-        let cloned = Box::new(boxed.clone());
+        let cloned = Box::new(handle_from_ext(handle).clone());
 
-        // unbox the original handle. It should result in the same raw pointer as before
-        let unboxed = Box::into_raw(boxed) as u64;
-        assert_eq!(unboxed, handle, "clone_handle failed to preserve the original handle");
-
+        // convert it into an ext handle
         Box::into_raw(cloned) as u64
     }
 
     /// Takes a handle as returned by from_instrument and converts it back to a
-    /// reference-counted pointer to an instrument. The handle is freed as part of
-    /// this procedure, so any subsequent call to as_instrument or free on the same
-    /// handle will result in a double delete or heap corruption.
+    /// reference-counted pointer to an instrument. The handle is not freed as part of
+    /// this procedure, and must be freed later with a free_handle call.
     pub fn as_instrument(handle: u64) -> Result<RcInstrument, qm::Error> {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_instrument()
+        handle_from_ext(handle).as_instrument()
     }
 
     /// See documentation for as_instrument
     pub fn as_currency(handle: u64) -> Result<RcCurrency, qm::Error> {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_currency()
+        handle_from_ext(handle).as_currency()
     }
 
     /// See documentation for as_instrument
     pub fn as_market_data(handle: u64) -> Result<RcMarketData, qm::Error> {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_market_data()
+        handle_from_ext(handle).as_market_data()
     }
 
     /// See documentation for as_instrument
     pub fn as_fixing_table(handle: u64) -> Result<RcFixingTable, qm::Error> {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_fixing_table()
+        handle_from_ext(handle).as_fixing_table()
     }
 
     /// See documentation for as_instrument
     pub fn as_pricer_factory(handle: u64) -> Result<RcPricerFactory, qm::Error> {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_pricer_factory()
+        handle_from_ext(handle).as_pricer_factory()
     }
 
     /// See documentation for as_instrument
     pub fn as_report_generator(handle: u64) -> Result<RcReportGenerator, qm::Error> {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_report_generator()
+        handle_from_ext(handle).as_report_generator()
     }
 
-    /// See documentation for as_instrument
-    pub fn as_reports(handle: u64) -> Result<Vec<BoxReport>, qm::Error> {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_reports()
+    /// Converts the handle into a vector of reports.
+    /// Unlike the other methods in this module, this also frees the handle that is passed in.
+    pub fn as_reports(handle_which_is_freed: u64) -> Result<Vec<BoxReport>, qm::Error> {
+        let handle = unsafe { Box::from_raw(handle_which_is_freed as *mut Handle) };
+        handle.as_reports()
+    }
+
+    /// Converts a report into a JSON string. This call does not consume the handle
+    /// that is passed in. 
+    pub fn reports_as_string(handle: u64) -> String {
+        let handle_ptr = handle as *mut Handle;
+        unsafe {
+            match *handle_ptr {
+                Handle::Reports(ref reports) => {
+                    // TODO this code panics too much. Need better error handling.
+                    let mut buffer = Vec::new();
+                    write_results(&reports, true, &mut Cursor::new(&mut buffer)).unwrap();
+                    String::from_utf8(buffer).unwrap()
+                },
+                Handle::Err(ref err) => err.description().to_string(),
+                _ => "reports_as_string: not a report handle".to_string()
+            }
+        }
     }
 
     /// Converts a handle into an error. Normally, this is called following a call to
@@ -279,18 +286,26 @@ pub mod extern_handle {
     /// it is called when the handle does not contain an error, this is itself an
     /// error.
     /// 
-    /// The handle is freed as a result of this call.
+    /// The handle is not freed as a result of this call.
     pub fn as_error(handle: u64) -> qm::Error {
-        let boxed = unsafe { Box::from_raw(handle as *mut Handle) };
-        boxed.as_error()       
+        handle_from_ext(handle).as_error()       
     }
 
     /// Tests whether a handle contains an error. Never consumes the handle.
     pub fn is_error(handle: u64) -> bool {
+        if let &Handle::Err(_) = handle_from_ext(handle) { true } else { false }
+    }
+
+    /// The handle is freed as a result of this call.
+    pub fn free_handle(handle: u64) {
+        unsafe { Box::from_raw(handle as *mut Handle) };
+    }
+
+    /// Warning: the lifetime of the returned Handle claims to be static. In fact, it
+    /// is the lifetime of the external handle, but there is no way of specifying this
+    /// in Rust.
+    fn handle_from_ext(handle: u64) -> &'static Handle {
         let handle_ptr = handle as *mut Handle;
-        let is_error = unsafe { 
-            if let Handle::Err(_) = *handle_ptr { true } else { false }
-        };
-        is_error
+        unsafe { &*handle_ptr }
     }
 }

@@ -236,6 +236,55 @@ pub mod tests {
         assert_approx_eq_reports(&results, &baseline, 1e-12, 1e-12, 1e-12).unwrap();
     }
 
+    #[test]
+    fn facade_read_currency() {
+        let _ = currency_from_json(
+            &mut Cursor::new(sample_currency_json())).unwrap();
+    }
+
+    #[test]
+    fn facade_read_equity() {
+        let currency = currency_from_json(
+            &mut Cursor::new(sample_currency_json())).unwrap();
+        
+        let _ = instrument_from_json(&mut Cursor::new(sample_equity_json()), 
+            DedupControl::WriteOnce, &vec![currency], DedupControl::WriteOnce, &[]).unwrap();
+    }
+
+    pub fn sample_currency_json() -> &'static [u8] {
+      br###"{
+    "id": "GBP",
+    "settlement": {
+        "BusinessDays": {
+            "calendar": {
+                "WeekdayCalendar": []
+            },
+            "step": 2,
+            "slip_forward": true
+        }
+    }
+}"###
+    }
+
+    pub fn sample_equity_json() -> &'static [u8] {
+      br###"{
+    "Equity": {
+        "id": "AZ.L",
+        "credit_id": "LSE",
+        "currency": "GBP",
+        "settlement": {
+            "BusinessDays": {
+                "calendar": {
+                    "WeekdayCalendar": []
+                },
+                "step": 2,
+                "slip_forward": true
+            }
+        }
+    }
+}"###
+        }
+
     pub fn sample_forward_european_json() -> &'static [u8] {
         br###"{
   "ForwardStartingEuropean": {

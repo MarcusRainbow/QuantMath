@@ -110,7 +110,7 @@ fn duplicate_fixing_curve(id: &str) -> qm::Error {
 
 /// Create a new type for a Rc<FixingTable> so we can implement serialize
 /// and deserialize functions for it.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RcFixingTable(Rc<FixingTable>);
 
 impl RcFixingTable {

@@ -128,7 +128,7 @@ impl DividendStream {
 
 /// Create a type RcDividendStream to allow us to implement serialization
 /// and deserialization
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RcDividendStream(Rc<DividendStream>);
 
 impl RcDividendStream {
