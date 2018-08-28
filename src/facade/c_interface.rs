@@ -4,6 +4,8 @@ use std::fs::File;
 use std::io::Cursor;
 use std::ffi::CString;
 use std::error::Error;
+use std::panic::catch_unwind;
+use std::panic::RefUnwindSafe;
 use libc::c_char;
 use core::qm;
 use core::dedup::DedupControl;
@@ -259,10 +261,14 @@ pub extern "C" fn qm_reports_from_json_string(source: *const c_char) -> u64 {
 /// an error or not.
 #[no_mangle]
 pub extern "C" fn qm_reports_as_json_string(handle: u64) -> *mut c_char {
-    // Note that this panics if the report contains null bytes.
-    // This will pull down the entire process, but there is not a lot we can
-    // do to avoid it.
-    let reports_string = CString::new(eh::reports_as_string(handle)).unwrap();
+    let reports_string = match catch_unwind(||
+        CString::new(eh::reports_as_string(handle)).unwrap()) {
+        Ok(result) => result,
+        // the unwrap below could theoretically panic into C code, but in reality we
+        // are passing in a hard-coded string which is known never to cause a panic
+        Err(_) => CString::new("Caught panic when converting result string").unwrap()
+    };
+
     reports_string.into_raw()
 }
 
@@ -337,6 +343,7 @@ pub extern "C" fn qm_assert_approx_eq_reports(reports_freed: u64, expected_freed
 /// qm_error_string to find out what the error is.
 #[no_mangle]
 pub extern "C" fn qm_is_error(handle: u64) -> bool {
+    // we assume that is_error never panics
     eh::is_error(handle)
 }
 
@@ -347,11 +354,14 @@ pub extern "C" fn qm_is_error(handle: u64) -> bool {
 /// The resulting string must be freed using qm_free_string
 #[no_mangle]
 pub extern "C" fn qm_error_string(handle: u64) -> *mut c_char {
-    let error = eh::as_error(handle);
-    // Note that this panics if the error description contains null bytes.
-    // This will pull down the entire process, but there is not a lot we can
-    // do to avoid it.
-    let error_string = CString::new(error.description()).unwrap();
+    let error_string = match catch_unwind(||
+        CString::new(eh::as_error(handle).description()).unwrap()) {
+        Ok(result) => result,
+        // the unwrap below could theoretically panic into C code, but in reality we
+        // are passing in a hard-coded string which is known never to cause a panic
+        Err(_) => CString::new("Caught panic when converting error string").unwrap()
+    };
+
     error_string.into_raw()
 }
 
@@ -367,7 +377,10 @@ pub extern "C" fn qm_free_string(string: *mut c_char) {
 /// with a handle representing an error. Error handles can also be cloned.
 #[no_mangle]
 pub extern "C" fn qm_clone(handle: u64) -> u64 {
-    eh::clone_handle(handle)
+    match catch_unwind(|| eh::clone_handle(handle)) {
+        Ok(handle) => handle,
+        Err(_) => eh::from_handle(Ok(Handle::from_error(qm::Error::new("Caught panic during clone"))))
+    }
 }
 
 /// Frees a handle that was created by most of the other methods in this interface. Handles ought to be
@@ -375,7 +388,11 @@ pub extern "C" fn qm_clone(handle: u64) -> u64 {
 /// likely to result in a core dump.
 #[no_mangle]
 pub extern "C" fn qm_free_handle(handle: u64) {
-    eh::free_handle(handle);
+    // we cannot assume that free_handle never panics. A drop method could
+    // panic
+    if let Err(_) = catch_unwind(|| eh::free_handle(handle)) {
+        eprint!("Caught panic during qm_free_handle");
+    }
 }
 
 fn open_c_file(source: *const c_char) -> Result<File, qm::Error> {
@@ -389,8 +406,15 @@ fn bytes_from_c_string<'a>(source: *const c_char) -> &'a[u8] {
     unsafe { CStr::from_ptr(source).to_bytes() }
 }
 
-fn return_handle(f: &Fn() -> Result<Handle, qm::Error>) -> u64 {
-    let result = f();
+fn return_handle<F>(f: &F) -> u64 
+where
+    F: Fn() -> Result<Handle, qm::Error>,
+    F: RefUnwindSafe 
+{
+    let result = match catch_unwind(|| f() ) {
+        Ok(result) => result,
+        Err(_) => Err(qm::Error::new("Caught panic when creating handle"))
+    };
     eh::from_handle(result)
 }
 

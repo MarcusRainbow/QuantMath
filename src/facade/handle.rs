@@ -291,12 +291,14 @@ pub mod extern_handle {
         handle_from_ext(handle).as_error()       
     }
 
-    /// Tests whether a handle contains an error. Never consumes the handle.
+    /// Tests whether a handle contains an error. Never consumes the handle. This function
+    /// must never panic, as it is invoked direct from C.
     pub fn is_error(handle: u64) -> bool {
         if let &Handle::Err(_) = handle_from_ext(handle) { true } else { false }
     }
 
-    /// The handle is freed as a result of this call.
+    /// The handle is freed as a result of this call. This function
+    /// must never panic, as it is invoked direct from C.
     pub fn free_handle(handle: u64) {
         unsafe { Box::from_raw(handle as *mut Handle) };
     }
