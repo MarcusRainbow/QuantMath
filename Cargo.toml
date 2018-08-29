@@ -2,6 +2,8 @@
 name = "quantmath"
 version = "0.1.0"
 authors = ["Marcus Rainbow"]
+license = "MIT"
+description = "A library of quantitative maths and a framework for quantitative valuation and risk"
 
 [dependencies]
 statrs = "0.9.0"
