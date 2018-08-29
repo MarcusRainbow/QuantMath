@@ -1,0 +1,22 @@
+[package]
+name = "quantmath"
+version = "0.1.0"
+authors = ["Marcus Rainbow"]
+
+[dependencies]
+statrs = "0.9.0"
+ndarray = "0.11.0"
+nalgebra = "0.15.0"
+rand = "0.4.0"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+erased-serde = "0.3"
+serde_tagged = "0.2.0"
+lazy_static = "1.0"
+void = "1"
+libc = "0.2"
+
+[lib]
+name = "quantmath"
+crate-type = ["cdylib"]
