@@ -23,7 +23,7 @@ The library must be easy for quants to work in and for IT systems to work with. 
 The library has a strict hierarchy of modules. Ideally there should be no backward dependencies, such that the library could be split into a separate crate for each module. If you are looking at the library for the first time, it may be best to start from the top level (Facade). Starting at the top level, the modules are:
 
 ### Facade
-Not written yet. This is the interface that IT systems talk to. It is data-driven, so adding a new product or model should not affect the IT systems at all.
+This is the interface that IT systems talk to. It is data-driven, so adding a new product or model should not affect the IT systems at all.
 
 ### Pricers
 A pricer evaluates an instrument given market data and a choice of model. We currently have two pricers: Monte-Carlo, which evaluates instruments by averaging across many random paths; self-pricer, which relies on instruments knowing how to price themselves. I hope to add at least one finite difference backward-induction engine.
@@ -32,7 +32,7 @@ A pricer evaluates an instrument given market data and a choice of model. We cur
 Models of how we expect prices to change in the future. All are stochastic, but some have stochastic volatility or rates. Examples of models are BGM (Brace Gatarek Musiela), Black, Heston.
 
 ### Risk
-Defines how market data can be bumped, and manages the dependencies when this happens. Not implemented yet, but this will contain definitions of risk reports, such as Delta, Gamma and optionally Cross-Gamma for all underliers matching some criteria.
+Defines how market data can be bumped, and manages the dependencies when this happens. This contain definitions of risk reports, such as Delta, Gamma, Vega and Volga for all underliers matching some criteria.
 
 ### Instruments
 Defines financial products, indices, assets and currencies. Anything that has a price. Some instruments know how to price themselves (basically, any instrument where the price is well-defined and not model-dependent -- remember this module is lower than models). Some instruments know how to price themselves in a Monte-Carlo framework, given paths of their underliers.
@@ -47,4 +47,4 @@ Low level mathematical formulae, from the Black-Scholes formula to interpolation
 Dates are very important for financial maths software. We use explicit dates everywhere rather than year-fractions, which is essential for handling settlement correctly. This module also handles date arithmetic, such as date rules and day counts.
 
 ### Core
-Very low-level functionality, such as the definition of the Error struct. 
+Very low-level functionality, such as the definition of the Error struct, and required extensions to serde, such as dedup (deduplication of nodes in directed acyclic graph) and factories (using tagged_serde to handle polymorphic nodes in serialization and deserialization).
