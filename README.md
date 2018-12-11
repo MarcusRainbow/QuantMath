@@ -1,6 +1,8 @@
 # QuantMath
 Financial maths library for risk-neutral pricing and risk
 
+[Api Documentation](https://docs.rs/quantmath/0.1.0/quantmath/)
+
 ## Goals
 Some quant math libraries are really just a collection of pricing formulae. This hopes to be that (see the math module) but also much more. This library is intended to be plugged into the risk and pricing infrastructure in an investment bank or hedge fund. This does not preclude the use of the library for academic work, but will introduce a level of real-world messiness that is often missing from academia.
 
