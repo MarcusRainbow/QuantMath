@@ -21,4 +21,5 @@ libc = "0.2"
 
 [lib]
 name = "quantmath"
-crate-type = ["cdylib"]
+path = "src/lib.rs"
+crate-type = ["lib", "cdylib"]
