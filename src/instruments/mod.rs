@@ -135,7 +135,7 @@ pub trait Instrument : esd::Serialize + TypeId + InstanceId + Sync + Send + Debu
 /// Utility method to fix all instruments in a vector, returning them as a weighted vector.
 /// Currently we do not attempt to net instruments of the same type, though we could do so.
 /// If there are no changes to any instruments, we return None.
-pub fn fix_all(instruments: &Vec<(f64, RcInstrument)>, fixing_table: &FixingTable)
+pub fn fix_all(instruments: &[(f64, RcInstrument)], fixing_table: &FixingTable)
     -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
 
     // optional modified basket, in case anything changed

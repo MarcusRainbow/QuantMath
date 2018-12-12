@@ -49,7 +49,6 @@ impl MonteCarloPricerFactory {
     /// lot of sense. We also pass in a factory for creating the
     /// model (BlackDiffusion, LocalVol etc), allowing us to configure the
     /// model used for the simulation.
-
     pub fn new(model_factory: RcMonteCarloModelFactory)
         -> MonteCarloPricerFactory {
 
@@ -112,8 +111,7 @@ impl MonteCarloPricer {
         // Create a Monte-Carlo model
         let model = model_factory.factory(&timeline, context)?;
 
-        Ok(MonteCarloPricer {
-            model_factory: model_factory, instruments: instruments, model: model })
+        Ok(MonteCarloPricer { model_factory, instruments, model })
     }
 }
 
