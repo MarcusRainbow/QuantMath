@@ -61,7 +61,7 @@ impl MonteCarloPricerFactory {
 }
 
 impl TypeId for MonteCarloPricerFactory {
-    fn type_id(&self) -> &'static str { "MonteCarloPricerFactory" }
+    fn get_type_id(&self) -> &'static str { "MonteCarloPricerFactory" }
 }
 
 impl PricerFactory for MonteCarloPricerFactory {

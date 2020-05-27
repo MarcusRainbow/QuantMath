@@ -32,7 +32,7 @@ pub struct ZeroCoupon {
 }
 
 impl TypeId for ZeroCoupon {
-    fn type_id(&self) -> &'static str { "ZeroCoupon" }
+    fn get_type_id(&self) -> &'static str { "ZeroCoupon" }
 }
 
 impl InstanceId for ZeroCoupon {

@@ -48,7 +48,7 @@ impl Currency {
 }
 
 impl TypeId for Currency {
-    fn type_id(&self) -> &'static str { "Currency" }
+    fn get_type_id(&self) -> &'static str { "Currency" }
 }
 
 impl InstanceId for Currency {
@@ -184,7 +184,7 @@ pub struct Equity {
 }
 
 impl TypeId for Equity {
-    fn type_id(&self) -> &'static str { "Equity" }
+    fn get_type_id(&self) -> &'static str { "Equity" }
 }
 
 impl InstanceId for Equity {
@@ -312,7 +312,7 @@ pub struct CreditEntity {
 }
 
 impl TypeId for CreditEntity {
-    fn type_id(&self) -> &'static str { "CreditEntity" }
+    fn get_type_id(&self) -> &'static str { "CreditEntity" }
 }
 
 impl CreditEntity {

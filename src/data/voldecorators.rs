@@ -40,7 +40,7 @@ impl ConstantExpiryTimeEvolution {
 }
 
 impl TypeId for ConstantExpiryTimeEvolution {
-    fn type_id(&self) -> &'static str { "ConstantExpiryTimeEvolution" }
+    fn get_type_id(&self) -> &'static str { "ConstantExpiryTimeEvolution" }
 }
 
 impl VolSurface for ConstantExpiryTimeEvolution {
@@ -95,7 +95,7 @@ pub struct RollingExpiryTimeEvolution {
 }
 
 impl TypeId for RollingExpiryTimeEvolution {
-    fn type_id(&self) -> &'static str { "RollingExpiryTimeEvolution" }
+    fn get_type_id(&self) -> &'static str { "RollingExpiryTimeEvolution" }
 }
 
 impl RollingExpiryTimeEvolution {
@@ -171,7 +171,7 @@ pub struct ParallelBumpVol {
 }
 
 impl TypeId for ParallelBumpVol {
-    fn type_id(&self) -> &'static str { "ParallelBumpVol" }
+    fn get_type_id(&self) -> &'static str { "ParallelBumpVol" }
 }
 
 impl ParallelBumpVol {
@@ -235,7 +235,7 @@ pub struct TimeScaledBumpVol {
 }
 
 impl TypeId for TimeScaledBumpVol {
-    fn type_id(&self) -> &'static str { "TimeScaledBumpVol" }
+    fn get_type_id(&self) -> &'static str { "TimeScaledBumpVol" }
 }
 
 impl TimeScaledBumpVol {
@@ -304,7 +304,7 @@ pub struct StickyDeltaBumpVol {
 }
 
 impl TypeId for StickyDeltaBumpVol {
-    fn type_id(&self) -> &'static str { "StickyDeltaBumpVol" }
+    fn get_type_id(&self) -> &'static str { "StickyDeltaBumpVol" }
 }
 
 impl StickyDeltaBumpVol {

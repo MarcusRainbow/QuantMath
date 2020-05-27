@@ -65,7 +65,7 @@ impl BlackDiffusionFactory {
 }
 
 impl TypeId for BlackDiffusionFactory {
-    fn type_id(&self) -> &'static str { "BlackDiffusionFactory" }
+    fn get_type_id(&self) -> &'static str { "BlackDiffusionFactory" }
 }
 
 impl MonteCarloModelFactory for BlackDiffusionFactory {

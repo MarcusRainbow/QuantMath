@@ -59,7 +59,7 @@ impl DateRule for NullRule {
 }
 
 impl TypeId for NullRule {
-    fn type_id(&self) -> &'static str { "NullRule" }
+    fn get_type_id(&self) -> &'static str { "NullRule" }
 }
 
 impl NullRule {
@@ -79,7 +79,7 @@ pub struct BusinessDays {
 }
 
 impl TypeId for BusinessDays {
-    fn type_id(&self) -> &'static str { "BusinessDays" }
+    fn get_type_id(&self) -> &'static str { "BusinessDays" }
 }
 
 impl BusinessDays {
@@ -137,7 +137,7 @@ pub struct ModifiedFollowing {
 }
 
 impl TypeId for ModifiedFollowing {
-    fn type_id(&self) -> &'static str { "ModifiedFollowing" }
+    fn get_type_id(&self) -> &'static str { "ModifiedFollowing" }
 }
 
 impl ModifiedFollowing {

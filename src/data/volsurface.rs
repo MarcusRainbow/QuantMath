@@ -411,7 +411,7 @@ pub struct FlatVolSurface {
 }
 
 impl TypeId for FlatVolSurface {
-    fn type_id(&self) -> &'static str { "FlatVolSurface" }
+    fn get_type_id(&self) -> &'static str { "FlatVolSurface" }
 }
 
 impl VolSurface for FlatVolSurface {
@@ -535,7 +535,7 @@ impl<T> VolByProbabilityInput<T> where T: VolSmile + Clone + Debug {
 }
 
 impl<T> TypeId for VolByProbability<T> where T: VolSmile + Clone {
-    fn type_id(&self) -> &'static str {
+    fn get_type_id(&self) -> &'static str {
         panic!("TypeId should never be invoked for VolByProbability<T>")
     }
 }
@@ -773,7 +773,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
 pub struct VolByProbabilityFlatSmile(VolByProbability<FlatSmile>);
 
 impl TypeId for VolByProbabilityFlatSmile {
-    fn type_id(&self) -> &'static str {
+    fn get_type_id(&self) -> &'static str {
         "VolByProbabilityFlatSmile"
     }
 }
@@ -827,7 +827,7 @@ impl VolSurface for VolByProbabilityFlatSmile {
 pub struct VolByProbabilityCubicSplineSmile(VolByProbability<CubicSplineSmile>);
 
 impl TypeId for VolByProbabilityCubicSplineSmile {
-    fn type_id(&self) -> &'static str {
+    fn get_type_id(&self) -> &'static str {
         "VolByProbabilityCubicSplineSmile"
     }
 }

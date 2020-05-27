@@ -15,7 +15,7 @@ use serde_tagged::util::erased::SerializeErased;
 
 /// Uniquely identify the type of an object
 pub trait TypeId {
-    fn type_id(&self) -> &'static str;
+    fn get_type_id(&self) -> &'static str;
 }
 
 /// A registry of methods to deserialize objects given a tag to identify
@@ -89,8 +89,8 @@ where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
 
 impl<T> TypeId for Qrc<T> 
 where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
-    fn type_id(&self) -> &'static str {
-        self.0.type_id()
+    fn get_type_id(&self) -> &'static str {
+        self.0.get_type_id()
     }
 }
 
@@ -113,13 +113,13 @@ where T: esd::Serialize + TypeId + Debug + Send + Sync + ?Sized {
         // the object in `SerializeErased`.
         // The `serialize` method of `serde_erased::ser::external` will apply
         // our type-id as tag to the trait-object.
-        sdt::ser::external::serialize(serializer, self.type_id(), &SerializeErased(&*self.0))
+        sdt::ser::external::serialize(serializer, self.get_type_id(), &SerializeErased(&*self.0))
     }
 }
 
 /// Our own box type, so we can implement serialization and
 /// deserialization.
-pub struct Qbox<T: esd::Serialize + TypeId + Debug + ?Sized>(Box<T>);
+pub struct  Qbox<T: esd::Serialize + TypeId + Debug + ?Sized>(Box<T>);
 
 impl<T> Deref for Qbox<T> 
 where T: esd::Serialize + TypeId + Debug + ?Sized {
@@ -139,8 +139,8 @@ where T: esd::Serialize + TypeId + Debug + ?Sized {
 
 impl<T> TypeId for Qbox<T> 
 where T: esd::Serialize + TypeId + Debug + ?Sized {
-    fn type_id(&self) -> &'static str {
-        self.0.type_id()
+    fn get_type_id(&self) -> &'static str {
+        self.0.get_type_id()
     }
 }
 
@@ -157,7 +157,7 @@ where T: esd::Serialize + TypeId + Debug + ?Sized {
     where
         S: sd::Serializer,
     {
-        sdt::ser::external::serialize(serializer, self.type_id(), &SerializeErased(&*self.0))
+        sdt::ser::external::serialize(serializer, self.get_type_id(), &SerializeErased(&*self.0))
     }
 }
 
@@ -216,13 +216,13 @@ pub mod tests {
     // de-/serialize as the same trait objects).
 
     impl TypeId for A {
-        fn type_id(&self) -> &'static str {
+        fn get_type_id(&self) -> &'static str {
             "A"
         }
     }
 
     impl TypeId for B {
-        fn type_id(&self) -> &'static str {
+        fn get_type_id(&self) -> &'static str {
             "B"
         }
     }
@@ -275,7 +275,7 @@ pub mod tests {
             // the object in `SerializeErased`.
             // The `serialize` method of `serde_erased::ser::external` will apply
             // our type-id as tag to the trait-object.
-            serde_tagged::ser::external::serialize(serializer, self.type_id(), &SerializeErased(self))
+            serde_tagged::ser::external::serialize(serializer, self.get_type_id(), &SerializeErased(self))
         }
     }
 
@@ -440,7 +440,7 @@ pub mod tests {
     }
 
     impl TypeId for C {
-        fn type_id(&self) -> &'static str {
+        fn get_type_id(&self) -> &'static str {
             "C"
         }
     }

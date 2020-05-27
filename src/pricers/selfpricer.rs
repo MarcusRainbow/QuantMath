@@ -52,7 +52,7 @@ impl SelfPricerFactory {
 }
 
 impl TypeId for SelfPricerFactory {
-    fn type_id(&self) -> &'static str { "SelfPricerFactory" }
+    fn get_type_id(&self) -> &'static str { "SelfPricerFactory" }
 }
 
 impl PricerFactory for SelfPricerFactory {
