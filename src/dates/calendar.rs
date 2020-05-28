@@ -116,7 +116,7 @@ pub fn get_registry() -> &'static TypeRegistry {
 pub struct EveryDayCalendar();
 
 impl TypeId for EveryDayCalendar {
-    fn type_id(&self) -> &'static str { "EveryDayCalendar" }
+    fn get_type_id(&self) -> &'static str { "EveryDayCalendar" }
 }
 
 impl EveryDayCalendar {
@@ -169,7 +169,7 @@ impl Calendar for EveryDayCalendar {
 pub struct WeekdayCalendar();
 
 impl TypeId for WeekdayCalendar {
-    fn type_id(&self) -> &'static str { "WeekdayCalendar" }
+    fn get_type_id(&self) -> &'static str { "WeekdayCalendar" }
 }
 
 impl WeekdayCalendar {
@@ -294,7 +294,7 @@ pub struct WeekdayAndHolidayCalendar {
 }
 
 impl TypeId for WeekdayAndHolidayCalendar {
-    fn type_id(&self) -> &'static str { "WeekdayAndHolidayCalendar" }
+    fn get_type_id(&self) -> &'static str { "WeekdayAndHolidayCalendar" }
 }
 
 impl WeekdayAndHolidayCalendar {
@@ -488,7 +488,7 @@ pub struct VolatilityCalendar {
 }
 
 impl TypeId for VolatilityCalendar {
-    fn type_id(&self) -> &'static str { "VolatilityCalendar" }
+    fn get_type_id(&self) -> &'static str { "VolatilityCalendar" }
 }
 
 impl VolatilityCalendar {

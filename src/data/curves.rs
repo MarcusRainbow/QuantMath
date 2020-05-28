@@ -94,7 +94,7 @@ pub struct ZeroRateCurve {
 }
 
 impl TypeId for ZeroRateCurve {
-    fn type_id(&self) -> &'static str { "ZeroRateCurve" }
+    fn get_type_id(&self) -> &'static str { "ZeroRateCurve" }
 }
 
 impl RateCurve for ZeroRateCurve {
@@ -133,7 +133,7 @@ pub struct RateCurveAct365 {
 }
 
 impl TypeId for RateCurveAct365 {
-    fn type_id(&self) -> &'static str { "RateCurveAct365" }
+    fn get_type_id(&self) -> &'static str { "RateCurveAct365" }
 }
 
 impl RateCurve for RateCurveAct365 {
@@ -178,7 +178,7 @@ pub struct AnnualisedFlatBump {
 }
 
 impl TypeId for AnnualisedFlatBump {
-    fn type_id(&self) -> &'static str { "AnnualisedFlatBump" }
+    fn get_type_id(&self) -> &'static str { "AnnualisedFlatBump" }
 }
 
 impl RateCurve for AnnualisedFlatBump {
@@ -224,7 +224,7 @@ pub struct ContinuouslyCompoundedFlatBump {
 }
 
 impl TypeId for ContinuouslyCompoundedFlatBump {
-    fn type_id(&self) -> &'static str { "ContinuouslyCompoundedFlatBump" }
+    fn get_type_id(&self) -> &'static str { "ContinuouslyCompoundedFlatBump" }
 }
 
 impl RateCurve for ContinuouslyCompoundedFlatBump {
@@ -259,7 +259,7 @@ pub struct RelativeBump {
 }
 
 impl TypeId for RelativeBump {
-    fn type_id(&self) -> &'static str { "RelativeBump" }
+    fn get_type_id(&self) -> &'static str { "RelativeBump" }
 }
 
 impl RateCurve for RelativeBump {

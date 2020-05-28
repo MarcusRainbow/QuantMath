@@ -37,7 +37,7 @@ pub struct Basket {
 }
 
 impl TypeId for Basket {
-    fn type_id(&self) -> &'static str { "Basket" }
+    fn get_type_id(&self) -> &'static str { "Basket" }
 }
 
 impl InstanceId for Basket {

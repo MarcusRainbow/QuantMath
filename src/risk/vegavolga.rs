@@ -43,7 +43,7 @@ impl Report for VegaVolgaReport {
 }
 
 impl TypeId for VegaVolgaReport {
-    fn type_id(&self) -> &'static str { "VegaVolgaReport" }
+    fn get_type_id(&self) -> &'static str { "VegaVolgaReport" }
 }
 
 impl VegaVolgaReport {
@@ -85,7 +85,7 @@ impl ApproxEqReport for VegaVolgaReport {
         if let Some(other_report) = other.as_any().downcast_ref::<VegaVolgaReport>() {
             self.validate(other_report, tol, msg, diffs)
         } else {
-            write!(diffs, "VegaVolgaReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
+            write!(diffs, "VegaVolgaReport: mismatching report {} != {}", self.get_type_id(), other.get_type_id())?;
             Ok(())
         }
     }
@@ -139,7 +139,7 @@ impl VegaVolgaReportGenerator {
 }
 
 impl TypeId for VegaVolgaReportGenerator {
-    fn type_id(&self) -> &'static str { "VegaVolgaReportGenerator" }
+    fn get_type_id(&self) -> &'static str { "VegaVolgaReportGenerator" }
 }
 
 impl ReportGenerator for VegaVolgaReportGenerator {

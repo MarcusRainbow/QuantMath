@@ -27,11 +27,12 @@ pub struct TimeBumpedReport {
 }
 
 impl Report for TimeBumpedReport {
-    fn as_any(&self) -> &Any { self }
+    fn as_any(&self) -> &dyn Any { self }
+    
 }
 
 impl TypeId for TimeBumpedReport {
-    fn type_id(&self) -> &'static str { "TimeBumpedReport" }
+    fn get_type_id(&self) -> &'static str { "TimeBumpedReport" }
 }
 
 impl TimeBumpedReport {
@@ -39,7 +40,7 @@ impl TimeBumpedReport {
         TimeBumpedReport { price, theta, subreports }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qbox<Report>, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<Qbox<dyn Report>, esd::Error> {
         Ok(Qbox::new(Box::new(TimeBumpedReport::deserialize(de)?)))
     }
 
@@ -76,12 +77,12 @@ impl<'v> ApproxEq<ReportTolerances, &'v TimeBumpedReport> for &'v TimeBumpedRepo
 }
 
 impl ApproxEqReport for TimeBumpedReport {
-    fn validate_report(&self, other: &Report, tol: &ReportTolerances,
+    fn validate_report(&self, other: &dyn Report, tol: &ReportTolerances,
         msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
         if let Some(other_report) = other.as_any().downcast_ref::<TimeBumpedReport>() {
             self.validate(other_report, tol, msg, diffs)
         } else {
-            write!(diffs, "TimeBumpedReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
+            write!(diffs, "TimeBumpedReport: mismatching report {} != {}", self.get_type_id(), other.get_type_id())?;
             Ok(())
         }
     }
@@ -114,11 +115,11 @@ impl TimeBumpedReportGenerator {
 }
 
 impl TypeId for TimeBumpedReportGenerator {
-    fn type_id(&self) -> &'static str { "TimeBumpedReportGenerator" }
+    fn get_type_id(&self) -> &'static str { "TimeBumpedReportGenerator" }
 }
 
 impl ReportGenerator for TimeBumpedReportGenerator {
-    fn generate(&self, pricer: &mut Pricer, saveable: &mut Saveable, unbumped: f64)
+    fn generate(&self, pricer: &mut dyn Pricer, saveable: &mut dyn Saveable, unbumped: f64)
         -> Result<BoxReport, qm::Error> {
         
         // The time bump irreversibly modifies the pricer. Make a clone of it, to ensure

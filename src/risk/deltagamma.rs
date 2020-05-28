@@ -31,10 +31,11 @@ pub struct DeltaGammaReport {
 
 impl Report for DeltaGammaReport {
     fn as_any(&self) -> &Any { self }
+
 }
 
 impl TypeId for DeltaGammaReport {
-    fn type_id(&self) -> &'static str { "DeltaGammaReport" }
+    fn get_type_id(&self) -> &'static str { "DeltaGammaReport" }
 }
 
 impl DeltaGammaReport {
@@ -76,7 +77,7 @@ impl ApproxEqReport for DeltaGammaReport {
         if let Some(other_report) = other.as_any().downcast_ref::<DeltaGammaReport>() {
             self.validate(other_report, tol, msg, diffs)
         } else {
-            write!(diffs, "DeltaGammaReport: mismatching report {} != {}", self.type_id(), other.type_id())?;
+            write!(diffs, "DeltaGammaReport: mismatching report {} != {}", self.get_type_id(), other.get_type_id())?;
             Ok(())
         }
     }
@@ -130,7 +131,7 @@ impl DeltaGammaReportGenerator {
 }
 
 impl TypeId for DeltaGammaReportGenerator {
-    fn type_id(&self) -> &'static str { "DeltaGammaReportGenerator" }
+    fn get_type_id(&self) -> &'static str { "DeltaGammaReportGenerator" }
 }
 
 impl ReportGenerator for DeltaGammaReportGenerator {
@@ -166,7 +167,7 @@ impl ReportGenerator for DeltaGammaReportGenerator {
             // delta and gamma calculations
             let bumpsize = self.bumpsize * spot;
             let delta = (upbumped - downbumped) / (2.0 * bumpsize);
-            let gamma = (upbumped + downbumped - 2.0 * unbumped) / bumpsize.powi(2);
+            let gamma:f64 = (upbumped + downbumped - 2.0 * unbumped) / bumpsize.powi(2);
             results.insert(id.to_string(), DeltaGamma {delta, gamma});
         }
 
@@ -319,14 +320,18 @@ pub mod tests {
         let generator = DeltaGammaReportGenerator::new(0.01);
         let mut save = pricer.as_bumpable().new_saveable();
         let report = generator.generate(&mut *pricer, &mut *save, unbumped).unwrap();
-
+        let report_results = report.as_any().downcast_ref::<DeltaGammaReport>().unwrap().results();
+        let report_delta_gamma = report_results.get("BP.L").unwrap();
+        
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&report).unwrap();
-        print!("serialized: {}\n", serialized);
-        let deserialized: BoxReport = serde_json::from_str(&serialized).unwrap();
+        
+        let deserialized:BoxReport = serde_json::from_str(&serialized).unwrap();
+        let deserialized_results = deserialized.as_any().downcast_ref::<DeltaGammaReport>().unwrap().results();
+        let deserialized_delta_gamma = deserialized_results.get("BP.L").unwrap();
 
-        // check that they match, at least in debug representation
-        assert_debug_eq(&report, &deserialized);
+        assert_eq!(report_delta_gamma.delta(), deserialized_delta_gamma.delta());
+        assert_approx(report_delta_gamma.gamma(), deserialized_delta_gamma.gamma(),1e-16);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

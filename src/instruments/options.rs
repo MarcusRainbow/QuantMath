@@ -57,7 +57,7 @@ struct VanillaOption {
 }
 
 impl TypeId for VanillaOption {
-    fn type_id(&self) -> &'static str {
+    fn get_type_id(&self) -> &'static str {
         // should never get here, as VanillaOption should not need tagged serialization
         panic!("VanillaOption::type_id: not implemented");
     }
@@ -184,7 +184,7 @@ pub struct SpotStartingEuropean {
 }
 
 impl TypeId for SpotStartingEuropean {
-    fn type_id(&self) -> &'static str { "SpotStartingEuropean" }
+    fn get_type_id(&self) -> &'static str { "SpotStartingEuropean" }
 }
 
 /// A forward-starting European option behaves like a spot-starting one,
@@ -214,7 +214,7 @@ pub struct ForwardStartingEuropean {
 }
 
 impl TypeId for ForwardStartingEuropean {
-    fn type_id(&self) -> &'static str { "ForwardStartingEuropean" }
+    fn get_type_id(&self) -> &'static str { "ForwardStartingEuropean" }
 }
 
 impl SpotStartingEuropean {
