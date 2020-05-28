@@ -320,13 +320,18 @@ pub mod tests {
         let generator = DeltaGammaReportGenerator::new(0.01);
         let mut save = pricer.as_bumpable().new_saveable();
         let report = generator.generate(&mut *pricer, &mut *save, unbumped).unwrap();
+        let report_results = report.as_any().downcast_ref::<DeltaGammaReport>().unwrap().results();
+        let report_delta_gamma = report_results.get("BP.L").unwrap();
+        
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&report).unwrap();
-        print!("serialized: {}\n", serialized);
-        let deserialized = serde_json::from_str(&serialized).unwrap();
+        
+        let deserialized:BoxReport = serde_json::from_str(&serialized).unwrap();
+        let deserialized_results = deserialized.as_any().downcast_ref::<DeltaGammaReport>().unwrap().results();
+        let deserialized_delta_gamma = deserialized_results.get("BP.L").unwrap();
 
-        // check that they match, at least in debug representation
-        assert_debug_eq(&report, &deserialized);
+        assert_eq!(report_delta_gamma.delta(), deserialized_delta_gamma.delta());
+        assert_approx(report_delta_gamma.gamma(), deserialized_delta_gamma.gamma(),1e-16);
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {

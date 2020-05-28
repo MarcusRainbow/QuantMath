@@ -1,0 +1,10 @@
+language: rust
+cache: cargo
+rust:
+  - stable
+jobs:
+  include:
+    - stage: test
+      script: cargo test --verbose --all
+    - stage: build
+      script: cargo build --verbose --all
