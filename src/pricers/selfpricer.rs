@@ -5,7 +5,6 @@ use crate::data::bump::Bump;
 use crate::data::fixings::RcFixingTable;
 use crate::dates::datetime::DateTime;
 use crate::dates::datetime::TimeOfDay;
-use erased_serde as esd;
 use crate::instruments::DependencyContext;
 use crate::instruments::PricingContext;
 use crate::instruments::RcInstrument;
@@ -21,6 +20,7 @@ use crate::risk::Pricer;
 use crate::risk::PricerClone;
 use crate::risk::Saveable;
 use crate::risk::TimeBumpable;
+use erased_serde as esd;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -47,8 +47,8 @@ impl SelfPricerFactory {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<PricerFactory>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn PricerFactory>, esd::Error> {
         Ok(Qrc::new(Arc::new(SelfPricerFactory::deserialize(de)?)))
     }
 }
@@ -65,7 +65,7 @@ impl PricerFactory for SelfPricerFactory {
         instrument: RcInstrument,
         fixing_table: RcFixingTable,
         market_data: RcMarketData,
-    ) -> Result<Box<Pricer>, qm::Error> {
+    ) -> Result<Box<dyn Pricer>, qm::Error> {
         // Apply the fixings to the instrument. (This is the last time we need
         // the fixings.)
         let instruments = match instrument.fix(&*fixing_table)? {
@@ -108,13 +108,13 @@ impl SelfPricer {
 }
 
 impl Pricer for SelfPricer {
-    fn as_bumpable(&self) -> &Bumpable {
+    fn as_bumpable(&self) -> &dyn Bumpable {
         self
     }
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable {
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable {
         self
     }
-    fn as_mut_time_bumpable(&mut self) -> &mut TimeBumpable {
+    fn as_mut_time_bumpable(&mut self) -> &mut dyn TimeBumpable {
         self
     }
 
@@ -143,13 +143,13 @@ impl Pricer for SelfPricer {
 }
 
 impl PricerClone for SelfPricer {
-    fn clone_box(&self) -> Box<Pricer> {
+    fn clone_box(&self) -> Box<dyn Pricer> {
         Box::new(self.clone())
     }
 }
 
 impl Bumpable for SelfPricer {
-    fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>) -> Result<bool, qm::Error> {
+    fn bump(&mut self, bump: &Bump, save: Option<&mut dyn Saveable>) -> Result<bool, qm::Error> {
         self.context.bump(bump, save)
     }
 
@@ -157,15 +157,15 @@ impl Bumpable for SelfPricer {
         self.context.dependencies()
     }
 
-    fn context(&self) -> &PricingContext {
+    fn context(&self) -> &dyn PricingContext {
         self.context.as_pricing_context()
     }
 
-    fn new_saveable(&self) -> Box<Saveable> {
+    fn new_saveable(&self) -> Box<dyn Saveable> {
         self.context.new_saveable()
     }
 
-    fn restore(&mut self, saved: &Saveable) -> Result<(), qm::Error> {
+    fn restore(&mut self, saved: &dyn Saveable) -> Result<(), qm::Error> {
         self.context.restore(saved)
     }
 }

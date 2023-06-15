@@ -7,12 +7,12 @@ use crate::dates::datetime::DateDayFraction;
 use crate::dates::datetime::DateTime;
 use crate::dates::datetime::TimeOfDay;
 use crate::dates::rules::RcDateRule;
-use erased_serde as esd;
 use crate::instruments::DependencyContext;
 use crate::instruments::Instrument;
 use crate::instruments::Priceable;
 use crate::instruments::PricingContext;
 use crate::instruments::SpotRequirement;
+use erased_serde as esd;
 use serde as sd;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -46,8 +46,8 @@ impl Currency {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<Instrument>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(Currency::deserialize(de)?)))
     }
 }
@@ -78,13 +78,13 @@ impl Instrument for Currency {
         &self.settlement
     }
 
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         dependence_on_spot_discount(self, context);
         // for a currency, the spot is always one (in units of its own currency)
         SpotRequirement::NotRequired
     }
 
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         Some(self)
     }
 }
@@ -122,7 +122,7 @@ impl Hash for Currency {
 }
 
 impl Priceable for Currency {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
@@ -132,7 +132,7 @@ impl Priceable for Currency {
     /// settlement date.
     fn prices(
         &self,
-        _context: &PricingContext,
+        _context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
     ) -> Result<(), qm::Error> {
@@ -145,7 +145,10 @@ impl Priceable for Currency {
     }
 }
 
-pub fn dependence_on_spot_discount(instrument: &Instrument, context: &mut DependencyContext) {
+pub fn dependence_on_spot_discount(
+    instrument: &dyn Instrument,
+    context: &mut dyn DependencyContext,
+) {
     // We can assume that the pricing context will provide discounts
     // at least up to its own discount date, so we do not need to specify
     // this dependency
@@ -221,8 +224,8 @@ impl Equity {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<Instrument>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(Equity::deserialize(de)?)))
     }
 }
@@ -240,7 +243,7 @@ impl Instrument for Equity {
         &self.settlement
     }
 
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         dependence_on_spot_discount(self, context);
         SpotRequirement::Required
     }
@@ -256,7 +259,7 @@ impl Instrument for Equity {
         Ok(DateDayFraction::new(date_time.date(), day_fraction))
     }
 
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         Some(self)
     }
 }
@@ -294,7 +297,7 @@ impl Hash for Equity {
 }
 
 impl Priceable for Equity {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
@@ -302,7 +305,7 @@ impl Priceable for Equity {
     /// the spot date. Otherwise we need to use the forward curve.
     fn prices(
         &self,
-        context: &PricingContext,
+        context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
     ) -> Result<(), qm::Error> {
@@ -353,8 +356,8 @@ impl CreditEntity {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<Instrument>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(CreditEntity::deserialize(de)?)))
     }
 }
@@ -379,13 +382,13 @@ impl Instrument for CreditEntity {
         &self.settlement
     }
 
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         dependence_on_spot_discount(self, context);
         // for a credit entity, the spot is always one
         SpotRequirement::NotRequired
     }
 
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         Some(self)
     }
 }
@@ -423,7 +426,7 @@ impl Hash for CreditEntity {
 }
 
 impl Priceable for CreditEntity {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
@@ -431,7 +434,7 @@ impl Priceable for CreditEntity {
     /// discounting to the date which is when we would receive the currency.
     fn prices(
         &self,
-        _context: &PricingContext,
+        _context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
     ) -> Result<(), qm::Error> {
@@ -503,22 +506,26 @@ pub mod tests {
 
         fn forward_curve(
             &self,
-            _instrument: &Instrument,
+            _instrument: &dyn Instrument,
             _high_water_mark: Date,
-        ) -> Result<Arc<Forward>, qm::Error> {
+        ) -> Result<Arc<dyn Forward>, qm::Error> {
             Ok(Arc::new(DriftlessForward::new(self.spot)))
         }
 
         fn vol_surface(
             &self,
-            _instrument: &Instrument,
+            _instrument: &dyn Instrument,
             _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+            _forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
         ) -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }
 
-        fn correlation(&self, _first: &Instrument, _second: &Instrument) -> Result<f64, qm::Error> {
+        fn correlation(
+            &self,
+            _first: &dyn Instrument,
+            _second: &dyn Instrument,
+        ) -> Result<f64, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }
     }

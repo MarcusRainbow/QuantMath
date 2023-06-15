@@ -12,7 +12,7 @@ use crate::math::interpolation::Interpolate;
 /// equities and other assets.
 pub trait Forward: Interpolate<Date> + Sync + Send {
     /// Allows this forward to be treated as an interpolator
-    fn as_interp(&self) -> &Interpolate<Date>;
+    fn as_interp(&self) -> &dyn Interpolate<Date>;
 
     /// Returns the forward on the given date. For example, this may be
     /// the equity forward. In almost all cases, forwards can be considered
@@ -44,7 +44,7 @@ pub struct DriftlessForward {
 }
 
 impl Forward for DriftlessForward {
-    fn as_interp(&self) -> &Interpolate<Date> {
+    fn as_interp(&self) -> &dyn Interpolate<Date> {
         self
     }
 
@@ -64,11 +64,11 @@ impl DriftlessForward {
 /// we represent an equity forward as a spot plus a dividend stream etc, so
 /// that we get the dynamics right as spot is bumped.)
 pub struct InterpolatedForward {
-    interp: Box<Interpolate<Date>>,
+    interp: Box<dyn Interpolate<Date>>,
 }
 
 impl Forward for InterpolatedForward {
-    fn as_interp(&self) -> &Interpolate<Date> {
+    fn as_interp(&self) -> &dyn Interpolate<Date> {
         self
     }
 
@@ -78,7 +78,7 @@ impl Forward for InterpolatedForward {
 }
 
 impl InterpolatedForward {
-    pub fn new(interp: Box<Interpolate<Date>>) -> InterpolatedForward {
+    pub fn new(interp: Box<dyn Interpolate<Date>>) -> InterpolatedForward {
         InterpolatedForward { interp: interp }
     }
 }
@@ -96,7 +96,7 @@ pub struct EquityForward {
 }
 
 impl Forward for EquityForward {
-    fn as_interp(&self) -> &Interpolate<Date> {
+    fn as_interp(&self) -> &dyn Interpolate<Date> {
         self
     }
 
@@ -176,8 +176,8 @@ impl EquityForward {
 /// borrow curve are different from the forward model. It is calculated
 /// using log_discount_with_borrow.
 pub fn discount_with_borrow(
-    rate: &RateCurve,
-    borrow: &RateCurve,
+    rate: &dyn RateCurve,
+    borrow: &dyn RateCurve,
     base_qt_minus_rt: f64,
     date: Date,
 ) -> Result<f64, qm::Error> {
@@ -189,8 +189,8 @@ pub fn discount_with_borrow(
 /// Actually returns rt - qt where t is the time from the base date of the
 /// discount curve to the base date of the forward.
 pub fn log_discount_with_borrow(
-    rate: &RateCurve,
-    borrow: &RateCurve,
+    rate: &dyn RateCurve,
+    borrow: &dyn RateCurve,
     date: Date,
 ) -> Result<f64, qm::Error> {
     let rt = rate.rt(date)?;

@@ -7,7 +7,6 @@ use crate::dates::datetime::DateDayFraction;
 use crate::dates::datetime::DateTime;
 use crate::dates::rules::RcDateRule;
 use crate::dates::Date;
-use erased_serde as esd;
 use crate::instruments::assets::Currency;
 use crate::instruments::assets::RcCurrency;
 use crate::instruments::bonds::ZeroCoupon;
@@ -21,6 +20,7 @@ use crate::instruments::PricingContext;
 use crate::instruments::RcInstrument;
 use crate::instruments::SpotRequirement;
 use crate::math::optionpricing::Black76;
+use erased_serde as esd;
 use ndarray::Array2;
 use ndarray::Axis;
 use serde::Deserialize;
@@ -98,11 +98,11 @@ impl VanillaOption {
     /// calculates the strike
     fn prices(
         &self,
-        context: &PricingContext,
+        context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
         vol_from: DateDayFraction,
-        strike_and_forward: &Fn(&Priceable) -> Result<(f64, f64), qm::Error>,
+        strike_and_forward: &dyn Fn(&dyn Priceable) -> Result<(f64, f64), qm::Error>,
     ) -> Result<(), qm::Error> {
         assert_eq!(dates.len(), out.len());
         if dates.is_empty() {
@@ -275,8 +275,8 @@ impl SpotStartingEuropean {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<Instrument>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(SpotStartingEuropean::deserialize(de)?)))
     }
 }
@@ -316,8 +316,8 @@ impl ForwardStartingEuropean {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<Instrument>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(ForwardStartingEuropean::deserialize(
             de,
         )?)))
@@ -346,7 +346,7 @@ impl Instrument for VanillaOption {
         &self.settlement
     }
 
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         // just one fixing, at expiry
         context.fixing(self.underlying.id(), self.expiry);
 
@@ -384,13 +384,13 @@ impl Instrument for SpotStartingEuropean {
     fn settlement(&self) -> &RcDateRule {
         self.vanilla.settlement()
     }
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         self.vanilla.dependencies(context)
     }
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         Some(self)
     }
-    fn as_mc_priceable(&self) -> Option<&MonteCarloPriceable> {
+    fn as_mc_priceable(&self) -> Option<&dyn MonteCarloPriceable> {
         Some(self)
     }
 
@@ -472,14 +472,14 @@ impl Instrument for ForwardStartingEuropean {
     fn settlement(&self) -> &RcDateRule {
         self.vanilla.settlement()
     }
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         Some(self)
     }
-    fn as_mc_priceable(&self) -> Option<&MonteCarloPriceable> {
+    fn as_mc_priceable(&self) -> Option<&dyn MonteCarloPriceable> {
         Some(self)
     }
 
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         // make sure we record the strike fixing before the expiry fixing
         context.fixing(self.vanilla.underlying.id(), self.strike_date);
 
@@ -515,14 +515,14 @@ impl Instrument for ForwardStartingEuropean {
 }
 
 impl Priceable for SpotStartingEuropean {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
     // Values the European Option using the analytic formula Black 76
     fn prices(
         &self,
-        context: &PricingContext,
+        context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
     ) -> Result<(), qm::Error> {
@@ -535,7 +535,7 @@ impl Priceable for SpotStartingEuropean {
 }
 
 impl Priceable for ForwardStartingEuropean {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
@@ -544,7 +544,7 @@ impl Priceable for ForwardStartingEuropean {
     /// and we use forward vol from the strike date to expiry.
     fn prices(
         &self,
-        context: &PricingContext,
+        context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
     ) -> Result<(), qm::Error> {
@@ -567,14 +567,14 @@ impl Priceable for ForwardStartingEuropean {
 }
 
 impl MonteCarloPriceable for SpotStartingEuropean {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
     fn mc_dependencies(
         &self,
         _dates: &[DateDayFraction],
-        output: &mut MonteCarloDependencies,
+        output: &mut dyn MonteCarloDependencies,
     ) -> Result<(), qm::Error> {
         // one observation, at expiry
         output.observation(&self.vanilla.underlying, self.vanilla.expiry_time);
@@ -602,7 +602,7 @@ impl MonteCarloPriceable for SpotStartingEuropean {
         None
     }
 
-    fn mc_price(&self, context: &MonteCarloContext) -> Result<f64, qm::Error> {
+    fn mc_price(&self, context: &dyn MonteCarloContext) -> Result<f64, qm::Error> {
         // This is asserting what the context should know from our response
         // to the mc_dependencies call. No need for proper error handling.
         let ref paths = context.paths(&self.vanilla.underlying)?;
@@ -639,14 +639,14 @@ impl MonteCarloPriceable for SpotStartingEuropean {
 }
 
 impl MonteCarloPriceable for ForwardStartingEuropean {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
     fn mc_dependencies(
         &self,
         _dates: &[DateDayFraction],
-        output: &mut MonteCarloDependencies,
+        output: &mut dyn MonteCarloDependencies,
     ) -> Result<(), qm::Error> {
         // two observations, at strike and expiry
         output.observation(&self.vanilla.underlying, self.strike_time);
@@ -675,7 +675,7 @@ impl MonteCarloPriceable for ForwardStartingEuropean {
         Some(self.strike_time)
     }
 
-    fn mc_price(&self, context: &MonteCarloContext) -> Result<f64, qm::Error> {
+    fn mc_price(&self, context: &dyn MonteCarloContext) -> Result<f64, qm::Error> {
         // This is asserting what the context should know from our response
         // to the mc_dependencies call. No need for proper error handling.
         let ref paths = context.paths(&self.vanilla.underlying)?;
@@ -771,9 +771,9 @@ mod tests {
 
         fn forward_curve(
             &self,
-            instrument: &Instrument,
+            instrument: &dyn Instrument,
             _high_water_mark: Date,
-        ) -> Result<Arc<Forward>, qm::Error> {
+        ) -> Result<Arc<dyn Forward>, qm::Error> {
             print!("forward for {}", instrument.id());
 
             let d = Date::from_ymd(2018, 06, 01);
@@ -792,9 +792,9 @@ mod tests {
 
         fn vol_surface(
             &self,
-            _instrument: &Instrument,
+            _instrument: &dyn Instrument,
             _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+            _forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
         ) -> Result<RcVolSurface, qm::Error> {
             let calendar = RcCalendar::new(Arc::new(WeekdayCalendar()));
             let base_date = Date::from_ymd(2018, 05, 30);
@@ -803,7 +803,11 @@ mod tests {
             Ok(RcVolSurface::new(Arc::new(vol)))
         }
 
-        fn correlation(&self, _first: &Instrument, _second: &Instrument) -> Result<f64, qm::Error> {
+        fn correlation(
+            &self,
+            _first: &dyn Instrument,
+            _second: &dyn Instrument,
+        ) -> Result<f64, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }
     }
@@ -2217,8 +2221,10 @@ mod tests {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
             let mut ccy_seed =
                 Dedup::<Currency, Arc<Currency>>::new(control.clone(), currencies.clone());
-            let mut opt_seed =
-                Dedup::<Instrument, Qrc<Instrument>>::new(control.clone(), instruments.clone());
+            let mut opt_seed = Dedup::<dyn Instrument, Qrc<dyn Instrument>>::new(
+                control.clone(),
+                instruments.clone(),
+            );
             ccy_seed
                 .with(&DEDUP_CURRENCY, || {
                     opt_seed.with(&DEDUP_INSTRUMENT, || {
@@ -2236,8 +2242,10 @@ mod tests {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
             let mut ccy_seed =
                 Dedup::<Currency, Arc<Currency>>::new(control.clone(), currencies.clone());
-            let mut opt_seed =
-                Dedup::<Instrument, Qrc<Instrument>>::new(control.clone(), instruments.clone());
+            let mut opt_seed = Dedup::<dyn Instrument, Qrc<dyn Instrument>>::new(
+                control.clone(),
+                instruments.clone(),
+            );
             ccy_seed
                 .with(&DEDUP_CURRENCY, || {
                     opt_seed.with(&DEDUP_INSTRUMENT, || Basket::deserialize(&mut deserializer))

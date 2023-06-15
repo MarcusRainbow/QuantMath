@@ -5,7 +5,6 @@ use crate::data::bump::Bump;
 use crate::dates::datetime::DateDayFraction;
 use crate::dates::datetime::DateTime;
 use crate::dates::datetime::TimeOfDay;
-use erased_serde as esd;
 use crate::instruments::Instrument;
 use crate::instruments::MonteCarloContext;
 use crate::instruments::PricingContext;
@@ -13,6 +12,12 @@ use crate::instruments::RcInstrument;
 use crate::models::MonteCarloModel;
 use crate::models::MonteCarloModelFactory;
 use crate::models::MonteCarloTimeline;
+use crate::risk::dependencies::DependencyCollector;
+use crate::risk::marketdata::MarketData;
+use crate::risk::Bumpable;
+use crate::risk::BumpablePricingContext;
+use crate::risk::Saveable;
+use erased_serde as esd;
 use nalgebra::base::DMatrix;
 use nalgebra::linalg::Cholesky;
 use ndarray::Array;
@@ -24,11 +29,6 @@ use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use rand;
 use rand::StdRng;
-use crate::risk::dependencies::DependencyCollector;
-use crate::risk::marketdata::MarketData;
-use crate::risk::Bumpable;
-use crate::risk::BumpablePricingContext;
-use crate::risk::Saveable;
 use serde::Deserialize;
 use statrs::distribution::Distribution;
 use statrs::distribution::Normal;
@@ -65,8 +65,8 @@ impl BlackDiffusionFactory {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<MonteCarloModelFactory>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn MonteCarloModelFactory>, esd::Error> {
         Ok(Qrc::new(Arc::new(BlackDiffusionFactory::deserialize(de)?)))
     }
 }
@@ -81,8 +81,8 @@ impl MonteCarloModelFactory for BlackDiffusionFactory {
     fn factory(
         &self,
         timeline: &MonteCarloTimeline,
-        context: Box<BumpablePricingContext>,
-    ) -> Result<Box<MonteCarloModel>, qm::Error> {
+        context: Box<dyn BumpablePricingContext>,
+    ) -> Result<Box<dyn MonteCarloModel>, qm::Error> {
         let model = BlackDiffusion::new(
             timeline,
             context,
@@ -140,7 +140,7 @@ impl MonteCarloModelFactory for BlackDiffusionFactory {
 pub struct BlackDiffusion {
     observations: Vec<DateDayFraction>,
     flows: Vec<RcInstrument>,
-    context: Box<BumpablePricingContext>,
+    context: Box<dyn BumpablePricingContext>,
     key: HashMap<String, usize>,
     instruments: Vec<RcInstrument>,
     substepping: Vec<usize>,
@@ -162,7 +162,7 @@ impl BlackDiffusion {
     /// smaller steps in time, to converge on the correct drift and variance.
     pub fn new(
         timeline: &MonteCarloTimeline,
-        context: Box<BumpablePricingContext>,
+        context: Box<dyn BumpablePricingContext>,
         correlation_substep: usize,
         path_substep: f64,
         n_paths: usize,
@@ -284,7 +284,7 @@ impl BlackDiffusion {
 /// intermediate steps for each observation.
 pub fn calculate_substepping(
     observations: &[DateDayFraction],
-    context: &PricingContext,
+    context: &dyn PricingContext,
     instruments: &Vec<RcInstrument>,
     path_substep: f64,
 ) -> Result<Vec<usize>, qm::Error> {
@@ -299,7 +299,7 @@ pub fn calculate_substepping(
     // We need the maximum number of steps required by each asset. Iterate
     // through them all.
     for instrument in instruments.iter() {
-        let instr: &Instrument = instrument.deref();
+        let instr: &dyn Instrument = instrument.deref();
         let fwd = context.forward_curve(instr, hwm)?;
         let surface = context.vol_surface(instr, hwm, &|| Ok(fwd.clone()))?;
 
@@ -327,7 +327,7 @@ pub fn calculate_substepping(
 /// numbers weighted by a gaussian distribution with correlations defined
 /// by the correlation matrix in the pricing context.
 pub fn fetch_correlated_gaussians(
-    context: &PricingContext,
+    context: &dyn PricingContext,
     instruments: &Vec<RcInstrument>,
     _correlation_substep: usize,
     substepping: &[usize],
@@ -412,7 +412,7 @@ pub fn fetch_correlated_gaussians(
 pub fn fetch_paths(
     observations: &[DateDayFraction],
     correlated_gaussians: &Array3<f64>,
-    context: &PricingContext,
+    context: &dyn PricingContext,
     instruments: &Vec<RcInstrument>,
     substepping: &[usize],
     n_paths: usize,
@@ -430,7 +430,7 @@ pub fn fetch_paths(
         .zip(correlated_gaussians.axis_iter(Axis(2)))
         .zip(paths.axis_iter_mut(Axis(2)))
     {
-        let instr: &Instrument = asset.deref();
+        let instr: &dyn Instrument = asset.deref();
         fetch_path(instr, context, &observations, gaussians, substepping, path)?;
     }
 
@@ -438,8 +438,8 @@ pub fn fetch_paths(
 }
 
 pub fn fetch_path(
-    instrument: &Instrument,
-    context: &PricingContext,
+    instrument: &dyn Instrument,
+    context: &dyn PricingContext,
     observations: &[DateDayFraction],
     correlated_gaussians: ArrayView2<f64>,
     substepping: &[usize],
@@ -512,13 +512,13 @@ pub fn fetch_path(
 }
 
 impl MonteCarloModel for BlackDiffusion {
-    fn as_mc_context(&self) -> &MonteCarloContext {
+    fn as_mc_context(&self) -> &dyn MonteCarloContext {
         self
     }
-    fn as_bumpable(&self) -> &Bumpable {
+    fn as_bumpable(&self) -> &dyn Bumpable {
         self
     }
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable {
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable {
         self
     }
     fn raw_market_data(&self) -> &MarketData {
@@ -575,18 +575,22 @@ impl MonteCarloContext for BlackDiffusion {
         Ok(total)
     }
 
-    fn pricing_context(&self) -> &PricingContext {
+    fn pricing_context(&self) -> &dyn PricingContext {
         &*self.context.as_pricing_context()
     }
 }
 
 impl Bumpable for BlackDiffusion {
-    fn bump(&mut self, bump: &Bump, any_saved: Option<&mut Saveable>) -> Result<bool, qm::Error> {
+    fn bump(
+        &mut self,
+        bump: &Bump,
+        any_saved: Option<&mut dyn Saveable>,
+    ) -> Result<bool, qm::Error> {
         // we have to unpack the option<saveable> into options on all its
         // components all at the same time, to avoid problems with borrowing.
         let saved = to_saved(any_saved)?;
         let (saved_data, saved_paths): (
-            Option<&mut Saveable>,
+            Option<&mut dyn Saveable>,
             Option<&mut HashMap<usize, Array2<f64>>>,
         ) = if let Some(s) = saved {
             (Some(&mut *s.saved_data), Some(&mut s.paths))
@@ -638,7 +642,7 @@ impl Bumpable for BlackDiffusion {
         }
     }
 
-    fn new_saveable(&self) -> Box<Saveable> {
+    fn new_saveable(&self) -> Box<dyn Saveable> {
         Box::new(SavedBlackDiffusion::new(
             self.context.as_bumpable().new_saveable(),
         ))
@@ -648,11 +652,11 @@ impl Bumpable for BlackDiffusion {
         self.context.dependencies()
     }
 
-    fn context(&self) -> &PricingContext {
+    fn context(&self) -> &dyn PricingContext {
         self.context.as_pricing_context()
     }
 
-    fn restore(&mut self, any_saved: &Saveable) -> Result<(), qm::Error> {
+    fn restore(&mut self, any_saved: &dyn Saveable) -> Result<(), qm::Error> {
         if let Some(saved) = any_saved.as_any().downcast_ref::<SavedBlackDiffusion>() {
             // first restore the underlying market data and cached curves
             self.context.as_mut_bumpable().restore(&*saved.saved_data)?;
@@ -670,7 +674,7 @@ impl Bumpable for BlackDiffusion {
 }
 
 fn to_saved(
-    opt_saveable: Option<&mut Saveable>,
+    opt_saveable: Option<&mut dyn Saveable>,
 ) -> Result<Option<&mut SavedBlackDiffusion>, qm::Error> {
     if let Some(saveable) = opt_saveable {
         if let Some(saved) = saveable.as_mut_any().downcast_mut::<SavedBlackDiffusion>() {
@@ -685,14 +689,14 @@ fn to_saved(
 
 /// Save space for BlackDiffusion to use during bumping
 pub struct SavedBlackDiffusion {
-    saved_data: Box<Saveable>,
+    saved_data: Box<dyn Saveable>,
     paths: HashMap<usize, Array2<f64>>,
 }
 
 impl SavedBlackDiffusion {
     /// Creates an empty set of paths, which can be used for saving state
     /// so it can be restored after a bump
-    pub fn new(saved_data: Box<Saveable>) -> SavedBlackDiffusion {
+    pub fn new(saved_data: Box<dyn Saveable>) -> SavedBlackDiffusion {
         SavedBlackDiffusion {
             saved_data: saved_data,
             paths: HashMap::new(),
@@ -701,10 +705,10 @@ impl SavedBlackDiffusion {
 }
 
 impl Saveable for SavedBlackDiffusion {
-    fn as_any(&self) -> &Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
-    fn as_mut_any(&mut self) -> &mut Any {
+    fn as_mut_any(&mut self) -> &mut dyn Any {
         self
     }
 

@@ -4,12 +4,12 @@ pub mod selfpricer;
 use crate::core::factories::{Qrc, Registry, TypeId};
 use crate::core::qm;
 use crate::data::fixings::RcFixingTable;
-use erased_serde as esd;
 use crate::instruments::RcInstrument;
 use crate::pricers::montecarlo::MonteCarloPricerFactory;
 use crate::pricers::selfpricer::SelfPricerFactory;
 use crate::risk::marketdata::RcMarketData;
 use crate::risk::Pricer;
+use erased_serde as esd;
 use serde as sd;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
@@ -27,16 +27,16 @@ pub trait PricerFactory: esd::Serialize + TypeId + Sync + Send + Debug {
         instrument: RcInstrument,
         fixings: RcFixingTable,
         market_data: RcMarketData,
-    ) -> Result<Box<Pricer>, qm::Error>;
+    ) -> Result<Box<dyn Pricer>, qm::Error>;
 }
 
 // Get serialization to work recursively for instruments by using the
 // technology defined in core/factories. RcInstrument is a container
 // class holding an RcInstrument
-pub type TypeRegistry = Registry<BoxFnSeed<Qrc<PricerFactory>>>;
+pub type TypeRegistry = Registry<BoxFnSeed<Qrc<dyn PricerFactory>>>;
 
 /// Implement deserialization for subclasses of the type
-impl<'de> sd::Deserialize<'de> for Qrc<PricerFactory> {
+impl<'de> sd::Deserialize<'de> for Qrc<dyn PricerFactory> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: sd::Deserializer<'de>,
@@ -64,4 +64,4 @@ pub fn get_registry() -> &'static TypeRegistry {
     &REG
 }
 
-pub type RcPricerFactory = Qrc<PricerFactory>;
+pub type RcPricerFactory = Qrc<dyn PricerFactory>;

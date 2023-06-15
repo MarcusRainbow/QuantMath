@@ -3,7 +3,6 @@ use crate::core::factories::{Qbox, Qrc};
 use crate::core::qm;
 use crate::data::bump::Bump;
 use crate::data::bumpspot::BumpSpot;
-use erased_serde as esd;
 use crate::math::numerics::{approx_eq, ApproxEq};
 use crate::risk::bumped_price;
 use crate::risk::ApproxEqReport;
@@ -13,6 +12,7 @@ use crate::risk::Report;
 use crate::risk::ReportGenerator;
 use crate::risk::ReportTolerances;
 use crate::risk::Saveable;
+use erased_serde as esd;
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ pub struct DeltaGammaReport {
 }
 
 impl Report for DeltaGammaReport {
-    fn as_any(&self) -> &Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }
@@ -42,7 +42,9 @@ impl TypeId for DeltaGammaReport {
 }
 
 impl DeltaGammaReport {
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qbox<Report>, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qbox<dyn Report>, esd::Error> {
         Ok(Qbox::new(Box::new(DeltaGammaReport::deserialize(de)?)))
     }
 
@@ -88,7 +90,7 @@ impl<'v> ApproxEq<ReportTolerances, &'v DeltaGammaReport> for &'v DeltaGammaRepo
 impl ApproxEqReport for DeltaGammaReport {
     fn validate_report(
         &self,
-        other: &Report,
+        other: &dyn Report,
         tol: &ReportTolerances,
         msg: &str,
         diffs: &mut fmt::Formatter,
@@ -166,8 +168,8 @@ impl DeltaGammaReportGenerator {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<ReportGenerator>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn ReportGenerator>, esd::Error> {
         Ok(Qrc::new(Arc::new(DeltaGammaReportGenerator::deserialize(
             de,
         )?)))
@@ -183,8 +185,8 @@ impl TypeId for DeltaGammaReportGenerator {
 impl ReportGenerator for DeltaGammaReportGenerator {
     fn generate(
         &self,
-        pricer: &mut Pricer,
-        saveable: &mut Saveable,
+        pricer: &mut dyn Pricer,
+        saveable: &mut dyn Saveable,
         unbumped: f64,
     ) -> Result<BoxReport, qm::Error> {
         // We first bump up by 1 + bumpsize, then down by (1 - bumpsize) / (1 + bumpsize)
@@ -256,7 +258,7 @@ pub mod tests {
         context: PricingContextPrefetch,
     }
 
-    pub fn sample_pricer() -> Box<Pricer> {
+    pub fn sample_pricer() -> Box<dyn Pricer> {
         let market_data = sample_market_data();
         let european = sample_european();
 
@@ -272,13 +274,13 @@ pub mod tests {
     }
 
     impl Pricer for SamplePricer {
-        fn as_bumpable(&self) -> &Bumpable {
+        fn as_bumpable(&self) -> &dyn Bumpable {
             self
         }
-        fn as_mut_bumpable(&mut self) -> &mut Bumpable {
+        fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable {
             self
         }
-        fn as_mut_time_bumpable(&mut self) -> &mut TimeBumpable {
+        fn as_mut_time_bumpable(&mut self) -> &mut dyn TimeBumpable {
             self
         }
 
@@ -294,25 +296,29 @@ pub mod tests {
     }
 
     impl PricerClone for SamplePricer {
-        fn clone_box(&self) -> Box<Pricer> {
+        fn clone_box(&self) -> Box<dyn Pricer> {
             Box::new(self.clone())
         }
     }
 
     impl Bumpable for SamplePricer {
-        fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>) -> Result<bool, qm::Error> {
+        fn bump(
+            &mut self,
+            bump: &Bump,
+            save: Option<&mut dyn Saveable>,
+        ) -> Result<bool, qm::Error> {
             self.context.bump(bump, save)
         }
         fn dependencies(&self) -> Result<&DependencyCollector, qm::Error> {
             self.context.dependencies()
         }
-        fn context(&self) -> &PricingContext {
+        fn context(&self) -> &dyn PricingContext {
             &self.context
         }
-        fn new_saveable(&self) -> Box<Saveable> {
+        fn new_saveable(&self) -> Box<dyn Saveable> {
             self.context.new_saveable()
         }
-        fn restore(&mut self, saved: &Saveable) -> Result<(), qm::Error> {
+        fn restore(&mut self, saved: &dyn Saveable) -> Result<(), qm::Error> {
             self.context.restore(saved)
         }
     }

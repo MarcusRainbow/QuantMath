@@ -5,7 +5,6 @@ use crate::core::qm;
 use crate::dates::datetime::DateTime;
 use crate::dates::rules::RcDateRule;
 use crate::dates::Date;
-use erased_serde as esd;
 use crate::instruments::assets::Currency;
 use crate::instruments::assets::RcCurrency;
 use crate::instruments::DependencyContext;
@@ -13,6 +12,7 @@ use crate::instruments::Instrument;
 use crate::instruments::Priceable;
 use crate::instruments::PricingContext;
 use crate::instruments::SpotRequirement;
+use erased_serde as esd;
 use serde::Deserialize;
 use std::fmt;
 use std::fmt::Display;
@@ -70,8 +70,8 @@ impl ZeroCoupon {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<Instrument>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(ZeroCoupon::deserialize(de)?)))
     }
 }
@@ -92,7 +92,7 @@ impl Instrument for ZeroCoupon {
         &self.settlement
     }
 
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         context.yield_curve(&self.credit_id, self.payment_date);
 
         // for a zero coupon, the spot is always one
@@ -104,7 +104,7 @@ impl Instrument for ZeroCoupon {
         true
     }
 
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         Some(self)
     }
 }
@@ -130,7 +130,7 @@ impl Hash for ZeroCoupon {
 }
 
 impl Priceable for ZeroCoupon {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
@@ -138,7 +138,7 @@ impl Priceable for ZeroCoupon {
     /// to the date which is when we would receive the currency.
     fn prices(
         &self,
-        context: &PricingContext,
+        context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
     ) -> Result<(), qm::Error> {
@@ -224,22 +224,26 @@ mod tests {
 
         fn forward_curve(
             &self,
-            _instrument: &Instrument,
+            _instrument: &dyn Instrument,
             _high_water_mark: Date,
-        ) -> Result<Arc<Forward>, qm::Error> {
+        ) -> Result<Arc<dyn Forward>, qm::Error> {
             Err(qm::Error::new("Forward not supported"))
         }
 
         fn vol_surface(
             &self,
-            _instrument: &Instrument,
+            _instrument: &dyn Instrument,
             _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+            _forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
         ) -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("VolSurface not supported"))
         }
 
-        fn correlation(&self, _first: &Instrument, _second: &Instrument) -> Result<f64, qm::Error> {
+        fn correlation(
+            &self,
+            _first: &dyn Instrument,
+            _second: &dyn Instrument,
+        ) -> Result<f64, qm::Error> {
             Err(qm::Error::new("correlation not supported"))
         }
     }

@@ -3,10 +3,10 @@ use crate::core::factories::Registry;
 use crate::core::factories::TypeId;
 use crate::core::qm;
 use crate::dates::Date;
-use erased_serde as esd;
 use crate::math::interpolation::Extrap;
 use crate::math::interpolation::Interpolate;
 use crate::math::interpolation::Linear;
+use erased_serde as esd;
 use serde as sd;
 use serde::Deserialize;
 use serde_tagged as sdt;
@@ -60,7 +60,7 @@ pub trait RateCurve: esd::Serialize + TypeId + Sync + Send + Debug {
 // Get serialization to work recursively for rate curves by using the
 // technology defined in core/factories. RcRateCurve is a container
 // class holding an RcRateCurve
-pub type RcRateCurve = Qrc<RateCurve>;
+pub type RcRateCurve = Qrc<dyn RateCurve>;
 pub type TypeRegistry = Registry<BoxFnSeed<RcRateCurve>>;
 
 /// Implement deserialization for subclasses of the type
@@ -127,7 +127,9 @@ impl ZeroRateCurve {
         ZeroRateCurve { base: base_date }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcRateCurve, esd::Error> {
         Ok(Qrc::new(Arc::new(ZeroRateCurve::deserialize(de)?)))
     }
 }
@@ -188,7 +190,9 @@ impl RateCurveAct365 {
         })
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcRateCurve, esd::Error> {
         Ok(Qrc::new(Arc::new(RateCurveAct365::deserialize(de)?)))
     }
 }
@@ -237,7 +241,9 @@ impl AnnualisedFlatBump {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcRateCurve, esd::Error> {
         Ok(Qrc::new(Arc::new(AnnualisedFlatBump::deserialize(de)?)))
     }
 }
@@ -274,7 +280,9 @@ impl ContinuouslyCompoundedFlatBump {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcRateCurve, esd::Error> {
         Ok(Qrc::new(Arc::new(
             ContinuouslyCompoundedFlatBump::deserialize(de)?,
         )))
@@ -314,7 +322,9 @@ impl RelativeBump {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcRateCurve, esd::Error> {
         Ok(Qrc::new(Arc::new(RelativeBump::deserialize(de)?)))
     }
 }

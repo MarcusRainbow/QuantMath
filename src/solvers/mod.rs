@@ -16,6 +16,11 @@ pub trait OneDimensionalSolver {
     /// will iteratively extend the minimum and maximum values to try
     /// to bracket the root. This strikes me as dangerous, and a misuse
     /// of the idea of a safe range.)
-    fn solve(&self, pricer: &mut Pricer, target: f64, min: f64, max: f64)
-        -> Result<f64, qm::Error>;
+    fn solve(
+        &self,
+        pricer: &mut dyn Pricer,
+        target: f64,
+        min: f64,
+        max: f64,
+    ) -> Result<f64, qm::Error>;
 }

@@ -95,7 +95,7 @@ pub trait Calendar: esd::Serialize + TypeId + Sync + Send + Debug {
 // Get serialization to work recursively for rate curves by using the
 // technology defined in core/factories. RcCalendar is a container
 // class holding an Rc<Calendar>
-pub type RcCalendar = Qrc<Calendar>;
+pub type RcCalendar = Qrc<dyn Calendar>;
 pub type TypeRegistry = Registry<BoxFnSeed<RcCalendar>>;
 
 /// Implement deserialization for subclasses of the type
@@ -151,7 +151,7 @@ impl EveryDayCalendar {
         EveryDayCalendar {}
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(EveryDayCalendar::deserialize(de)?)))
     }
 }
@@ -210,7 +210,7 @@ impl WeekdayCalendar {
         WeekdayCalendar {}
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(WeekdayCalendar::deserialize(de)?)))
     }
 }
@@ -340,7 +340,7 @@ impl WeekdayAndHolidayCalendar {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(WeekdayAndHolidayCalendar::deserialize(
             de,
         )?)))
@@ -539,7 +539,7 @@ impl VolatilityCalendar {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(VolatilityCalendar::deserialize(de)?)))
     }
 }
@@ -809,7 +809,7 @@ mod tests {
         );
     }
 
-    fn consistency_check_count(calendar: &Calendar, exact: bool) {
+    fn consistency_check_count(calendar: &dyn Calendar, exact: bool) {
         // start date for the check
         let start = Date::from_ymd(2017, 01, 01);
         let start_julian = start.truncated_julian();
@@ -856,7 +856,7 @@ mod tests {
     }
 
     fn assert_step(
-        calendar: &Calendar,
+        calendar: &dyn Calendar,
         stepped: Date,
         manual: Date,
         from: Date,
@@ -895,7 +895,7 @@ mod tests {
         );
     }
 
-    fn consistency_check_step(calendar: &Calendar) {
+    fn consistency_check_step(calendar: &dyn Calendar) {
         // start date for the check
         let start = Date::from_ymd(2018, 01, 01);
         let start_julian = start.truncated_julian();
@@ -941,7 +941,7 @@ mod tests {
     }
 
     fn manual_count(
-        calendar: &Calendar,
+        calendar: &dyn Calendar,
         from: Date,
         from_fraction: f64,
         to: Date,
@@ -961,7 +961,7 @@ mod tests {
         count
     }
 
-    fn manual_step(calendar: &Calendar, from: Date, direction: i32, steps: i32) -> Date {
+    fn manual_step(calendar: &dyn Calendar, from: Date, direction: i32, steps: i32) -> Date {
         assert!(direction != 0);
         assert!(steps >= 0);
 

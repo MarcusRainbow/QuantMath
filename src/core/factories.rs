@@ -285,7 +285,7 @@ pub mod tests {
     // you want to deserialize a trait object. To enforce this at compile time,
     // you could implement a custom wrapper type.
 
-    impl<'a> serde::Serialize for Stored + 'a {
+    impl<'a> serde::Serialize for dyn Stored + 'a {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: serde::Serializer,
@@ -304,11 +304,11 @@ pub mod tests {
         }
     }
 
-    pub type RcStored = Qrc<Stored>;
+    pub type RcStored = Qrc<dyn Stored>;
     pub type TypeRegistry = Registry<BoxFnSeed<RcStored>>;
 
     /// Implement deserialization for subclasses of the type
-    impl<'de> sd::Deserialize<'de> for Qrc<Stored> {
+    impl<'de> sd::Deserialize<'de> for Qrc<dyn Stored> {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: sd::Deserializer<'de>,
@@ -340,17 +340,17 @@ pub mod tests {
         use serde::Deserialize;
 
         /// Deserialize a value of type `A` as trait-object.
-        pub fn a<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
+        pub fn a<'de>(de: &mut dyn Deserializer<'de>) -> Result<RcStored, Error> {
             Ok(RcStored::new(Arc::new(A::deserialize(de)?)))
         }
 
         /// Deserialize a value of type `B` as trait-object.
-        pub fn b<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
+        pub fn b<'de>(de: &mut dyn Deserializer<'de>) -> Result<RcStored, Error> {
             Ok(RcStored::new(Arc::new(B::deserialize(de)?)))
         }
 
         /// Deserialize a value of type `B` as trait-object.
-        pub fn c<'de>(de: &mut Deserializer<'de>) -> Result<RcStored, Error> {
+        pub fn c<'de>(de: &mut dyn Deserializer<'de>) -> Result<RcStored, Error> {
             Ok(RcStored::new(Arc::new(C::deserialize(de)?)))
         }
     }
@@ -358,11 +358,11 @@ pub mod tests {
     #[test]
     fn serde_tagged_serialize() {
         // Let's begin by creating our test data ...
-        let a: Arc<Stored> = Arc::new(A {
+        let a: Arc<dyn Stored> = Arc::new(A {
             foo: "bar".to_owned(),
         });
-        let b: Arc<Stored> = Arc::new(B::Str("Hello World".to_owned()));
-        let c: Arc<Stored> = Arc::new(B::Int(42));
+        let b: Arc<dyn Stored> = Arc::new(B::Str("Hello World".to_owned()));
+        let c: Arc<dyn Stored> = Arc::new(B::Int(42));
 
         // ... and then transform it to trait objects.
         // We use clone here so we can later assert that de-/serialization does not
@@ -419,11 +419,11 @@ pub mod tests {
     #[test]
     fn serde_tagged_roundtrip() {
         // Let's begin by creating our test data ...
-        let a: Arc<Stored> = Arc::new(A {
+        let a: Arc<dyn Stored> = Arc::new(A {
             foo: "bar".to_owned(),
         });
-        let b: Arc<Stored> = Arc::new(B::Str("Hello World".to_owned()));
-        let c: Arc<Stored> = Arc::new(B::Int(42));
+        let b: Arc<dyn Stored> = Arc::new(B::Str("Hello World".to_owned()));
+        let c: Arc<dyn Stored> = Arc::new(B::Int(42));
 
         // ... and then transform it to trait objects.
         // We use clone here so we can later assert that de-/serialization does not
@@ -454,7 +454,7 @@ pub mod tests {
     }
 
     // test deduplicated factories
-    pub type DrcStored = Drc<Stored, RcStored>;
+    pub type DrcStored = Drc<dyn Stored, RcStored>;
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct C {
@@ -464,7 +464,7 @@ pub mod tests {
     }
 
     thread_local! {
-        static DEDUP_STORED : RefCell<Dedup<Stored, RcStored>>
+        static DEDUP_STORED : RefCell<Dedup< dyn Stored, RcStored>>
             = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
     }
 
@@ -616,19 +616,19 @@ pub mod tests {
 
     #[test]
     fn serde_tagged_dedup_roundtrip_error_if_missing() {
-        let a: Arc<Stored> = Arc::new(A {
+        let a: Arc<dyn Stored> = Arc::new(A {
             foo: "a".to_owned(),
         });
         let rc_a = DrcStored::new(RcStored::new(a.clone()));
-        let b: Arc<Stored> = Arc::new(B::Str("b".to_owned()));
+        let b: Arc<dyn Stored> = Arc::new(B::Str("b".to_owned()));
         let rc_b = DrcStored::new(RcStored::new(b.clone()));
-        let c: Arc<Stored> = Arc::new(C {
+        let c: Arc<dyn Stored> = Arc::new(C {
             id: "c".to_string(),
             left: rc_a.clone(),
             right: rc_b.clone(),
         });
         let rc_c = DrcStored::new(RcStored::new(c.clone()));
-        let d: Arc<Stored> = Arc::new(C {
+        let d: Arc<dyn Stored> = Arc::new(C {
             id: "d".to_string(),
             left: rc_c.clone(),
             right: rc_c.clone(),
@@ -679,19 +679,19 @@ pub mod tests {
         expected: &str,
     ) {
         // Let's begin by creating our test data ...
-        let a: Arc<Stored> = Arc::new(A {
+        let a: Arc<dyn Stored> = Arc::new(A {
             foo: "a".to_owned(),
         });
         let rc_a = DrcStored::new(RcStored::new(a.clone()));
-        let b: Arc<Stored> = Arc::new(B::Str("b".to_owned()));
+        let b: Arc<dyn Stored> = Arc::new(B::Str("b".to_owned()));
         let rc_b = DrcStored::new(RcStored::new(b.clone()));
-        let c: Arc<Stored> = Arc::new(C {
+        let c: Arc<dyn Stored> = Arc::new(C {
             id: "c".to_string(),
             left: rc_a.clone(),
             right: rc_b.clone(),
         });
         let rc_c = DrcStored::new(RcStored::new(c.clone()));
-        let d: Arc<Stored> = Arc::new(C {
+        let d: Arc<dyn Stored> = Arc::new(C {
             id: "d".to_string(),
             left: rc_c.clone(),
             right: rc_c.clone(),
@@ -731,7 +731,7 @@ pub mod tests {
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut seed = Dedup::<Stored, Qrc<Stored>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<dyn Stored, Qrc<dyn Stored>>::new(control.clone(), map.clone());
             seed.with(&DEDUP_STORED, || obj.serialize(&mut serializer))
                 .unwrap();
         }
@@ -740,7 +740,7 @@ pub mod tests {
 
     fn from_json(ser: &[u8], control: DedupControl, map: &HashMap<String, DrcStored>) -> DrcStored {
         let mut deserializer = serde_json::Deserializer::from_slice(&ser);
-        let mut seed = Dedup::<Stored, Qrc<Stored>>::new(control.clone(), map.clone());
+        let mut seed = Dedup::<dyn Stored, Qrc<dyn Stored>>::new(control.clone(), map.clone());
         seed.with(&DEDUP_STORED, || DrcStored::deserialize(&mut deserializer))
             .unwrap()
     }

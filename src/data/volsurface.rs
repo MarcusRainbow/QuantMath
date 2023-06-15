@@ -14,12 +14,12 @@ use crate::data::volsmile::VolSmile;
 use crate::dates::calendar::RcCalendar;
 use crate::dates::datetime::DateDayFraction;
 use crate::dates::Date;
-use erased_serde as esd;
 use crate::math::interpolation::lerp;
 use crate::math::interpolation::Interpolable;
 use crate::math::interpolation::Interpolate;
 use crate::math::interpolation::Linear;
 use crate::math::numerics::approx_eq;
+use erased_serde as esd;
 use serde as sd;
 use serde::de::Error;
 use serde::Deserialize;
@@ -232,7 +232,7 @@ pub trait VolSurface: esd::Serialize + TypeId + Send + Sync + Debug {
 // Get serialization to work recursively for rate curves by using the
 // technology defined in core/factories. RcRateCurve is a container
 // class holding an RcRateCurve
-pub type RcVolSurface = Qrc<VolSurface>;
+pub type RcVolSurface = Qrc<dyn VolSurface>;
 pub type TypeRegistry = Registry<BoxFnSeed<RcVolSurface>>;
 
 /// Implement deserialization for subclasses of the type
@@ -382,7 +382,7 @@ impl VolForwardDynamics {
     pub fn modify(
         &self,
         surface: &mut RcVolSurface,
-        forward_fn: &dyn Fn() -> Result<Arc<Forward>, qm::Error>,
+        forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
     ) -> Result<(), qm::Error> {
         // Sticky strike surfaces are unaffected by changes to the forward.
         if *self == VolForwardDynamics::StickyStrike {

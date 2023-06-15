@@ -113,7 +113,7 @@ impl MarketData {
 
         for (id, spot) in self.spots.iter() {
             if let Some(instrument) = dependencies.instrument_by_id(id) {
-                let instr: &Instrument = &*instrument.clone();
+                let instr: &dyn Instrument = &*instrument.clone();
                 let curve = self.forward_curve(instr, new_spot_date)?;
                 let new_spot = curve.forward(new_spot_date)?;
                 new_spots.insert(id.to_string(), new_spot);
@@ -199,9 +199,9 @@ impl PricingContext for MarketData {
 
     fn forward_curve(
         &self,
-        instrument: &Instrument,
+        instrument: &dyn Instrument,
         high_water_mark: Date,
-    ) -> Result<Arc<Forward>, qm::Error> {
+    ) -> Result<Arc<dyn Forward>, qm::Error> {
         // This assumes the instrument is an equity. Need handling for other
         // types of underlying that may not have dividends or borrow, or may
         // be driftless
@@ -235,9 +235,9 @@ impl PricingContext for MarketData {
     /// vols.
     fn vol_surface(
         &self,
-        instrument: &Instrument,
+        instrument: &dyn Instrument,
         _high_water_mark: Date,
-        forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+        forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
     ) -> Result<RcVolSurface, qm::Error> {
         let id = instrument.id();
         let mut vol = find_market_data(id, &self.vol_surfaces, "Vol surface")?;
@@ -252,7 +252,11 @@ impl PricingContext for MarketData {
         Ok(vol)
     }
 
-    fn correlation(&self, _first: &Instrument, _second: &Instrument) -> Result<f64, qm::Error> {
+    fn correlation(
+        &self,
+        _first: &dyn Instrument,
+        _second: &dyn Instrument,
+    ) -> Result<f64, qm::Error> {
         Err(qm::Error::new("Correlation not implemented"))
     }
 }
@@ -269,7 +273,7 @@ fn find_market_data<T: Clone>(
 }
 
 impl Bumpable for MarketData {
-    fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>) -> Result<bool, qm::Error> {
+    fn bump(&mut self, bump: &Bump, save: Option<&mut dyn Saveable>) -> Result<bool, qm::Error> {
         let saved = to_saved_data(save)?;
 
         // Throughout this code, we need to cast the bump to the specific type
@@ -318,15 +322,15 @@ impl Bumpable for MarketData {
         Err(qm::Error::new("Dependency information not available"))
     }
 
-    fn new_saveable(&self) -> Box<Saveable> {
+    fn new_saveable(&self) -> Box<dyn Saveable> {
         Box::new(SavedData::new())
     }
 
-    fn context(&self) -> &PricingContext {
+    fn context(&self) -> &dyn PricingContext {
         self.as_pricing_context()
     }
 
-    fn restore(&mut self, any_saved: &Saveable) -> Result<(), qm::Error> {
+    fn restore(&mut self, any_saved: &dyn Saveable) -> Result<(), qm::Error> {
         if let Some(saved) = any_saved.as_any().downcast_ref::<SavedData>() {
             copy_from_saved(&mut self.spots, &saved.spots);
             copy_from_saved(&mut self.yield_curves, &saved.yield_curves);
@@ -341,13 +345,13 @@ impl Bumpable for MarketData {
 }
 
 impl BumpablePricingContext for MarketData {
-    fn as_bumpable(&self) -> &Bumpable {
+    fn as_bumpable(&self) -> &dyn Bumpable {
         self
     }
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable {
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable {
         self
     }
-    fn as_pricing_context(&self) -> &PricingContext {
+    fn as_pricing_context(&self) -> &dyn PricingContext {
         self
     }
     fn raw_market_data(&self) -> &MarketData {
@@ -355,7 +359,7 @@ impl BumpablePricingContext for MarketData {
     }
 }
 
-fn to_saved_data(opt_save: Option<&mut Saveable>) -> Result<Option<&mut SavedData>, qm::Error> {
+fn to_saved_data(opt_save: Option<&mut dyn Saveable>) -> Result<Option<&mut SavedData>, qm::Error> {
     if let Some(save) = opt_save {
         if let Some(as_self) = save.as_mut_any().downcast_mut::<SavedData>() {
             Ok(Some(as_self))
@@ -372,7 +376,7 @@ fn to_saved_data(opt_save: Option<&mut Saveable>) -> Result<Option<&mut SavedDat
 // local helper function to apply a bump and save the old state
 fn apply_bump<T: Clone>(
     id: &str,
-    bump: &Bumper<T>,
+    bump: &dyn Bumper<T>,
     to_bump: &mut HashMap<String, T>,
     to_save: Option<&mut HashMap<String, T>>,
 ) -> Result<bool, qm::Error> {
@@ -422,10 +426,10 @@ impl SavedData {
 }
 
 impl Saveable for SavedData {
-    fn as_any(&self) -> &Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
-    fn as_mut_any(&mut self) -> &mut Any {
+    fn as_mut_any(&mut self) -> &mut dyn Any {
         self
     }
 

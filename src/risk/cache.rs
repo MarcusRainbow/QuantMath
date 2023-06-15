@@ -26,7 +26,7 @@ use std::sync::Arc;
 pub struct PricingContextPrefetch {
     context: MarketData,
     dependencies: Arc<DependencyCollector>,
-    forward_curves: HashMap<String, Arc<Forward>>,
+    forward_curves: HashMap<String, Arc<dyn Forward>>,
     vol_surfaces: HashMap<String, RcVolSurface>,
 }
 
@@ -78,7 +78,7 @@ impl PricingContextPrefetch {
         id: &str,
         bumped_forward: bool,
         bumped_vol: bool,
-        saved_forward_curves: Option<&mut HashMap<String, Arc<Forward>>>,
+        saved_forward_curves: Option<&mut HashMap<String, Arc<dyn Forward>>>,
         saved_vol_surfaces: Option<&mut HashMap<String, RcVolSurface>>,
     ) -> Result<bool, qm::Error> {
         // if nothing was bumped, there is nothing to do (this test included
@@ -91,7 +91,7 @@ impl PricingContextPrefetch {
         let id_string = id.to_string();
         if let Some(fwd) = self.forward_curves.get_mut(&id_string) {
             if let Some(inst) = self.dependencies.instrument_by_id(id) {
-                let instrument: &Instrument = &*inst.clone();
+                let instrument: &dyn Instrument = &*inst.clone();
 
                 // save the old forward if we are about to bump it
                 if bumped_forward {
@@ -145,7 +145,7 @@ impl PricingContextPrefetch {
 fn walk_dependencies(
     context: &MarketData,
     dependencies: &Arc<DependencyCollector>,
-    forward_curves: &mut HashMap<String, Arc<Forward>>,
+    forward_curves: &mut HashMap<String, Arc<dyn Forward>>,
     vol_surfaces: &mut HashMap<String, RcVolSurface>,
 ) -> Result<(), qm::Error> {
     let forward_dependencies = dependencies.forward_curves();
@@ -153,7 +153,7 @@ fn walk_dependencies(
 
     for (rc_instrument, high_water_mark) in &*forward_dependencies {
         // fetch the forward curve
-        let instrument: &Instrument = rc_instrument.deref();
+        let instrument: &dyn Instrument = rc_instrument.deref();
         let id = instrument.id().to_string();
         let forward = context.forward_curve(instrument, *high_water_mark)?;
 
@@ -193,9 +193,9 @@ impl PricingContext for PricingContextPrefetch {
 
     fn forward_curve(
         &self,
-        instrument: &Instrument,
+        instrument: &dyn Instrument,
         _high_water_mark: Date,
-    ) -> Result<Arc<Forward>, qm::Error> {
+    ) -> Result<Arc<dyn Forward>, qm::Error> {
         find_cached_data(instrument.id(), &self.forward_curves, "Forward")
     }
 
@@ -204,14 +204,18 @@ impl PricingContext for PricingContextPrefetch {
     /// vols.
     fn vol_surface(
         &self,
-        instrument: &Instrument,
+        instrument: &dyn Instrument,
         _high_water_mark: Date,
-        _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+        _forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
     ) -> Result<RcVolSurface, qm::Error> {
         find_cached_data(instrument.id(), &self.vol_surfaces, "Vol Surface")
     }
 
-    fn correlation(&self, first: &Instrument, second: &Instrument) -> Result<f64, qm::Error> {
+    fn correlation(
+        &self,
+        first: &dyn Instrument,
+        second: &dyn Instrument,
+    ) -> Result<f64, qm::Error> {
         self.context.correlation(first, second)
     }
 }
@@ -235,7 +239,11 @@ fn find_cached_data<T: Clone>(
 }
 
 impl Bumpable for PricingContextPrefetch {
-    fn bump(&mut self, bump: &Bump, any_saved: Option<&mut Saveable>) -> Result<bool, qm::Error> {
+    fn bump(
+        &mut self,
+        bump: &Bump,
+        any_saved: Option<&mut dyn Saveable>,
+    ) -> Result<bool, qm::Error> {
         //    saved_data: SavedData,
         //    forward_curves: HashMap<String, Rc<Forward>>,
         //    vol_surfaces: HashMap<String, RcVolSurface>
@@ -244,8 +252,8 @@ impl Bumpable for PricingContextPrefetch {
         // components all at the same time, to avoid problems with borrowing.
         let saved = to_saved(any_saved)?;
         let (saved_data, saved_forward_curves, saved_vol_surfaces): (
-            Option<&mut Saveable>,
-            Option<&mut HashMap<String, Arc<Forward>>>,
+            Option<&mut dyn Saveable>,
+            Option<&mut HashMap<String, Arc<dyn Forward>>>,
             Option<&mut HashMap<String, RcVolSurface>>,
         ) = if let Some(s) = saved {
             (
@@ -360,7 +368,9 @@ impl BumpablePricingContext for PricingContextPrefetch {
     }
 }
 
-fn to_saved(opt_any_saved: Option<&mut Saveable>) -> Result<Option<&mut SavedPrefetch>, qm::Error> {
+fn to_saved(
+    opt_any_saved: Option<&mut dyn Saveable>,
+) -> Result<Option<&mut SavedPrefetch>, qm::Error> {
     if let Some(any_saved) = opt_any_saved {
         if let Some(saved) = any_saved.as_mut_any().downcast_mut::<SavedPrefetch>() {
             Ok(Some(saved))
@@ -376,7 +386,7 @@ fn to_saved(opt_any_saved: Option<&mut Saveable>) -> Result<Option<&mut SavedPre
 /// can be restored later on.
 pub struct SavedPrefetch {
     saved_data: SavedData,
-    forward_curves: HashMap<String, Arc<Forward>>,
+    forward_curves: HashMap<String, Arc<dyn Forward>>,
     vol_surfaces: HashMap<String, RcVolSurface>,
 }
 
@@ -393,10 +403,10 @@ impl SavedPrefetch {
 }
 
 impl Saveable for SavedPrefetch {
-    fn as_any(&self) -> &Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
-    fn as_mut_any(&mut self) -> &mut Any {
+    fn as_mut_any(&mut self) -> &mut dyn Any {
         self
     }
 

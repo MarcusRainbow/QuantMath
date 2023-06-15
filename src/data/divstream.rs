@@ -216,8 +216,8 @@ impl DividendBootstrap {
     /// forwards (it needs to be bumped with the T+N bump).
     pub fn new(
         div_stream: &DividendStream,
-        rate: &RateCurve,
-        borrow: &RateCurve,
+        rate: &dyn RateCurve,
+        borrow: &dyn RateCurve,
         spot: f64,
         base_date: Date,
         high_water_mark: Date,

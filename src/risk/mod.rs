@@ -9,7 +9,6 @@ pub mod vegavolga;
 use crate::core::factories::{Qbox, Qrc, Registry, TypeId};
 use crate::core::qm;
 use crate::data::bump::Bump;
-use erased_serde as esd;
 use crate::instruments::PricingContext;
 use crate::math::numerics::ApproxEq;
 use crate::risk::bumptime::BumpTime;
@@ -18,6 +17,7 @@ use crate::risk::dependencies::DependencyCollector;
 use crate::risk::marketdata::MarketData;
 use crate::risk::timebumped::{TimeBumpedReport, TimeBumpedReportGenerator};
 use crate::risk::vegavolga::{VegaVolgaReport, VegaVolgaReportGenerator};
+use erased_serde as esd;
 use serde as sd;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
@@ -34,44 +34,44 @@ use std::ops::Deref;
 pub trait Bumpable {
     /// Applies a bump to market data or to anything derived from market data,
     /// such as a model or a pricer. Returns true if anything was bumped.
-    fn bump(&mut self, bump: &Bump, save: Option<&mut Saveable>) -> Result<bool, qm::Error>;
+    fn bump(&mut self, bump: &Bump, save: Option<&mut dyn Saveable>) -> Result<bool, qm::Error>;
 
     /// Optionally allows access to the dependencies that drive the bumpability.
     fn dependencies(&self) -> Result<&DependencyCollector, qm::Error>;
 
     /// Allows access to the pricing context that is to be bumped. This is useful
     /// for bumps that adjust their size according to the forward etc.
-    fn context(&self) -> &PricingContext;
+    fn context(&self) -> &dyn PricingContext;
 
     /// Creates a save area to use with this bump
-    fn new_saveable(&self) -> Box<Saveable>;
+    fn new_saveable(&self) -> Box<dyn Saveable>;
 
     /// Restores the state to what it was before the bump
-    fn restore(&mut self, saved: &Saveable) -> Result<(), qm::Error>;
+    fn restore(&mut self, saved: &dyn Saveable) -> Result<(), qm::Error>;
 }
 
 pub trait BumpablePricingContext: Bumpable + PricingContext + BumpablePricingContextClone {
-    fn as_bumpable(&self) -> &Bumpable;
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable;
-    fn as_pricing_context(&self) -> &PricingContext;
+    fn as_bumpable(&self) -> &dyn Bumpable;
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable;
+    fn as_pricing_context(&self) -> &dyn PricingContext;
     fn raw_market_data(&self) -> &MarketData;
 }
 
 pub trait BumpablePricingContextClone {
-    fn clone_box(&self) -> Box<BumpablePricingContext>;
+    fn clone_box(&self) -> Box<dyn BumpablePricingContext>;
 }
 
 impl<T> BumpablePricingContextClone for T
 where
     T: 'static + BumpablePricingContext + Clone,
 {
-    fn clone_box(&self) -> Box<BumpablePricingContext> {
+    fn clone_box(&self) -> Box<dyn BumpablePricingContext> {
         Box::new(self.clone())
     }
 }
 
-impl Clone for Box<BumpablePricingContext> {
-    fn clone(&self) -> Box<BumpablePricingContext> {
+impl Clone for Box<dyn BumpablePricingContext> {
+    fn clone(&self) -> Box<dyn BumpablePricingContext> {
         self.clone_box()
     }
 }
@@ -91,9 +91,9 @@ pub trait TimeBumpable {
 /// priceable instrument. The point of this interface is that it is bumpable,
 /// so it can be used to calculate risks and scenarios.
 pub trait Pricer: Bumpable + TimeBumpable + PricerClone {
-    fn as_bumpable(&self) -> &Bumpable;
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable;
-    fn as_mut_time_bumpable(&mut self) -> &mut TimeBumpable;
+    fn as_bumpable(&self) -> &dyn Bumpable;
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable;
+    fn as_mut_time_bumpable(&mut self) -> &mut dyn TimeBumpable;
 
     /// Returns the present value. If no discount date is supplied, the value
     /// is discounted to the settlement date of the instrument being priced.
@@ -113,7 +113,7 @@ pub trait Pricer: Bumpable + TimeBumpable + PricerClone {
 /// same as clone_box is implemented elsewhere. Thus you need to implement
 /// this manually in each pricer.
 pub trait PricerClone {
-    fn clone_box(&self) -> Box<Pricer>;
+    fn clone_box(&self) -> Box<dyn Pricer>;
 }
 
 /// Interface that defines how market data or derived data can save itself
@@ -122,8 +122,8 @@ pub trait PricerClone {
 pub trait Saveable: Any {
     /// Convert to Any, so we can then convert to the concrete type
     /// specific to this saveable
-    fn as_any(&self) -> &Any;
-    fn as_mut_any(&mut self) -> &mut Any;
+    fn as_any(&self) -> &dyn Any;
+    fn as_mut_any(&mut self) -> &mut dyn Any;
 
     /// Clears the saved state, so a restore operation is a no-op
     fn clear(&mut self);
@@ -136,7 +136,7 @@ pub trait Saveable: Any {
 /// Reports are designed to be nested and grouped together, to avoid
 /// unnecessary cloning and bumping.
 pub trait Report: esd::Serialize + ApproxEqReport + TypeId + Debug + Any {
-    fn as_any(&self) -> &Any;
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// Redefine ApproxEqReport because Rust complains about circular type
@@ -144,7 +144,7 @@ pub trait Report: esd::Serialize + ApproxEqReport + TypeId + Debug + Any {
 pub trait ApproxEqReport {
     fn validate_report(
         &self,
-        other: &Report,
+        other: &dyn Report,
         tol: &ReportTolerances,
         msg: &str,
         diffs: &mut fmt::Formatter,
@@ -192,19 +192,19 @@ pub trait ReportGenerator: esd::Serialize + TypeId + Sync + Send + Debug {
     /// and is left empty on exit, unless documented otherwise.
     fn generate(
         &self,
-        pricer: &mut Pricer,
-        saveable: &mut Saveable,
+        pricer: &mut dyn Pricer,
+        saveable: &mut dyn Saveable,
         unbumped: f64,
     ) -> Result<BoxReport, qm::Error>;
 }
 
 // Get serialization to work recursively for report generators by using the
 // technology defined in core/factories.
-pub type RcReportGenerator = Qrc<ReportGenerator>;
-pub type GeneratorTypeRegistry = Registry<BoxFnSeed<Qrc<ReportGenerator>>>;
+pub type RcReportGenerator = Qrc<dyn ReportGenerator>;
+pub type GeneratorTypeRegistry = Registry<BoxFnSeed<Qrc<dyn ReportGenerator>>>;
 
 /// Implement deserialization for subclasses of the type
-impl<'de> sd::Deserialize<'de> for Qrc<ReportGenerator> {
+impl<'de> sd::Deserialize<'de> for Qrc<dyn ReportGenerator> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: sd::Deserializer<'de>,
@@ -239,7 +239,7 @@ pub fn get_generator_registry() -> &'static GeneratorTypeRegistry {
 // Get serialization to work recursively for instruments by using the
 // technology defined in core/factories. RcInstrument is a container
 // class holding an RcInstrument
-pub type BoxReport = Qbox<Report>;
+pub type BoxReport = Qbox<dyn Report>;
 pub type ReportTypeRegistry = Registry<BoxFnSeed<BoxReport>>;
 
 /// Implement deserialization for subclasses of the type
@@ -260,8 +260,8 @@ impl<'v> ApproxEq<ReportTolerances, &'v BoxReport> for &'v BoxReport {
         msg: &str,
         diffs: &mut fmt::Formatter,
     ) -> fmt::Result {
-        let self_report: &Report = self.deref();
-        let other_report: &Report = other.deref();
+        let self_report: &dyn Report = self.deref();
+        let other_report: &dyn Report = other.deref();
         self_report.validate_report(other_report, tol, msg, diffs)
     }
 }
@@ -313,8 +313,8 @@ pub fn get_report_registry() -> &'static ReportTypeRegistry {
 /// returning the bumped price.
 pub fn bumped_price(
     bump: &Bump,
-    pricer: &mut Pricer,
-    saveable: Option<&mut Saveable>,
+    pricer: &mut dyn Pricer,
+    saveable: Option<&mut dyn Saveable>,
     unbumped: f64,
 ) -> Result<f64, qm::Error> {
     if pricer.as_mut_bumpable().bump(bump, saveable)? {

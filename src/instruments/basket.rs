@@ -7,7 +7,6 @@ use crate::dates::datetime::DateDayFraction;
 use crate::dates::datetime::DateTime;
 use crate::dates::datetime::TimeOfDay;
 use crate::dates::rules::RcDateRule;
-use erased_serde as esd;
 use crate::instruments::assets::Currency;
 use crate::instruments::assets::RcCurrency;
 use crate::instruments::fix_all;
@@ -17,6 +16,7 @@ use crate::instruments::Priceable;
 use crate::instruments::PricingContext;
 use crate::instruments::RcInstrument;
 use crate::instruments::SpotRequirement;
+use erased_serde as esd;
 use serde::Deserialize;
 use std::cmp::Ordering;
 use std::fmt;
@@ -68,8 +68,8 @@ impl Basket {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<Instrument>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(Basket::deserialize(de)?)))
     }
 }
@@ -85,7 +85,7 @@ impl Instrument for Basket {
         &self.settlement
     }
 
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
         for &(_, ref underlying) in self.basket.iter() {
             let spot_requirement = underlying.dependencies(context);
             match spot_requirement {
@@ -107,7 +107,7 @@ impl Instrument for Basket {
         Ok(DateDayFraction::new(date_time.date(), day_fraction))
     }
 
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         Some(self)
     }
 
@@ -165,14 +165,14 @@ impl Hash for Basket {
 }
 
 impl Priceable for Basket {
-    fn as_instrument(&self) -> &Instrument {
+    fn as_instrument(&self) -> &dyn Instrument {
         self
     }
 
     /// The price of a basket is the weighted sum of the components.
     fn prices(
         &self,
-        context: &PricingContext,
+        context: &dyn PricingContext,
         dates: &[DateTime],
         out: &mut [f64],
     ) -> Result<(), qm::Error> {
@@ -278,9 +278,9 @@ pub mod tests {
 
         fn forward_curve(
             &self,
-            instrument: &Instrument,
+            instrument: &dyn Instrument,
             high_water_mark: Date,
-        ) -> Result<Arc<Forward>, qm::Error> {
+        ) -> Result<Arc<dyn Forward>, qm::Error> {
             let spot = self.spot(instrument.id())?;
             let base_date = self.spot_date();
             let settlement = instrument.settlement().clone();
@@ -304,14 +304,18 @@ pub mod tests {
 
         fn vol_surface(
             &self,
-            _instrument: &Instrument,
+            _instrument: &dyn Instrument,
             _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+            _forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
         ) -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }
 
-        fn correlation(&self, _first: &Instrument, _second: &Instrument) -> Result<f64, qm::Error> {
+        fn correlation(
+            &self,
+            _first: &dyn Instrument,
+            _second: &dyn Instrument,
+        ) -> Result<f64, qm::Error> {
             Err(qm::Error::new("unsupported"))
         }
     }

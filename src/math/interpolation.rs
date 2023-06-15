@@ -610,7 +610,7 @@ mod tests {
         );
     }
 
-    fn assert_2nd_diff(interp: &Interpolate<f64>, x: f64, deriv: f64, expected: f64) {
+    fn assert_2nd_diff(interp: &dyn Interpolate<f64>, x: f64, deriv: f64, expected: f64) {
         let epsilon = 1e-3;
         let up = interp.interpolate(x + epsilon).unwrap();
         let down = interp.interpolate(x - epsilon).unwrap();

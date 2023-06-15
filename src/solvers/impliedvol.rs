@@ -33,7 +33,7 @@ impl ImpliedVol {
 impl OneDimensionalSolver for ImpliedVol {
     fn solve(
         &self,
-        pricer: &mut Pricer,
+        pricer: &mut dyn Pricer,
         target: f64,
         min: f64,
         max: f64,
@@ -48,13 +48,13 @@ impl OneDimensionalSolver for ImpliedVol {
     }
 }
 
-fn price_given_vol(pricer: &mut Pricer, vol: f64, id: &str) -> Result<f64, qm::Error> {
+fn price_given_vol(pricer: &mut dyn Pricer, vol: f64, id: &str) -> Result<f64, qm::Error> {
     let bump = Bump::new_vol(id, BumpVol::new_replace(vol));
     pricer.as_mut_bumpable().bump(&bump, None)?;
     pricer.price()
 }
 
-fn single_vol_id(pricer: &Pricer) -> Result<String, qm::Error> {
+fn single_vol_id(pricer: &dyn Pricer) -> Result<String, qm::Error> {
     let dependencies = pricer.as_bumpable().dependencies()?;
     let vols = dependencies.vol_surfaces();
     if vols.len() > 1 {

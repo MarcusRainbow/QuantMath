@@ -4,7 +4,6 @@ use crate::core::factories::{Qrc, Registry, TypeId};
 use crate::core::qm;
 use crate::dates::datetime::DateDayFraction;
 use crate::dates::Date;
-use erased_serde as esd;
 use crate::instruments::MonteCarloContext;
 use crate::instruments::MonteCarloDependencies;
 use crate::instruments::RcInstrument;
@@ -12,6 +11,7 @@ use crate::models::blackdiffusion::BlackDiffusionFactory;
 use crate::risk::marketdata::MarketData;
 use crate::risk::Bumpable;
 use crate::risk::BumpablePricingContext;
+use erased_serde as esd;
 use serde as sd;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
@@ -27,17 +27,17 @@ pub trait MonteCarloModelFactory: esd::Serialize + TypeId + Sync + Send + Debug 
     fn factory(
         &self,
         timeline: &MonteCarloTimeline,
-        context: Box<BumpablePricingContext>,
-    ) -> Result<Box<MonteCarloModel>, qm::Error>;
+        context: Box<dyn BumpablePricingContext>,
+    ) -> Result<Box<dyn MonteCarloModel>, qm::Error>;
 }
 
 // Get serialization to work recursively for instruments by using the
 // technology defined in core/factories. RcInstrument is a container
 // class holding an RcInstrument
-pub type TypeRegistry = Registry<BoxFnSeed<Qrc<MonteCarloModelFactory>>>;
+pub type TypeRegistry = Registry<BoxFnSeed<Qrc<dyn MonteCarloModelFactory>>>;
 
 /// Implement deserialization for subclasses of the type
-impl<'de> sd::Deserialize<'de> for Qrc<MonteCarloModelFactory> {
+impl<'de> sd::Deserialize<'de> for Qrc<dyn MonteCarloModelFactory> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: sd::Deserializer<'de>,
@@ -61,36 +61,36 @@ pub fn get_registry() -> &'static TypeRegistry {
     &REG
 }
 
-pub type RcMonteCarloModelFactory = Qrc<MonteCarloModelFactory>;
+pub type RcMonteCarloModelFactory = Qrc<dyn MonteCarloModelFactory>;
 
 /// Interface that must be implemented by a model in order to support
 /// Monte-Carlo pricing.
 pub trait MonteCarloModel: MonteCarloContext + Bumpable + MonteCarloModelClone {
     /// Converts this model to a MonteCarloContext that can be used for pricing
-    fn as_mc_context(&self) -> &MonteCarloContext;
+    fn as_mc_context(&self) -> &dyn MonteCarloContext;
 
     /// Converts this model to a Bumpable that can be used for risk bumping
-    fn as_bumpable(&self) -> &Bumpable;
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable;
+    fn as_bumpable(&self) -> &dyn Bumpable;
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable;
 
     fn raw_market_data(&self) -> &MarketData;
 }
 
 pub trait MonteCarloModelClone {
-    fn clone_box(&self) -> Box<MonteCarloModel>;
+    fn clone_box(&self) -> Box<dyn MonteCarloModel>;
 }
 
 impl<T> MonteCarloModelClone for T
 where
     T: 'static + MonteCarloModel + Clone,
 {
-    fn clone_box(&self) -> Box<MonteCarloModel> {
+    fn clone_box(&self) -> Box<dyn MonteCarloModel> {
         Box::new(self.clone())
     }
 }
 
-impl Clone for Box<MonteCarloModel> {
-    fn clone(&self) -> Box<MonteCarloModel> {
+impl Clone for Box<dyn MonteCarloModel> {
+    fn clone(&self) -> Box<dyn MonteCarloModel> {
         self.clone_box()
     }
 }

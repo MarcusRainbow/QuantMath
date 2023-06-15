@@ -22,7 +22,7 @@ pub trait DateRule: esd::Serialize + TypeId + Sync + Send + Debug {
 // Get serialization to work recursively for rate curves by using the
 // technology defined in core/factories. RcDateRule is a container
 // class holding a DateRule
-pub type RcDateRule = Qrc<DateRule>;
+pub type RcDateRule = Qrc<dyn DateRule>;
 pub type TypeRegistry = Registry<BoxFnSeed<RcDateRule>>;
 
 /// Implement deserialization for subclasses of the type
@@ -73,7 +73,7 @@ impl NullRule {
         NullRule {}
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
         Ok(Qrc::new(Arc::new(NullRule::deserialize(de)?)))
     }
 }
@@ -131,7 +131,7 @@ impl BusinessDays {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
         Ok(Qrc::new(Arc::new(BusinessDays::deserialize(de)?)))
     }
 }
@@ -160,7 +160,7 @@ impl ModifiedFollowing {
         ModifiedFollowing { calendar: calendar }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
+    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
         Ok(Qrc::new(Arc::new(ModifiedFollowing::deserialize(de)?)))
     }
 }

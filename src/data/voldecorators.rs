@@ -8,8 +8,8 @@ use crate::data::volsurface::VolSurface;
 use crate::dates::calendar::RcCalendar;
 use crate::dates::datetime::DateDayFraction;
 use crate::dates::Date;
-use erased_serde as esd;
 use crate::math::interpolation::Interpolate;
+use erased_serde as esd;
 use serde::Deserialize;
 use std::fmt;
 use std::sync::Arc;
@@ -76,7 +76,7 @@ impl VolSurface for ConstantExpiryTimeEvolution {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -123,7 +123,9 @@ impl RollingExpiryTimeEvolution {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(RollingExpiryTimeEvolution::deserialize(
             de,
         )?)))
@@ -162,7 +164,7 @@ impl VolSurface for RollingExpiryTimeEvolution {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -203,7 +205,9 @@ impl ParallelBumpVol {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(ParallelBumpVol::deserialize(de)?)))
     }
 }
@@ -229,7 +233,7 @@ impl VolSurface for ParallelBumpVol {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -273,7 +277,9 @@ impl TimeScaledBumpVol {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(TimeScaledBumpVol::deserialize(de)?)))
     }
 }
@@ -300,7 +306,7 @@ impl VolSurface for TimeScaledBumpVol {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         self.base_vol.forward()
     }
 
@@ -327,7 +333,7 @@ impl VolSurface for TimeScaledBumpVol {
 pub struct StickyDeltaBumpVol {
     base_vol: RcVolSurface,
     #[serde(skip)]
-    bumped_forward: Arc<Forward>,
+    bumped_forward: Arc<dyn Forward>,
 }
 
 impl TypeId for StickyDeltaBumpVol {
@@ -337,7 +343,7 @@ impl TypeId for StickyDeltaBumpVol {
 }
 
 impl StickyDeltaBumpVol {
-    pub fn new(base_vol: RcVolSurface, bumped_forward: Arc<Forward>) -> StickyDeltaBumpVol {
+    pub fn new(base_vol: RcVolSurface, bumped_forward: Arc<dyn Forward>) -> StickyDeltaBumpVol {
         StickyDeltaBumpVol {
             base_vol: base_vol,
             bumped_forward: bumped_forward,
@@ -391,7 +397,7 @@ impl VolSurface for StickyDeltaBumpVol {
         self.base_vol.calendar()
     }
 
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         // as a result of this bump, the forward for the vol surface changes
         Some(&*self.bumped_forward.as_interp())
     }
