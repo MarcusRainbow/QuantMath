@@ -1,7 +1,7 @@
-use data::bump::Bumper;
-use data::curves::AnnualisedFlatBump;
-use data::curves::ContinuouslyCompoundedFlatBump;
-use data::curves::RcRateCurve;
+use crate::data::bump::Bumper;
+use crate::data::curves::AnnualisedFlatBump;
+use crate::data::curves::ContinuouslyCompoundedFlatBump;
+use crate::data::curves::RcRateCurve;
 use std::sync::Arc;
 
 /// Bump that defines all the supported bumps and risk transformations of a

@@ -1,6 +1,6 @@
 extern crate quantmath as qm;
 
-use qm::core::{factories::Qrc, qm::Error};
+use qm::core::{factories::Qrc};
 use qm::data::{
     bump::Bump,
     bumpdivs::BumpDivs,
@@ -10,23 +10,23 @@ use qm::data::{
     curves::{RateCurveAct365, RcRateCurve},
     divstream::{Dividend, DividendStream, RcDividendStream},
     fixings::{FixingTable, RcFixingTable},
-    volsurface::{FlatVolSurface, RcVolSurface, VolSurface},
+    volsurface::{FlatVolSurface, RcVolSurface},
 };
 use qm::dates::{
     calendar::{RcCalendar, WeekdayCalendar},
     datetime::{DateDayFraction, DateTime, TimeOfDay},
-    rules::{BusinessDays, DateRule, RcDateRule},
+    rules::{BusinessDays, RcDateRule},
     Date,
 };
 use qm::instruments::{
     assets::{Currency, Equity, RcCurrency},
-    options::{ForwardStartingEuropean, OptionSettlement, PutOrCall, SpotStartingEuropean},
+    options::{OptionSettlement, PutOrCall, SpotStartingEuropean},
     Priceable, RcInstrument,
 };
 use qm::math::{interpolation::Extrap, numerics::approx_eq};
 use qm::models::{blackdiffusion::BlackDiffusionFactory, RcMonteCarloModelFactory};
 use qm::pricers::{
-    montecarlo::{MonteCarloPricer, MonteCarloPricerFactory}, //, RcMonteCarloModelFactory},
+    montecarlo::{MonteCarloPricerFactory}, //, RcMonteCarloModelFactory},
     PricerFactory,
 };
 use qm::risk::marketdata::{MarketData, RcMarketData};
@@ -35,7 +35,7 @@ use std::sync::Arc;
 
 fn create_sample_divstream() -> RcDividendStream {
     // Early divs are purely cash. Later ones are mixed cash/relative
-    let d = Date::from_ymd(2017, 01, 02);
+    let d = Date::from_ymd(2017, 1, 2);
     let divs = [
         Dividend::new(1.2, 0.0, d + 28, d + 30),
         Dividend::new(0.8, 0.002, d + 210, d + 212),
@@ -110,7 +110,7 @@ fn sample_equity(currency: RcCurrency, step: u32) -> Equity {
 fn sample_european() -> Arc<SpotStartingEuropean> {
     let strike = 100.0;
     let put_or_call = PutOrCall::Call;
-    let expiry = DateTime::new(Date::from_ymd(2018, 06, 01), TimeOfDay::Close);
+    let expiry = DateTime::new(Date::from_ymd(2018, 6, 1), TimeOfDay::Close);
     let currency = RcCurrency::new(Arc::new(sample_currency(2)));
     let settlement = sample_settlement(2);
     let equity = RcInstrument::new(Qrc::new(Arc::new(sample_equity(currency, 2))));
@@ -129,7 +129,7 @@ fn sample_european() -> Arc<SpotStartingEuropean> {
 }
 
 fn sample_fixings() -> FixingTable {
-    let today = Date::from_ymd(2017, 01, 02);
+    let today = Date::from_ymd(2017, 1, 2);
     FixingTable::from_fixings(
         today,
         &[(
@@ -153,7 +153,7 @@ fn main() {
     // prepare dummy market data
 
     let market_data: RcMarketData = RcMarketData::new(Arc::new({
-        let spot_date = Date::from_ymd(2017, 01, 02);
+        let spot_date = Date::from_ymd(2017, 1, 2);
 
         let mut spots = HashMap::new();
         spots.insert("BP.L".to_string(), 100.0);

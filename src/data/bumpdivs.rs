@@ -1,6 +1,6 @@
-use data::bump::Bumper;
-use data::divstream::DividendStream;
-use data::divstream::RcDividendStream;
+use crate::data::bump::Bumper;
+use crate::data::divstream::DividendStream;
+use crate::data::divstream::RcDividendStream;
 use std::sync::Arc;
 
 /// Bump that defines all the supported bumps and risk transformations of a

@@ -1,5 +1,5 @@
-use dates::Date;
-use math::interpolation::Interpolable;
+use crate::dates::Date;
+use crate::math::interpolation::Interpolable;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Display;

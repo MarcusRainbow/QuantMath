@@ -1,8 +1,8 @@
-use core::factories::Qrc;
-use core::factories::Registry;
-use core::factories::TypeId;
-use dates::datetime::DateDayFraction;
-use dates::Date;
+use crate::core::factories::Qrc;
+use crate::core::factories::Registry;
+use crate::core::factories::TypeId;
+use crate::dates::datetime::DateDayFraction;
+use crate::dates::Date;
 use erased_serde as esd;
 use serde as sd;
 use serde::Deserialize;
@@ -661,7 +661,7 @@ impl Calendar for VolatilityCalendar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
+    use crate::math::numerics::approx_eq;
     use std::str::FromStr;
 
     #[test]

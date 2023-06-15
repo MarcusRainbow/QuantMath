@@ -1,8 +1,8 @@
-use data::bumpdivs::BumpDivs;
-use data::bumpspot::BumpSpot;
-use data::bumpspotdate::BumpSpotDate;
-use data::bumpvol::BumpVol;
-use data::bumpyield::BumpYield;
+use crate::data::bumpdivs::BumpDivs;
+use crate::data::bumpspot::BumpSpot;
+use crate::data::bumpspotdate::BumpSpotDate;
+use crate::data::bumpvol::BumpVol;
+use crate::data::bumpyield::BumpYield;
 
 /// Enumeration spanning all bumps of market data
 pub enum Bump {

@@ -1,8 +1,8 @@
-use core::dedup::DedupControl;
-use core::qm;
-use facade;
-use facade::handle::extern_handle as eh;
-use facade::handle::Handle;
+use crate::core::dedup::DedupControl;
+use crate::core::qm;
+use crate::facade;
+use crate::facade::handle::extern_handle as eh;
+use crate::facade::handle::Handle;
 use libc::c_char;
 use std::error::Error;
 use std::ffi::CStr;
@@ -455,7 +455,7 @@ fn convert_dedup(dedup: &QmDedupControl) -> DedupControl {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use facade::tests::{
+    use crate::facade::tests::{
         sample_currency_json, sample_equity_json, sample_fixing_table_json,
         sample_forward_european_json, sample_market_data_json, sample_pricer_factory_json,
         sample_report_generator_json, sample_results_json,

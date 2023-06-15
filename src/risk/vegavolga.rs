@@ -1,18 +1,18 @@
-use core::factories::TypeId;
-use core::factories::{Qbox, Qrc};
-use core::qm;
-use data::bump::Bump;
-use data::bumpvol::BumpVol;
+use crate::core::factories::TypeId;
+use crate::core::factories::{Qbox, Qrc};
+use crate::core::qm;
+use crate::data::bump::Bump;
+use crate::data::bumpvol::BumpVol;
+use crate::math::numerics::{approx_eq, ApproxEq};
+use crate::risk::bumped_price;
+use crate::risk::ApproxEqReport;
+use crate::risk::BoxReport;
+use crate::risk::Pricer;
+use crate::risk::Report;
+use crate::risk::ReportGenerator;
+use crate::risk::ReportTolerances;
+use crate::risk::Saveable;
 use erased_serde as esd;
-use math::numerics::{approx_eq, ApproxEq};
-use risk::bumped_price;
-use risk::ApproxEqReport;
-use risk::BoxReport;
-use risk::Pricer;
-use risk::Report;
-use risk::ReportGenerator;
-use risk::ReportTolerances;
-use risk::Saveable;
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ pub struct VegaVolgaReport {
 }
 
 impl Report for VegaVolgaReport {
-    fn as_any(&self) -> &Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }
@@ -51,7 +51,9 @@ impl TypeId for VegaVolgaReport {
 }
 
 impl VegaVolgaReport {
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qbox<Report>, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qbox<dyn Report>, esd::Error> {
         Ok(Qbox::new(Box::new(VegaVolgaReport::deserialize(de)?)))
     }
 
@@ -97,7 +99,7 @@ impl<'v> ApproxEq<ReportTolerances, &'v VegaVolgaReport> for &'v VegaVolgaReport
 impl ApproxEqReport for VegaVolgaReport {
     fn validate_report(
         &self,
-        other: &Report,
+        other: &dyn Report,
         tol: &ReportTolerances,
         msg: &str,
         diffs: &mut fmt::Formatter,
@@ -175,8 +177,8 @@ impl VegaVolgaReportGenerator {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<ReportGenerator>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn ReportGenerator>, esd::Error> {
         Ok(Qrc::new(Arc::new(VegaVolgaReportGenerator::deserialize(
             de,
         )?)))
@@ -192,8 +194,8 @@ impl TypeId for VegaVolgaReportGenerator {
 impl ReportGenerator for VegaVolgaReportGenerator {
     fn generate(
         &self,
-        pricer: &mut Pricer,
-        saveable: &mut Saveable,
+        pricer: &mut dyn Pricer,
+        saveable: &mut dyn Saveable,
         unbumped: f64,
     ) -> Result<BoxReport, qm::Error> {
         let bumpsize = self.bump.bumpsize();
@@ -228,8 +230,8 @@ impl ReportGenerator for VegaVolgaReportGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
-    use risk::deltagamma::tests::sample_pricer;
+    use crate::math::numerics::approx_eq;
+    use crate::risk::deltagamma::tests::sample_pricer;
 
     #[test]
     fn vega_volga_european() {

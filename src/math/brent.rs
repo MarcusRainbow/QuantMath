@@ -1,4 +1,4 @@
-use core::qm;
+use crate::core::qm;
 use std::f64::EPSILON;
 use std::f64::NAN;
 
@@ -106,7 +106,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
+    use crate::math::numerics::approx_eq;
     use std::f64::consts::PI;
 
     #[test]

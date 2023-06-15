@@ -1,15 +1,15 @@
 pub mod montecarlo;
 pub mod selfpricer;
 
-use core::factories::{Qrc, Registry, TypeId};
-use core::qm;
-use data::fixings::RcFixingTable;
+use crate::core::factories::{Qrc, Registry, TypeId};
+use crate::core::qm;
+use crate::data::fixings::RcFixingTable;
 use erased_serde as esd;
-use instruments::RcInstrument;
-use pricers::montecarlo::MonteCarloPricerFactory;
-use pricers::selfpricer::SelfPricerFactory;
-use risk::marketdata::RcMarketData;
-use risk::Pricer;
+use crate::instruments::RcInstrument;
+use crate::pricers::montecarlo::MonteCarloPricerFactory;
+use crate::pricers::selfpricer::SelfPricerFactory;
+use crate::risk::marketdata::RcMarketData;
+use crate::risk::Pricer;
 use serde as sd;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;

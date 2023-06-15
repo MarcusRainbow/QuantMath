@@ -1,16 +1,16 @@
-use core::qm;
-use data::bump::Bump;
-use data::bumpspotdate::BumpSpotDate;
-use data::bumpspotdate::SpotDynamics;
-use data::fixings::FixingTable;
-use dates::datetime::DateTime;
-use dates::Date;
-use instruments::fix_all;
-use instruments::Instrument;
-use instruments::PricingContext;
-use instruments::RcInstrument;
-use risk::dependencies::DependencyCollector;
-use risk::Bumpable;
+use crate::core::qm;
+use crate::data::bump::Bump;
+use crate::data::bumpspotdate::BumpSpotDate;
+use crate::data::bumpspotdate::SpotDynamics;
+use crate::data::fixings::FixingTable;
+use crate::dates::datetime::DateTime;
+use crate::dates::Date;
+use crate::instruments::fix_all;
+use crate::instruments::Instrument;
+use crate::instruments::PricingContext;
+use crate::instruments::RcInstrument;
+use crate::risk::dependencies::DependencyCollector;
+use crate::risk::Bumpable;
 use std::collections::HashMap;
 
 /// Bump that defines all the supported bumps to the spot date and ex-from
@@ -37,7 +37,7 @@ impl BumpTime {
     pub fn apply(
         &self,
         instruments: &mut Vec<(f64, RcInstrument)>,
-        bumpable: &mut Bumpable,
+        bumpable: &mut dyn Bumpable,
     ) -> Result<bool, qm::Error> {
         // Modify the vector of instruments, if any fixings between the old and new spot dates
         // affect any of them. If any are updated, hold onto the updated list of dependencies.
@@ -61,7 +61,7 @@ impl BumpTime {
     pub fn update_instruments(
         &self,
         instruments: &mut Vec<(f64, RcInstrument)>,
-        context: &PricingContext,
+        context: &dyn PricingContext,
         dependencies: &DependencyCollector,
     ) -> Result<bool, qm::Error> {
         // are there any fixings between the old and new spot dates?
@@ -81,7 +81,7 @@ impl BumpTime {
                         SpotDynamics::StickyForward => {
                             // it looks inefficient to keep fetching the curves each time round
                             // the loop, but by far the most common case has at most one fixing
-                            let inst: &Instrument = &*instrument.clone();
+                            let inst: &dyn Instrument = &*instrument.clone();
                             let curve = context.forward_curve(inst, new_spot_date)?;
                             curve.forward(date)?
                         }

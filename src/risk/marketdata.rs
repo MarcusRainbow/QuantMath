@@ -1,24 +1,24 @@
-use core::qm;
-use data::bump::Bump;
-use data::bump::Bumper;
-use data::bumpdivs::BumpDivs;
-use data::bumpspot::BumpSpot;
-use data::bumpspotdate::BumpSpotDate;
-use data::bumpspotdate::SpotDynamics;
-use data::bumpvol::BumpVol;
-use data::bumpyield::BumpYield;
-use data::curves::RcRateCurve;
-use data::divstream::RcDividendStream;
-use data::forward::EquityForward;
-use data::forward::Forward;
-use data::volsurface::RcVolSurface;
-use dates::Date;
-use instruments::Instrument;
-use instruments::PricingContext;
-use risk::dependencies::DependencyCollector;
-use risk::Bumpable;
-use risk::BumpablePricingContext;
-use risk::Saveable;
+use crate::core::qm;
+use crate::data::bump::Bump;
+use crate::data::bump::Bumper;
+use crate::data::bumpdivs::BumpDivs;
+use crate::data::bumpspot::BumpSpot;
+use crate::data::bumpspotdate::BumpSpotDate;
+use crate::data::bumpspotdate::SpotDynamics;
+use crate::data::bumpvol::BumpVol;
+use crate::data::bumpyield::BumpYield;
+use crate::data::curves::RcRateCurve;
+use crate::data::divstream::RcDividendStream;
+use crate::data::forward::EquityForward;
+use crate::data::forward::Forward;
+use crate::data::volsurface::RcVolSurface;
+use crate::dates::Date;
+use crate::instruments::Instrument;
+use crate::instruments::PricingContext;
+use crate::risk::dependencies::DependencyCollector;
+use crate::risk::Bumpable;
+use crate::risk::BumpablePricingContext;
+use crate::risk::Saveable;
 use serde as sd;
 use std::any::Any;
 use std::collections::HashMap;
@@ -441,34 +441,27 @@ impl Saveable for SavedData {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use core::factories::Qrc;
-    use data::bumpdivs::BumpDivs;
-    use data::bumpspot::BumpSpot;
-    use data::bumpvol::BumpVol;
-    use data::bumpyield::BumpYield;
-    use data::curves::RateCurveAct365;
-    use data::divstream::Dividend;
-    use data::divstream::DividendStream;
-    use data::volsurface::FlatVolSurface;
-    use data::volsurface::RcVolSurface;
-    use dates::calendar::RcCalendar;
-    use dates::calendar::WeekdayCalendar;
-    use dates::datetime::DateDayFraction;
-    use dates::datetime::DateTime;
-    use dates::datetime::TimeOfDay;
-    use dates::rules::BusinessDays;
-    use dates::rules::RcDateRule;
-    use instruments::assets::Currency;
-    use instruments::assets::Equity;
-    use instruments::assets::RcCurrency;
-    use instruments::options::ForwardStartingEuropean;
-    use instruments::options::OptionSettlement;
-    use instruments::options::PutOrCall;
-    use instruments::options::SpotStartingEuropean;
-    use instruments::Priceable;
-    use instruments::RcInstrument;
-    use math::interpolation::Extrap;
-    use math::numerics::approx_eq;
+    use crate::core::factories::Qrc;
+    use crate::data::bumpdivs::BumpDivs;
+    use crate::data::bumpspot::BumpSpot;
+    use crate::data::bumpvol::BumpVol;
+    use crate::data::bumpyield::BumpYield;
+    use crate::data::curves::RateCurveAct365;
+    use crate::data::divstream::Dividend;
+    use crate::data::divstream::DividendStream;
+    use crate::data::volsurface::FlatVolSurface;
+    use crate::data::volsurface::RcVolSurface;
+    use crate::dates::{
+        calendar::RcCalendar, calendar::WeekdayCalendar, datetime::DateDayFraction,
+        datetime::DateTime, datetime::TimeOfDay, rules::BusinessDays, rules::RcDateRule,
+    };
+    use crate::instruments::{
+        assets::Currency, assets::Equity, assets::RcCurrency, options::ForwardStartingEuropean,
+        options::OptionSettlement, options::PutOrCall, options::SpotStartingEuropean, Priceable,
+        RcInstrument,
+    };
+    use crate::math::interpolation::Extrap;
+    use crate::math::numerics::approx_eq;
     use serde_json;
     use std::sync::Arc;
 

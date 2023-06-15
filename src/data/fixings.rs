@@ -1,6 +1,6 @@
-use core::qm;
-use dates::datetime::DateTime;
-use dates::Date;
+use crate::core::qm;
+use crate::dates::datetime::DateTime;
+use crate::dates::Date;
 use serde as sd;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -171,7 +171,7 @@ pub struct Fixings {
 // modified from an example written by dtolnay. Consider changing the serialized
 // format to be less verbose.
 mod map_as_pairs {
-    use dates::datetime::DateTime;
+    use crate::dates::datetime::DateTime;
     use serde::de::{Deserializer, SeqAccess, Visitor};
     use serde::ser::Serializer;
     use std::collections::HashMap;
@@ -256,7 +256,7 @@ fn duplicate_fixing(id: &str, v1: f64, v2: f64, date_time: DateTime) -> qm::Erro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dates::datetime::TimeOfDay;
+    use crate::dates::datetime::TimeOfDay;
     use serde_json;
 
     fn sample_fixings() -> FixingTable {

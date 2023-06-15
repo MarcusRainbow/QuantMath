@@ -1,8 +1,8 @@
-use dates::datetime::DateTime;
-use dates::Date;
-use instruments::DependencyContext;
-use instruments::RcInstrument;
-use instruments::SpotRequirement;
+use crate::dates::datetime::DateTime;
+use crate::dates::Date;
+use crate::instruments::DependencyContext;
+use crate::instruments::RcInstrument;
+use crate::instruments::SpotRequirement;
 use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -190,20 +190,20 @@ pub fn set_hwm(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::factories::Qrc;
-    use dates::calendar::RcCalendar;
-    use dates::calendar::WeekdayCalendar;
-    use dates::datetime::DateTime;
-    use dates::datetime::TimeOfDay;
-    use dates::rules::BusinessDays;
-    use dates::rules::RcDateRule;
-    use dates::Date;
-    use instruments::assets::Currency;
-    use instruments::assets::Equity;
-    use instruments::assets::RcCurrency;
-    use instruments::options::OptionSettlement;
-    use instruments::options::PutOrCall;
-    use instruments::options::SpotStartingEuropean;
+    use crate::core::factories::Qrc;
+    use crate::dates::calendar::RcCalendar;
+    use crate::dates::calendar::WeekdayCalendar;
+    use crate::dates::datetime::DateTime;
+    use crate::dates::datetime::TimeOfDay;
+    use crate::dates::rules::BusinessDays;
+    use crate::dates::rules::RcDateRule;
+    use crate::dates::Date;
+    use crate::instruments::assets::Currency;
+    use crate::instruments::assets::Equity;
+    use crate::instruments::assets::RcCurrency;
+    use crate::instruments::options::OptionSettlement;
+    use crate::instruments::options::PutOrCall;
+    use crate::instruments::options::SpotStartingEuropean;
     use std::sync::Arc;
 
     fn sample_currency(step: u32) -> Currency {

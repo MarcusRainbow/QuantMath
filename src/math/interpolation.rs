@@ -1,4 +1,4 @@
-use core::qm;
+use crate::core::qm;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -499,7 +499,7 @@ fn nr_splint<T: Interpolable<T> + Copy>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
+    use crate::math::numerics::approx_eq;
     use serde_json;
 
     #[test]

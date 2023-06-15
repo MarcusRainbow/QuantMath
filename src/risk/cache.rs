@@ -1,18 +1,18 @@
-use core::qm;
-use data::bump::Bump;
-use data::curves::RcRateCurve;
-use data::forward::Forward;
-use data::volsurface::RcVolSurface;
-use dates::Date;
-use instruments::Instrument;
-use instruments::PricingContext;
-use risk::dependencies::DependencyCollector;
-use risk::marketdata::copy_from_saved;
-use risk::marketdata::MarketData;
-use risk::marketdata::SavedData;
-use risk::Bumpable;
-use risk::BumpablePricingContext;
-use risk::Saveable;
+use crate::core::qm;
+use crate::data::bump::Bump;
+use crate::data::curves::RcRateCurve;
+use crate::data::forward::Forward;
+use crate::data::volsurface::RcVolSurface;
+use crate::dates::Date;
+use crate::instruments::Instrument;
+use crate::instruments::PricingContext;
+use crate::risk::dependencies::DependencyCollector;
+use crate::risk::marketdata::copy_from_saved;
+use crate::risk::marketdata::MarketData;
+use crate::risk::marketdata::SavedData;
+use crate::risk::Bumpable;
+use crate::risk::BumpablePricingContext;
+use crate::risk::Saveable;
 use std::any::Any;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -295,20 +295,20 @@ impl Bumpable for PricingContextPrefetch {
                     if let Some(svs) = saved_vol_surfaces {
                         done = true;
                         for id in v.iter() {
-                            self.refetch(&id, bumped, false, Some(sfc), Some(svs))?;
+                            self.refetch(id, bumped, false, Some(sfc), Some(svs))?;
                         }
                     }
                 }
 
                 if !done {
                     for id in v.iter() {
-                        self.refetch(&id, bumped, false, None, None)?;
+                        self.refetch(id, bumped, false, None, None)?;
                     }
                 }
 
                 Ok(bumped)
             }
-            &Bump::SpotDate(ref bump) => {
+            Bump::SpotDate(bump) => {
                 if bumped {
                     self.context.bump_spot_date(bump, &self.dependencies)?;
                     self.refetch_all()?;
@@ -322,15 +322,15 @@ impl Bumpable for PricingContextPrefetch {
         Ok(&*self.dependencies)
     }
 
-    fn context(&self) -> &PricingContext {
+    fn context(&self) -> &dyn PricingContext {
         self.as_pricing_context()
     }
 
-    fn new_saveable(&self) -> Box<Saveable> {
+    fn new_saveable(&self) -> Box<dyn Saveable> {
         Box::new(SavedPrefetch::new())
     }
 
-    fn restore(&mut self, any_saved: &Saveable) -> Result<(), qm::Error> {
+    fn restore(&mut self, any_saved: &dyn Saveable) -> Result<(), qm::Error> {
         if let Some(saved) = any_saved.as_any().downcast_ref::<SavedPrefetch>() {
             // first restore the underlying market data
             self.context.restore(&saved.saved_data)?;
@@ -346,13 +346,13 @@ impl Bumpable for PricingContextPrefetch {
 }
 
 impl BumpablePricingContext for PricingContextPrefetch {
-    fn as_bumpable(&self) -> &Bumpable {
+    fn as_bumpable(&self) -> &dyn Bumpable {
         self
     }
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable {
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable {
         self
     }
-    fn as_pricing_context(&self) -> &PricingContext {
+    fn as_pricing_context(&self) -> &dyn PricingContext {
         self
     }
     fn raw_market_data(&self) -> &MarketData {
@@ -413,19 +413,19 @@ impl Saveable for SavedPrefetch {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use core::factories::Qrc;
-    use data::bumpdivs::BumpDivs;
-    use data::bumpspot::BumpSpot;
-    use data::bumpvol::BumpVol;
-    use data::bumpyield::BumpYield;
-    use dates::datetime::DateTime;
-    use dates::datetime::TimeOfDay;
-    use instruments::DependencyContext;
-    use instruments::Priceable;
-    use instruments::RcInstrument;
-    use math::numerics::approx_eq;
-    use risk::marketdata::tests::sample_european;
-    use risk::marketdata::tests::sample_market_data;
+    use crate::core::factories::Qrc;
+    use crate::data::bumpdivs::BumpDivs;
+    use crate::data::bumpspot::BumpSpot;
+    use crate::data::bumpvol::BumpVol;
+    use crate::data::bumpyield::BumpYield;
+    use crate::dates::datetime::DateTime;
+    use crate::dates::datetime::TimeOfDay;
+    use crate::instruments::DependencyContext;
+    use crate::instruments::Priceable;
+    use crate::instruments::RcInstrument;
+    use crate::math::numerics::approx_eq;
+    use crate::risk::marketdata::tests::sample_european;
+    use crate::risk::marketdata::tests::sample_market_data;
     use std::sync::Arc;
 
     pub fn create_dependencies(

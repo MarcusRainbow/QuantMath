@@ -1,4 +1,4 @@
-use data::bump::Bumper;
+use crate::data::bump::Bumper;
 
 /// Bump that defines all the supported bumps to a spot value
 #[derive(Clone)]

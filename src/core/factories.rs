@@ -187,7 +187,7 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use core::dedup::{Dedup, DedupControl, Drc, FromId, InstanceId};
+    use crate::core::dedup::{Dedup, DedupControl, Drc, FromId, InstanceId};
     use serde;
     use serde::Deserialize;
     use serde::Serialize;

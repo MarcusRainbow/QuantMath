@@ -1,4 +1,4 @@
-use core::qm;
+use crate::core::qm;
 use statrs::distribution::Normal;
 use statrs::distribution::Univariate;
 
@@ -50,7 +50,7 @@ fn d_plus_minus(log_moneyness: f64, sqrt_variance: f64) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
+    use crate::math::numerics::approx_eq;
 
     #[test]
     fn test_cdf() {

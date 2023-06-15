@@ -1,8 +1,8 @@
-use core::factories::Qrc;
-use core::factories::Registry;
-use core::factories::TypeId;
-use dates::calendar::RcCalendar;
-use dates::Date;
+use crate::core::factories::Qrc;
+use crate::core::factories::Registry;
+use crate::core::factories::TypeId;
+use crate::dates::calendar::RcCalendar;
+use crate::dates::Date;
 use erased_serde as esd;
 use serde as sd;
 use serde::Deserialize;
@@ -184,7 +184,7 @@ impl DateRule for ModifiedFollowing {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dates::calendar::WeekdayCalendar;
+    use crate::dates::calendar::WeekdayCalendar;
     use std::str::FromStr;
 
     #[test]

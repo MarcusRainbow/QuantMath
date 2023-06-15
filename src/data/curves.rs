@@ -1,12 +1,12 @@
-use core::factories::Qrc;
-use core::factories::Registry;
-use core::factories::TypeId;
-use core::qm;
-use dates::Date;
+use crate::core::factories::Qrc;
+use crate::core::factories::Registry;
+use crate::core::factories::TypeId;
+use crate::core::qm;
+use crate::dates::Date;
 use erased_serde as esd;
-use math::interpolation::Extrap;
-use math::interpolation::Interpolate;
-use math::interpolation::Linear;
+use crate::math::interpolation::Extrap;
+use crate::math::interpolation::Interpolate;
+use crate::math::interpolation::Linear;
 use serde as sd;
 use serde::Deserialize;
 use serde_tagged as sdt;
@@ -322,7 +322,7 @@ impl RelativeBump {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
+    use crate::math::numerics::approx_eq;
     use serde_json;
 
     #[test]

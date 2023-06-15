@@ -1,17 +1,17 @@
 pub mod blackdiffusion;
 
-use core::factories::{Qrc, Registry, TypeId};
-use core::qm;
-use dates::datetime::DateDayFraction;
-use dates::Date;
+use crate::core::factories::{Qrc, Registry, TypeId};
+use crate::core::qm;
+use crate::dates::datetime::DateDayFraction;
+use crate::dates::Date;
 use erased_serde as esd;
-use instruments::MonteCarloContext;
-use instruments::MonteCarloDependencies;
-use instruments::RcInstrument;
-use models::blackdiffusion::BlackDiffusionFactory;
-use risk::marketdata::MarketData;
-use risk::Bumpable;
-use risk::BumpablePricingContext;
+use crate::instruments::MonteCarloContext;
+use crate::instruments::MonteCarloDependencies;
+use crate::instruments::RcInstrument;
+use crate::models::blackdiffusion::BlackDiffusionFactory;
+use crate::risk::marketdata::MarketData;
+use crate::risk::Bumpable;
+use crate::risk::BumpablePricingContext;
 use serde as sd;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;

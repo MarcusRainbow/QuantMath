@@ -1,18 +1,18 @@
-use core::dedup::InstanceId;
-use core::dedup::{string_or_struct, Dedup, DedupControl, Drc, FromId};
-use core::factories::Qrc;
-use core::factories::TypeId;
-use core::qm;
-use dates::datetime::DateDayFraction;
-use dates::datetime::DateTime;
-use dates::datetime::TimeOfDay;
-use dates::rules::RcDateRule;
+use crate::core::dedup::InstanceId;
+use crate::core::dedup::{string_or_struct, Dedup, DedupControl, Drc, FromId};
+use crate::core::factories::Qrc;
+use crate::core::factories::TypeId;
+use crate::core::qm;
+use crate::dates::datetime::DateDayFraction;
+use crate::dates::datetime::DateTime;
+use crate::dates::datetime::TimeOfDay;
+use crate::dates::rules::RcDateRule;
 use erased_serde as esd;
-use instruments::DependencyContext;
-use instruments::Instrument;
-use instruments::Priceable;
-use instruments::PricingContext;
-use instruments::SpotRequirement;
+use crate::instruments::DependencyContext;
+use crate::instruments::Instrument;
+use crate::instruments::Priceable;
+use crate::instruments::PricingContext;
+use crate::instruments::SpotRequirement;
 use serde as sd;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -446,17 +446,17 @@ impl Priceable for CreditEntity {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use data::curves::RateCurveAct365;
-    use data::curves::RcRateCurve;
-    use data::forward::DriftlessForward;
-    use data::forward::Forward;
-    use data::volsurface::RcVolSurface;
-    use dates::calendar::RcCalendar;
-    use dates::calendar::WeekdayCalendar;
-    use dates::rules::BusinessDays;
-    use dates::Date;
-    use math::interpolation::Extrap;
-    use math::numerics::approx_eq;
+    use crate::data::curves::RateCurveAct365;
+    use crate::data::curves::RcRateCurve;
+    use crate::data::forward::DriftlessForward;
+    use crate::data::forward::Forward;
+    use crate::data::volsurface::RcVolSurface;
+    use crate::dates::calendar::RcCalendar;
+    use crate::dates::calendar::WeekdayCalendar;
+    use crate::dates::rules::BusinessDays;
+    use crate::dates::Date;
+    use crate::math::interpolation::Extrap;
+    use crate::math::numerics::approx_eq;
     use std::sync::Arc;
 
     pub fn sample_currency(step: u32) -> Currency {

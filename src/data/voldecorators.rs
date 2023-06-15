@@ -1,15 +1,15 @@
-use core::factories::Qrc;
-use core::factories::TypeId;
-use core::qm;
-use data::forward::Forward;
-use data::volsurface::DivAssumptions;
-use data::volsurface::RcVolSurface;
-use data::volsurface::VolSurface;
-use dates::calendar::RcCalendar;
-use dates::datetime::DateDayFraction;
-use dates::Date;
+use crate::core::factories::Qrc;
+use crate::core::factories::TypeId;
+use crate::core::qm;
+use crate::data::forward::Forward;
+use crate::data::volsurface::DivAssumptions;
+use crate::data::volsurface::RcVolSurface;
+use crate::data::volsurface::VolSurface;
+use crate::dates::calendar::RcCalendar;
+use crate::dates::datetime::DateDayFraction;
+use crate::dates::Date;
 use erased_serde as esd;
-use math::interpolation::Interpolate;
+use crate::math::interpolation::Interpolate;
 use serde::Deserialize;
 use std::fmt;
 use std::sync::Arc;
@@ -38,7 +38,9 @@ impl ConstantExpiryTimeEvolution {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(
             ConstantExpiryTimeEvolution::deserialize(de)?,
         )))
@@ -60,7 +62,7 @@ impl VolSurface for ConstantExpiryTimeEvolution {
         date_time: DateDayFraction,
         strikes: &[f64],
         out: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         let vol_time = self.base_vol.volatilities(date_time, strikes, out)?;
 
         // The adjusted vol time may be zero or negative if the date_time
@@ -136,7 +138,7 @@ impl VolSurface for RollingExpiryTimeEvolution {
         date_time: DateDayFraction,
         strikes: &[f64],
         out: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         //print!("RollingExpiryTimeEvolution: date_time={:?} strikes={:?}\n", date_time, strikes);
 
         let calendar = self.calendar();
@@ -212,7 +214,7 @@ impl VolSurface for ParallelBumpVol {
         date_time: DateDayFraction,
         strikes: &[f64],
         out: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         let vol_time = self.base_vol.volatilities(date_time, strikes, out)?;
 
         for i in 0..out.len() {
@@ -282,7 +284,7 @@ impl VolSurface for TimeScaledBumpVol {
         date_time: DateDayFraction,
         strikes: &[f64],
         out: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         let vol_time = self.base_vol.volatilities(date_time, strikes, out)?;
         let scaled_bump = self.bump / vol_time.max(self.vol_time_floor).sqrt();
 
@@ -359,7 +361,7 @@ impl VolSurface for StickyDeltaBumpVol {
         date_time: DateDayFraction,
         strikes: &[f64],
         out: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         let n = strikes.len();
         if n == 0 {
             return self.base_vol.volatilities(date_time, strikes, out);
@@ -419,14 +421,14 @@ impl VolSurface for StickyDeltaBumpVol {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data::forward::InterpolatedForward;
-    use data::volsurface::tests::sample_vol_surface;
-    use data::volsurface::RcVolSurface;
-    use data::volsurface::VolTimeDynamics;
-    use dates::Date;
-    use math::interpolation::Extrap;
-    use math::interpolation::Linear;
-    use math::numerics::approx_eq;
+    use crate::data::forward::InterpolatedForward;
+    use crate::data::volsurface::tests::sample_vol_surface;
+    use crate::data::volsurface::RcVolSurface;
+    use crate::data::volsurface::VolTimeDynamics;
+    use crate::dates::Date;
+    use crate::math::interpolation::Extrap;
+    use crate::math::interpolation::Linear;
+    use crate::math::numerics::approx_eq;
 
     #[test]
     fn constant_expiry_vol_surface() {

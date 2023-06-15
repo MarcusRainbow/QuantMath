@@ -1,25 +1,25 @@
-use core::factories::Qrc;
-use core::factories::Registry;
-use core::factories::TypeId;
-use core::qm;
-use data::forward::Forward;
-use data::voldecorators::ConstantExpiryTimeEvolution;
-use data::voldecorators::ParallelBumpVol;
-use data::voldecorators::RollingExpiryTimeEvolution;
-use data::voldecorators::StickyDeltaBumpVol;
-use data::voldecorators::TimeScaledBumpVol;
-use data::volsmile::CubicSplineSmile;
-use data::volsmile::FlatSmile;
-use data::volsmile::VolSmile;
-use dates::calendar::RcCalendar;
-use dates::datetime::DateDayFraction;
-use dates::Date;
+use crate::core::factories::Qrc;
+use crate::core::factories::Registry;
+use crate::core::factories::TypeId;
+use crate::core::qm;
+use crate::data::forward::Forward;
+use crate::data::voldecorators::ConstantExpiryTimeEvolution;
+use crate::data::voldecorators::ParallelBumpVol;
+use crate::data::voldecorators::RollingExpiryTimeEvolution;
+use crate::data::voldecorators::StickyDeltaBumpVol;
+use crate::data::voldecorators::TimeScaledBumpVol;
+use crate::data::volsmile::CubicSplineSmile;
+use crate::data::volsmile::FlatSmile;
+use crate::data::volsmile::VolSmile;
+use crate::dates::calendar::RcCalendar;
+use crate::dates::datetime::DateDayFraction;
+use crate::dates::Date;
 use erased_serde as esd;
-use math::interpolation::lerp;
-use math::interpolation::Interpolable;
-use math::interpolation::Interpolate;
-use math::interpolation::Linear;
-use math::numerics::approx_eq;
+use crate::math::interpolation::lerp;
+use crate::math::interpolation::Interpolable;
+use crate::math::interpolation::Interpolate;
+use crate::math::interpolation::Linear;
+use crate::math::numerics::approx_eq;
 use serde as sd;
 use serde::de::Error;
 use serde::Deserialize;
@@ -50,7 +50,7 @@ pub trait VolSurface: esd::Serialize + TypeId + Send + Sync + Debug {
         date_time: DateDayFraction,
         strikes: &[f64],
         volatilities: &mut [f64],
-    ) -> Result<(f64), qm::Error>;
+    ) -> Result<f64, qm::Error>;
 
     /// Access to the calendar that defines vol times
     fn calendar(&self) -> &RcCalendar;
@@ -63,12 +63,12 @@ pub trait VolSurface: esd::Serialize + TypeId + Send + Sync + Debug {
     /// For vol surfaces that have a smile, gives access to the forward
     /// curve that centres the smile. For vol surfaces with no smile, returns
     /// None.
-    fn forward(&self) -> Option<&Interpolate<Date>>;
+    fn forward(&self) -> Option<&dyn Interpolate<Date>>;
 
     /// Fetch the business day time, which is multiplied by the volatility
     /// squared to give the variance. This is the same as calling volatilities
     /// with no strikes, so that is how we implement it by default.
-    fn vol_time(&self, date_time: DateDayFraction) -> Result<(f64), qm::Error> {
+    fn vol_time(&self, date_time: DateDayFraction) -> Result<f64, qm::Error> {
         let empty_strikes = [0.0; 0];
         let mut empty_vols = [0.0; 0];
         self.volatilities(date_time, &empty_strikes, &mut empty_vols)
@@ -382,7 +382,7 @@ impl VolForwardDynamics {
     pub fn modify(
         &self,
         surface: &mut RcVolSurface,
-        forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+        forward_fn: &dyn Fn() -> Result<Arc<Forward>, qm::Error>,
     ) -> Result<(), qm::Error> {
         // Sticky strike surfaces are unaffected by changes to the forward.
         if *self == VolForwardDynamics::StickyStrike {
@@ -445,7 +445,7 @@ impl VolSurface for FlatVolSurface {
         date_time: DateDayFraction,
         strikes: &[f64],
         volatilities: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         let n = strikes.len();
         assert!(n == volatilities.len());
         for i in 0..n {
@@ -460,7 +460,7 @@ impl VolSurface for FlatVolSurface {
         &self.calendar
     }
 
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         None
     }
 
@@ -494,7 +494,9 @@ impl FlatVolSurface {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(FlatVolSurface::deserialize(de)?)))
     }
 }
@@ -623,7 +625,7 @@ impl<T: VolSmile + Clone + Sync + Send + Debug> VolSurface for VolByProbability<
         &self.input.calendar
     }
 
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         Some(&self.input.forward)
     }
 
@@ -865,7 +867,9 @@ impl VolByProbabilityFlatSmile {
     // which are calculated on load. We manually implement the
     // deserialize to first deserialize the inputs, then calculate the
     // extra fields.
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcVolSurface, esd::Error> {
         let input = VolByProbabilityInput::<FlatSmile>::deserialize(de)?;
         match VolByProbability::new(input) {
             Ok(surface) => Ok(Qrc::new(Arc::new(surface))),
@@ -880,7 +884,7 @@ impl VolSurface for VolByProbabilityFlatSmile {
         date_time: DateDayFraction,
         strikes: &[f64],
         volatilities: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         self.0.volatilities(date_time, strikes, volatilities)
     }
     fn calendar(&self) -> &RcCalendar {
@@ -889,7 +893,7 @@ impl VolSurface for VolByProbabilityFlatSmile {
     fn base_date(&self) -> DateDayFraction {
         self.0.base_date()
     }
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         self.0.forward()
     }
     fn div_assumptions(&self) -> DivAssumptions {
@@ -937,7 +941,9 @@ impl VolByProbabilityCubicSplineSmile {
     // which are calculated on load. We manually implement the
     // deserialize to first deserialize the inputs, then calculate the
     // extra fields.
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<RcVolSurface, esd::Error> {
         let input = VolByProbabilityInput::<CubicSplineSmile>::deserialize(de)?;
         match VolByProbability::new(input) {
             Ok(surface) => Ok(Qrc::new(Arc::new(surface))),
@@ -952,7 +958,7 @@ impl VolSurface for VolByProbabilityCubicSplineSmile {
         date_time: DateDayFraction,
         strikes: &[f64],
         volatilities: &mut [f64],
-    ) -> Result<(f64), qm::Error> {
+    ) -> Result<f64, qm::Error> {
         self.0.volatilities(date_time, strikes, volatilities)
     }
     fn calendar(&self) -> &RcCalendar {
@@ -961,7 +967,7 @@ impl VolSurface for VolByProbabilityCubicSplineSmile {
     fn base_date(&self) -> DateDayFraction {
         self.0.base_date()
     }
-    fn forward(&self) -> Option<&Interpolate<Date>> {
+    fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         self.0.forward()
     }
     fn div_assumptions(&self) -> DivAssumptions {
@@ -993,11 +999,11 @@ pub fn to_strikes(normalised: &[f64], forward: f64, sqrt_variance: f64) -> Vec<f
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use data::volsmile::CubicSplineSmile;
-    use dates::calendar::WeekdayCalendar;
-    use dates::Date;
-    use math::interpolation::Extrap;
-    use math::numerics::approx_eq;
+    use crate::data::volsmile::CubicSplineSmile;
+    use crate::dates::calendar::WeekdayCalendar;
+    use crate::dates::Date;
+    use crate::math::interpolation::Extrap;
+    use crate::math::numerics::approx_eq;
     use serde_json;
 
     #[test]

@@ -1,17 +1,17 @@
 pub mod c_interface;
 pub mod handle;
 
-use core::dedup::{dedup_map_from_slice, Dedup, DedupControl};
-use core::factories::Qrc;
-use core::qm;
-use data::fixings::RcFixingTable;
-use instruments::assets::{Currency, RcCurrency, DEDUP_CURRENCY};
-use instruments::{Instrument, RcInstrument, DEDUP_INSTRUMENT};
-use math::numerics::ApproxEq;
-use pricers::RcPricerFactory;
-use risk::marketdata::RcMarketData;
-use risk::ReportTolerances;
-use risk::{BoxReport, RcReportGenerator};
+use crate::core::dedup::{dedup_map_from_slice, Dedup, DedupControl};
+use crate::core::factories::Qrc;
+use crate::core::qm;
+use crate::data::fixings::RcFixingTable;
+use crate::instruments::assets::{Currency, RcCurrency, DEDUP_CURRENCY};
+use crate::instruments::{Instrument, RcInstrument, DEDUP_INSTRUMENT};
+use crate::math::numerics::ApproxEq;
+use crate::pricers::RcPricerFactory;
+use crate::risk::marketdata::RcMarketData;
+use crate::risk::ReportTolerances;
+use crate::risk::{BoxReport, RcReportGenerator};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json as sdj;

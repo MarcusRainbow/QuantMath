@@ -1,17 +1,17 @@
-use core::factories::TypeId;
-use core::factories::{Qbox, Qrc};
-use core::qm;
+use crate::core::factories::TypeId;
+use crate::core::factories::{Qbox, Qrc};
+use crate::core::qm;
+use crate::math::numerics::{approx_eq, ApproxEq};
+use crate::risk::bumptime::BumpTime;
+use crate::risk::ApproxEqReport;
+use crate::risk::BoxReport;
+use crate::risk::Pricer;
+use crate::risk::RcReportGenerator;
+use crate::risk::Report;
+use crate::risk::ReportGenerator;
+use crate::risk::ReportTolerances;
+use crate::risk::Saveable;
 use erased_serde as esd;
-use math::numerics::{approx_eq, ApproxEq};
-use risk::bumptime::BumpTime;
-use risk::ApproxEqReport;
-use risk::BoxReport;
-use risk::Pricer;
-use risk::RcReportGenerator;
-use risk::Report;
-use risk::ReportGenerator;
-use risk::ReportTolerances;
-use risk::Saveable;
 use serde::Deserialize;
 use std::any::Any;
 use std::fmt;
@@ -155,8 +155,8 @@ impl TimeBumpedReportGenerator {
     }
 
     pub fn from_serial<'de>(
-        de: &mut esd::Deserializer<'de>,
-    ) -> Result<Qrc<ReportGenerator>, esd::Error> {
+        de: &mut dyn esd::Deserializer<'de>,
+    ) -> Result<Qrc<dyn ReportGenerator>, esd::Error> {
         Ok(Qrc::new(Arc::new(TimeBumpedReportGenerator::deserialize(
             de,
         )?)))
@@ -205,14 +205,14 @@ impl ReportGenerator for TimeBumpedReportGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data::bumpspotdate::SpotDynamics;
-    use data::bumpvol::BumpVol;
-    use math::numerics::approx_eq;
-    use risk::deltagamma::tests::sample_pricer;
-    use risk::deltagamma::DeltaGammaReport;
-    use risk::deltagamma::DeltaGammaReportGenerator;
-    use risk::vegavolga::VegaVolgaReport;
-    use risk::vegavolga::VegaVolgaReportGenerator;
+    use crate::data::bumpspotdate::SpotDynamics;
+    use crate::data::bumpvol::BumpVol;
+    use crate::math::numerics::approx_eq;
+    use crate::risk::deltagamma::tests::sample_pricer;
+    use crate::risk::deltagamma::DeltaGammaReport;
+    use crate::risk::deltagamma::DeltaGammaReportGenerator;
+    use crate::risk::vegavolga::VegaVolgaReport;
+    use crate::risk::vegavolga::VegaVolgaReportGenerator;
 
     #[test]
     fn theta_european_call() {

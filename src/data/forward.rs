@@ -1,11 +1,11 @@
-use core::qm;
-use data::curves::RateCurve;
-use data::curves::RcRateCurve;
-use data::divstream::DividendBootstrap;
-use data::divstream::DividendStream;
-use dates::rules::RcDateRule;
-use dates::Date;
-use math::interpolation::Interpolate;
+use crate::core::qm;
+use crate::data::curves::RateCurve;
+use crate::data::curves::RcRateCurve;
+use crate::data::divstream::DividendBootstrap;
+use crate::data::divstream::DividendStream;
+use crate::dates::rules::RcDateRule;
+use crate::dates::Date;
+use crate::math::interpolation::Interpolate;
 
 /// Forward curve. This represents the expectation value of some asset over
 /// time. It is implemented in different ways for futures (generally driftless)
@@ -201,14 +201,14 @@ pub fn log_discount_with_borrow(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data::curves::RateCurveAct365;
-    use data::divstream::Dividend;
-    use dates::calendar::RcCalendar;
-    use dates::calendar::WeekdayCalendar;
-    use dates::rules::BusinessDays;
-    use math::interpolation::CubicSpline;
-    use math::interpolation::Extrap;
-    use math::numerics::approx_eq;
+    use crate::data::curves::RateCurveAct365;
+    use crate::data::divstream::Dividend;
+    use crate::dates::calendar::RcCalendar;
+    use crate::dates::calendar::WeekdayCalendar;
+    use crate::dates::rules::BusinessDays;
+    use crate::math::interpolation::CubicSpline;
+    use crate::math::interpolation::Extrap;
+    use crate::math::numerics::approx_eq;
     use std::sync::Arc;
 
     #[test]

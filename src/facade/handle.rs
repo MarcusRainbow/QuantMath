@@ -1,10 +1,10 @@
-use core::qm;
-use data::fixings::RcFixingTable;
-use instruments::assets::RcCurrency;
-use instruments::RcInstrument;
-use pricers::RcPricerFactory;
-use risk::marketdata::RcMarketData;
-use risk::{BoxReport, RcReportGenerator};
+use crate::core::qm;
+use crate::data::fixings::RcFixingTable;
+use crate::instruments::assets::RcCurrency;
+use crate::instruments::RcInstrument;
+use crate::pricers::RcPricerFactory;
+use crate::risk::marketdata::RcMarketData;
+use crate::risk::{BoxReport, RcReportGenerator};
 
 /// A handle is used when passing objects or errors into or out of
 /// quantmath to other languages such as C or Python, where they
@@ -195,13 +195,13 @@ impl Clone for Handle {
 
 pub mod extern_handle {
     use super::*;
-    use data::fixings::RcFixingTable;
-    use facade::write_results;
-    use instruments::assets::RcCurrency;
-    use instruments::RcInstrument;
-    use pricers::RcPricerFactory;
-    use risk::marketdata::RcMarketData;
-    use risk::RcReportGenerator;
+    use crate::data::fixings::RcFixingTable;
+    use crate::facade::write_results;
+    use crate::instruments::assets::RcCurrency;
+    use crate::instruments::RcInstrument;
+    use crate::pricers::RcPricerFactory;
+    use crate::risk::marketdata::RcMarketData;
+    use crate::risk::RcReportGenerator;
     use std::error::Error;
     use std::io::Cursor;
 

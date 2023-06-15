@@ -2,8 +2,8 @@ pub mod calendar;
 pub mod datetime;
 pub mod rules;
 
-use core::qm;
-use math::interpolation::Interpolable;
+use crate::core::qm;
+use crate::math::interpolation::Interpolable;
 use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -272,10 +272,10 @@ pub fn ymd_from_truncated_julian(truncated_julian: i32) -> (i32, i32, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::interpolation::Extrap;
-    use math::interpolation::Interpolate;
-    use math::interpolation::Linear;
-    use math::numerics::approx_eq;
+    use crate::math::interpolation::Extrap;
+    use crate::math::interpolation::Interpolate;
+    use crate::math::interpolation::Linear;
+    use crate::math::numerics::approx_eq;
     use serde_json;
 
     #[test]

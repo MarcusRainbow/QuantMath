@@ -1,9 +1,9 @@
-use core::qm;
-use data::bump::Bump;
-use data::bumpvol::BumpVol;
-use math::brent::zbrent;
-use risk::Pricer;
-use solvers::OneDimensionalSolver;
+use crate::core::qm;
+use crate::data::bump::Bump;
+use crate::data::bumpvol::BumpVol;
+use crate::math::brent::zbrent;
+use crate::risk::Pricer;
+use crate::solvers::OneDimensionalSolver;
 
 /// Solves for implied volatility given a pricer. The pricer can be anything
 /// that gives a price with dependence on volatility, but analytic pricers
@@ -70,8 +70,8 @@ fn single_vol_id(pricer: &Pricer) -> Result<String, qm::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
-    use risk::deltagamma::tests::sample_pricer;
+    use crate::math::numerics::approx_eq;
+    use crate::risk::deltagamma::tests::sample_pricer;
 
     #[test]
     fn implied_vol_european_call() {

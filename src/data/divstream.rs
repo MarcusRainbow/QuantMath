@@ -1,10 +1,10 @@
-use core::qm;
-use data::curves::RateCurve;
-use data::curves::RcRateCurve;
-use data::curves::RelativeBump;
-use data::forward::discount_with_borrow;
-use data::forward::log_discount_with_borrow;
-use dates::Date;
+use crate::core::qm;
+use crate::data::curves::RateCurve;
+use crate::data::curves::RcRateCurve;
+use crate::data::curves::RelativeBump;
+use crate::data::forward::discount_with_borrow;
+use crate::data::forward::log_discount_with_borrow;
+use crate::dates::Date;
 use serde as sd;
 use std::f64::NAN;
 use std::ops::Deref;
@@ -440,9 +440,9 @@ impl DividendBootstrap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use data::curves::RateCurveAct365;
-    use math::interpolation::Extrap;
-    use math::numerics::approx_eq;
+    use crate::data::curves::RateCurveAct365;
+    use crate::math::interpolation::Extrap;
+    use crate::math::numerics::approx_eq;
 
     #[test]
     fn create_div_stream() {

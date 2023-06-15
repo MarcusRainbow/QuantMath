@@ -1,7 +1,7 @@
-use core::qm;
-use math::interpolation::CubicSpline;
-use math::interpolation::Extrap;
-use math::interpolation::Interpolate;
+use crate::core::qm;
+use crate::math::interpolation::CubicSpline;
+use crate::math::interpolation::Extrap;
+use crate::math::interpolation::Interpolate;
 use serde::Serialize;
 use std::f64::NAN;
 use std::fmt::Debug;
@@ -83,7 +83,7 @@ impl CubicSplineSmile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
+    use crate::math::numerics::approx_eq;
 
     #[test]
     fn test_flat_smile() {
