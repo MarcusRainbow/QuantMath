@@ -244,7 +244,7 @@ impl Hash for RcInstrument {
     }
 }
 
-/// Support for deduplication of instruments when serializing and deserializing
+// Support for deduplication of instruments when serializing and deserializing
 thread_local! {
     pub static DEDUP_INSTRUMENT : RefCell<Dedup< dyn Instrument, Qrc< dyn Instrument>>>
         = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));

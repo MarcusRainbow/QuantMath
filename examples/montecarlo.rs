@@ -1,6 +1,6 @@
 extern crate quantmath as qm;
 
-use qm::core::{factories::Qrc};
+use qm::core::factories::Qrc;
 use qm::data::{
     bump::Bump,
     bumpdivs::BumpDivs,
@@ -21,12 +21,12 @@ use qm::dates::{
 use qm::instruments::{
     assets::{Currency, Equity, RcCurrency},
     options::{OptionSettlement, PutOrCall, SpotStartingEuropean},
-    Priceable, RcInstrument,
+    RcInstrument,
 };
 use qm::math::{interpolation::Extrap, numerics::approx_eq};
 use qm::models::{blackdiffusion::BlackDiffusionFactory, RcMonteCarloModelFactory};
 use qm::pricers::{
-    montecarlo::{MonteCarloPricerFactory}, //, RcMonteCarloModelFactory},
+    montecarlo::MonteCarloPricerFactory, //, RcMonteCarloModelFactory},
     PricerFactory,
 };
 use qm::risk::marketdata::{MarketData, RcMarketData};
