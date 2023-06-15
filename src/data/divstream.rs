@@ -1,14 +1,14 @@
-use dates::Date;
-use data::curves::RcRateCurve;
-use data::curves::RateCurve;
-use data::curves::RelativeBump;
-use data::forward::log_discount_with_borrow;
-use data::forward::discount_with_borrow;
 use core::qm;
-use std::sync::Arc;
+use data::curves::RateCurve;
+use data::curves::RcRateCurve;
+use data::curves::RelativeBump;
+use data::forward::discount_with_borrow;
+use data::forward::log_discount_with_borrow;
+use dates::Date;
+use serde as sd;
 use std::f64::NAN;
 use std::ops::Deref;
-use serde as sd;
+use std::sync::Arc;
 
 /// A dividend is a corporate action that pays shareholders an amount of cash.
 /// The cash changes ownership on the ex date, and is paid on the payment date,
@@ -41,20 +41,31 @@ pub struct Dividend {
     cash: f64,
     relative: f64,
     ex_date: Date,
-    pay_date: Date
-} 
+    pay_date: Date,
+}
 
 impl Dividend {
-    pub fn new(cash: f64, relative: f64, ex_date: Date, pay_date: Date)
-        -> Dividend {
-        Dividend { cash: cash, relative: relative, ex_date: ex_date,
-            pay_date: pay_date }
-    } 
+    pub fn new(cash: f64, relative: f64, ex_date: Date, pay_date: Date) -> Dividend {
+        Dividend {
+            cash: cash,
+            relative: relative,
+            ex_date: ex_date,
+            pay_date: pay_date,
+        }
+    }
 
-    pub fn cash(&self) -> f64 { self.cash }
-    pub fn relative(&self) -> f64 { self.relative }
-    pub fn ex_date(&self) -> Date { self.ex_date }
-    pub fn pay_date(&self) -> Date { self.pay_date }
+    pub fn cash(&self) -> f64 {
+        self.cash
+    }
+    pub fn relative(&self) -> f64 {
+        self.relative
+    }
+    pub fn ex_date(&self) -> Date {
+        self.ex_date
+    }
+    pub fn pay_date(&self) -> Date {
+        self.pay_date
+    }
 
     pub fn bump_all_relative(&mut self, one_plus_bump: f64) {
         self.cash *= one_plus_bump;
@@ -80,13 +91,11 @@ impl Dividend {
 pub struct DividendStream {
     dividends: Vec<Dividend>,
     div_yield: RcRateCurve,
-    last_cash_ex_date: Date
+    last_cash_ex_date: Date,
 }
 
 impl DividendStream {
-    pub fn new(dividends: &[Dividend], div_yield: RcRateCurve) 
-        -> DividendStream {
-
+    pub fn new(dividends: &[Dividend], div_yield: RcRateCurve) -> DividendStream {
         // the last cash ex date is important for volatility models such as
         // FixedDivs which treat the forward as comprised of a fixed part
         // from the cash divs plus a stochastic component.
@@ -97,33 +106,40 @@ impl DividendStream {
             }
         }
 
-        DividendStream { 
+        DividendStream {
             dividends: dividends.to_vec(),
             div_yield: div_yield,
-            last_cash_ex_date: last_cash_ex_date }
+            last_cash_ex_date: last_cash_ex_date,
+        }
     }
 
     /// Constructor used when bumping. Applies a relative bump to all dividends
     /// and the dividend yield
     pub fn new_bump_all(divs: &DividendStream, bump: f64) -> DividendStream {
-
         let mut bumped_divs = divs.dividends.to_vec();
         let one_plus_bump = bump + 1.0;
         for div in bumped_divs.iter_mut() {
-           div.bump_all_relative(one_plus_bump);
+            div.bump_all_relative(one_plus_bump);
         }
 
-        let bumped_yield = RcRateCurve::new(Arc::new(RelativeBump::new(divs.div_yield(), bump))); 
+        let bumped_yield = RcRateCurve::new(Arc::new(RelativeBump::new(divs.div_yield(), bump)));
 
         DividendStream {
             dividends: bumped_divs,
             div_yield: bumped_yield,
-            last_cash_ex_date: divs.last_cash_ex_date }
+            last_cash_ex_date: divs.last_cash_ex_date,
+        }
     }
 
-    pub fn dividends(&self) -> &[Dividend] { &self.dividends }
-    pub fn div_yield(&self) -> RcRateCurve { self.div_yield.clone() }
-    pub fn last_cash_ex_date(&self) -> Date { self.last_cash_ex_date }
+    pub fn dividends(&self) -> &[Dividend] {
+        &self.dividends
+    }
+    pub fn div_yield(&self) -> RcRateCurve {
+        self.div_yield.clone()
+    }
+    pub fn last_cash_ex_date(&self) -> Date {
+        self.last_cash_ex_date
+    }
 }
 
 /// Create a type RcDividendStream to allow us to implement serialization
@@ -147,7 +163,8 @@ impl Deref for RcDividendStream {
 
 impl sd::Serialize for RcDividendStream {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: sd::Serializer
+    where
+        S: sd::Serializer,
     {
         self.0.serialize(serializer)
     }
@@ -155,7 +172,9 @@ impl sd::Serialize for RcDividendStream {
 
 impl<'de> sd::Deserialize<'de> for RcDividendStream {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: sd::Deserializer<'de> {
+    where
+        D: sd::Deserializer<'de>,
+    {
         let stream = DividendStream::deserialize(deserializer)?;
         Ok(RcDividendStream::new(Arc::new(stream)))
     }
@@ -167,16 +186,16 @@ impl<'de> sd::Deserialize<'de> for RcDividendStream {
 /// to DividendBootstrap data.
 pub struct DividendAccumulation {
     ex_date: Date,
-    undiscounted_sum: f64,	    // sum of all divs to this point
-    discounted_sum: f64,            // NPV of all divs to this point 
+    undiscounted_sum: f64,          // sum of all divs to this point
+    discounted_sum: f64,            // NPV of all divs to this point
     discounted_cash: f64,           // NPV of cash divs to this point
-    discounted_cash_remaining: f64  // NPV of cash divs beyond this point 
+    discounted_cash_remaining: f64, // NPV of cash divs beyond this point
 }
 
 pub struct DividendBootstrap {
     base_date: Date,
     high_water_mark: Date,
-    accumulation: Vec<DividendAccumulation>
+    accumulation: Vec<DividendAccumulation>,
 }
 
 impl DividendBootstrap {
@@ -189,33 +208,38 @@ impl DividendBootstrap {
     ///
     /// When we support foreign currency dividends, this will also need a
     /// functor to value FX forwards.
-    /// 
+    ///
     /// The 'spot' parameter is literally the reference value of the forward
     /// at the base date. If there is settlement on spot, it is the value
     /// discounted over the settlement period. If we are doing T+N delta
     /// calculation, we need to frig the spot so that it generates correct
     /// forwards (it needs to be bumped with the T+N bump).
-    pub fn new(div_stream: &DividendStream, rate: &RateCurve,
-        borrow: &RateCurve, spot: f64, base_date: Date, high_water_mark: Date)
-        -> Result<DividendBootstrap, qm::Error> {
-
+    pub fn new(
+        div_stream: &DividendStream,
+        rate: &RateCurve,
+        borrow: &RateCurve,
+        spot: f64,
+        base_date: Date,
+        high_water_mark: Date,
+    ) -> Result<DividendBootstrap, qm::Error> {
         let n = div_stream.dividends.len();
         let mut accumulation = Vec::<DividendAccumulation>::with_capacity(n);
         if n == 0 {
-            return Ok(DividendBootstrap { 
-                base_date: base_date, accumulation: accumulation, 
-                high_water_mark: high_water_mark })
+            return Ok(DividendBootstrap {
+                base_date: base_date,
+                accumulation: accumulation,
+                high_water_mark: high_water_mark,
+            });
         }
 
         if !div_stream.div_yield.is_zero()
-            && div_stream.dividends[n-1].ex_date() 
-            > div_stream.div_yield.base_date() {
-
-            return Err(qm::Error::new("Dividend yield overlaps dividends"))
+            && div_stream.dividends[n - 1].ex_date() > div_stream.div_yield.base_date()
+        {
+            return Err(qm::Error::new("Dividend yield overlaps dividends"));
         }
 
         // We bootstrap as far as the greater of the high_water_mark and the
-        // last cash div ex date. 
+        // last cash div ex date.
         let bootstrap_to = high_water_mark.max(div_stream.last_cash_ex_date());
 
         let base_qt_rt = log_discount_with_borrow(rate, borrow, base_date)?;
@@ -232,26 +256,26 @@ impl DividendBootstrap {
                 // quietly ignore dividends before the base date
                 continue;
             } else if ex_date < prev_ex_date {
-                return Err(qm::Error::new("Dividends not in ex date order"))
+                return Err(qm::Error::new("Dividends not in ex date order"));
             } else if ex_date > bootstrap_to {
                 // ignore dividends we are never going to use
                 break;
             } else if ex_date > prev_ex_date {
                 // got a new ex date, so finish off the last one
-                accumulation.push(DividendAccumulation { 
-                    ex_date : prev_ex_date,
-                    undiscounted_sum : undiscounted_sum, 
-                    discounted_sum : discounted_sum,
-                    discounted_cash : discounted_cash,
-                    discounted_cash_remaining : NAN });
+                accumulation.push(DividendAccumulation {
+                    ex_date: prev_ex_date,
+                    undiscounted_sum: undiscounted_sum,
+                    discounted_sum: discounted_sum,
+                    discounted_cash: discounted_cash,
+                    discounted_cash_remaining: NAN,
+                });
                 prev_ex_date = ex_date;
                 prev_discounted_sum = discounted_sum;
             }
 
             // add cash dividends
             let cash = dividend.cash;
-            let df = discount_with_borrow(rate, borrow, base_qt_rt,
-                dividend.pay_date)?;
+            let df = discount_with_borrow(rate, borrow, base_qt_rt, dividend.pay_date)?;
             let cash_pv = cash * df;
             undiscounted_sum += cash;
             discounted_sum += cash_pv;
@@ -263,8 +287,7 @@ impl DividendBootstrap {
                 // here we assume the right forward to use is the reference
                 // forward at the ex date. This makes sense if the settlement
                 // on the dividends is the same as that on the equity.
-                let growth = 1.0 / discount_with_borrow(rate, borrow, 
-                    base_qt_rt, ex_date)?;
+                let growth = 1.0 / discount_with_borrow(rate, borrow, base_qt_rt, ex_date)?;
                 let fwd = (spot - prev_discounted_sum) * growth;
                 let relative_amount = relative * fwd;
                 undiscounted_sum += relative_amount;
@@ -274,20 +297,20 @@ impl DividendBootstrap {
 
         // we may have a final dividend accumulation to add
         if prev_ex_date > base_date {
-            accumulation.push(DividendAccumulation { 
-                ex_date : prev_ex_date,
-                undiscounted_sum : undiscounted_sum, 
-                discounted_sum : discounted_sum,
-                discounted_cash : discounted_cash,
-                discounted_cash_remaining : NAN });
-        } 
+            accumulation.push(DividendAccumulation {
+                ex_date: prev_ex_date,
+                undiscounted_sum: undiscounted_sum,
+                discounted_sum: discounted_sum,
+                discounted_cash: discounted_cash,
+                discounted_cash_remaining: NAN,
+            });
+        }
 
         // Now walk backward, filling in the discounted_cash_remaining
         if !accumulation.is_empty() {
-            let final_discounted_cash = accumulation.last().unwrap().
-                discounted_cash;
+            let final_discounted_cash = accumulation.last().unwrap().discounted_cash;
             for acc in accumulation.iter_mut().rev() {
-                acc.discounted_cash_remaining = 
+                acc.discounted_cash_remaining =
                     final_discounted_cash - acc.discounted_cash_remaining;
             }
         }
@@ -297,8 +320,10 @@ impl DividendBootstrap {
         accumulation.shrink_to_fit();
 
         Ok(DividendBootstrap {
-            base_date: base_date, accumulation: accumulation,
-            high_water_mark: bootstrap_to })
+            base_date: base_date,
+            accumulation: accumulation,
+            high_water_mark: bootstrap_to,
+        })
     }
 
     /// The date to which all dividends are discounted, and from which all
@@ -311,10 +336,8 @@ impl DividendBootstrap {
     /// between two dates. Dividends on the 'from' date are not
     /// included. Dividends on the 'to' date are included. It is
     /// permissible, but not very useful, to supply a to date before
-    /// the from date, in which case a negative number may be returned. 
-    pub fn undiscounted_sum(&self, from: Date, to: Date)
-        -> Result<f64, qm::Error> {
-
+    /// the from date, in which case a negative number may be returned.
+    pub fn undiscounted_sum(&self, from: Date, to: Date) -> Result<f64, qm::Error> {
         let sum_from = self.undiscounted_sum_from_base(from)?;
         let sum_to = self.undiscounted_sum_from_base(to)?;
         Ok(sum_to - sum_from)
@@ -322,26 +345,27 @@ impl DividendBootstrap {
 
     /// Returns the sum of all cash and relative dividend amounts up
     /// to the given date. We start counting from the base date.
-    pub fn undiscounted_sum_from_base(&self, to: Date)
-        -> Result<f64, qm::Error> {
-
+    pub fn undiscounted_sum_from_base(&self, to: Date) -> Result<f64, qm::Error> {
         if to > self.high_water_mark {
-            return Err(qm::Error::new("Accessing dividend stream \
-                past the previously stated high_water mark"))
+            return Err(qm::Error::new(
+                "Accessing dividend stream \
+                past the previously stated high_water mark",
+            ));
         }
 
         // try to find this dividend ex date
-        match self.accumulation.binary_search_by(
-            |p| p.ex_date.cmp(&to)) {
-
+        match self.accumulation.binary_search_by(|p| p.ex_date.cmp(&to)) {
             // if we found it, return the undiscounted cash at this div
             Ok(i) => Ok(self.accumulation[i].undiscounted_sum),
 
             // if we missed and it was before the base date, return zero
-            Err(i) => if i == 0 { Ok(0.0) } else {
-
-                // otherwise, return the undiscounted cash at the prev div
-                Ok(self.accumulation[i-1].undiscounted_sum)
+            Err(i) => {
+                if i == 0 {
+                    Ok(0.0)
+                } else {
+                    // otherwise, return the undiscounted cash at the prev div
+                    Ok(self.accumulation[i - 1].undiscounted_sum)
+                }
             }
         }
     }
@@ -350,9 +374,7 @@ impl DividendBootstrap {
     /// between two dates. Dividends on the 'from' date are not
     /// included. Dividends on the 'to' date are included. All
     /// amounts are discounted to the base date.
-    pub fn discounted_sum(&self, from: Date, to: Date)
-        -> Result<f64, qm::Error> {
-
+    pub fn discounted_sum(&self, from: Date, to: Date) -> Result<f64, qm::Error> {
         let sum_from = self.discounted_sum_from_base(from)?;
         let sum_to = self.discounted_sum_from_base(to)?;
         Ok(sum_to - sum_from)
@@ -361,54 +383,55 @@ impl DividendBootstrap {
     /// Returns the NPV of all cash and relative dividend amounts up
     /// to the given date. We start counting from the base date. All
     /// amounts are discounted to the base date.
-    pub fn discounted_sum_from_base(&self, to: Date)
-        -> Result<f64, qm::Error> {
-
+    pub fn discounted_sum_from_base(&self, to: Date) -> Result<f64, qm::Error> {
         if to > self.high_water_mark {
-            return Err(qm::Error::new("Accessing dividend stream \
-                past the previously stated high_water mark"))
+            return Err(qm::Error::new(
+                "Accessing dividend stream \
+                past the previously stated high_water mark",
+            ));
         }
 
         // try to find this dividend ex date
-        match self.accumulation.binary_search_by(
-            |p| p.ex_date.cmp(&to)) {
-
+        match self.accumulation.binary_search_by(|p| p.ex_date.cmp(&to)) {
             // if we found it, return the discounted cash at this div
             Ok(i) => Ok(self.accumulation[i].discounted_sum),
 
             // if we missed and it was before the base date, return zero
-            Err(i) => if i == 0 { Ok(0.0) } else {
-
-                // otherwise, return the discounted cash at the prev div
-                Ok(self.accumulation[i-1].discounted_sum)
+            Err(i) => {
+                if i == 0 {
+                    Ok(0.0)
+                } else {
+                    // otherwise, return the discounted cash at the prev div
+                    Ok(self.accumulation[i - 1].discounted_sum)
+                }
             }
         }
     }
 
-
     /// Returns the NPV of all cash dividend amounts after the given date.
     /// All amounts are discounted to the base date.
-    pub fn discounted_cash_divs_after(&self, from: Date)
-        -> Result<f64, qm::Error> {
-
+    pub fn discounted_cash_divs_after(&self, from: Date) -> Result<f64, qm::Error> {
         if from > self.high_water_mark {
-            return Err(qm::Error::new("Accessing dividend stream \
-                past the previously stated high_water mark"))
+            return Err(qm::Error::new(
+                "Accessing dividend stream \
+                past the previously stated high_water mark",
+            ));
         }
 
         // try to find this dividend ex date
-        match self.accumulation.binary_search_by(
-            |p| p.ex_date.cmp(&from)) {
-
+        match self.accumulation.binary_search_by(|p| p.ex_date.cmp(&from)) {
             // if we found it, return the remaining cash at this div
             Ok(i) => Ok(self.accumulation[i].discounted_cash_remaining),
 
             // If we missed and it was after the last date, return zero.
             // This also catches the case where there are no dividends
-            Err(i) => if i == self.accumulation.len() { Ok(0.0) } else {
-
-                // otherwise, return the remaining cash at the next div
-                Ok(self.accumulation[i].discounted_cash_remaining)
+            Err(i) => {
+                if i == self.accumulation.len() {
+                    Ok(0.0)
+                } else {
+                    // otherwise, return the remaining cash at the next div
+                    Ok(self.accumulation[i].discounted_cash_remaining)
+                }
             }
         }
     }
@@ -417,20 +440,18 @@ impl DividendBootstrap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
-    use math::interpolation::Extrap;
     use data::curves::RateCurveAct365;
+    use math::interpolation::Extrap;
+    use math::numerics::approx_eq;
 
     #[test]
     fn create_div_stream() {
-
         let divs = create_sample_divstream();
         assert_cash(Ok(divs.dividends()[0].cash()), 1.2);
     }
 
     #[test]
     fn check_undiscounted_divs() {
-
         let d = Date::from_ymd(2017, 01, 02);
         let divs = create_sample_divstream();
         let b = create_sample_bootstrap(&divs, d + 1000);
@@ -451,7 +472,6 @@ mod tests {
 
     #[test]
     fn check_discounted_divs() {
-
         let d = Date::from_ymd(2017, 01, 02);
         let divs = create_sample_divstream();
         let b = create_sample_bootstrap(&divs, d + 1000);
@@ -471,48 +491,59 @@ mod tests {
     }
 
     fn create_sample_divstream() -> DividendStream {
-
         // Early divs are purely cash. Later ones are mixed cash/relative
         let d = Date::from_ymd(2017, 01, 02);
         let divs = [
-            Dividend::new(1.2, 0.0, d + 28, d + 30), 
+            Dividend::new(1.2, 0.0, d + 28, d + 30),
             Dividend::new(0.8, 0.002, d + 210, d + 212),
             Dividend::new(0.2, 0.008, d + 392, d + 394),
-            Dividend::new(0.0, 0.01, d + 574, d + 576)];
+            Dividend::new(0.0, 0.01, d + 574, d + 576),
+        ];
 
         // dividend yield for later-dated divs. Note that the base date
         // for the curve is after the last of the explicit dividends.
-        let points = [(d + 365 * 2, 0.002), (d + 365 * 3, 0.004),
-            (d + 365 * 5, 0.01), (d + 365 * 10, 0.015)];
-        let curve = RateCurveAct365::new(d + 365 * 2, &points,
-            Extrap::Zero, Extrap::Flat).unwrap();
+        let points = [
+            (d + 365 * 2, 0.002),
+            (d + 365 * 3, 0.004),
+            (d + 365 * 5, 0.01),
+            (d + 365 * 10, 0.015),
+        ];
+        let curve = RateCurveAct365::new(d + 365 * 2, &points, Extrap::Zero, Extrap::Flat).unwrap();
         let div_yield = RcRateCurve::new(Arc::new(curve));
 
-        DividendStream::new(&divs, div_yield) 
+        DividendStream::new(&divs, div_yield)
     }
 
-    fn create_sample_bootstrap(div_stream: &DividendStream, hwm: Date)
-            -> DividendBootstrap {
-
+    fn create_sample_bootstrap(div_stream: &DividendStream, hwm: Date) -> DividendBootstrap {
         let d = Date::from_ymd(2016, 12, 30);
-        let rate_points = [(d, 0.05), (d + 14, 0.08), (d + 182, 0.09),
-            (d + 364, 0.085), (d + 728, 0.082)];
-        let rate = RateCurveAct365::new(d, &rate_points,
-            Extrap::Flat, Extrap::Flat).unwrap();
+        let rate_points = [
+            (d, 0.05),
+            (d + 14, 0.08),
+            (d + 182, 0.09),
+            (d + 364, 0.085),
+            (d + 728, 0.082),
+        ];
+        let rate = RateCurveAct365::new(d, &rate_points, Extrap::Flat, Extrap::Flat).unwrap();
 
-        let borrow_points = [(d, 0.01), (d + 196, 0.012),
-            (d + 364, 0.0125), (d + 728, 0.0120)];
-        let borrow = RateCurveAct365::new(d, &borrow_points,
-            Extrap::Flat, Extrap::Flat).unwrap();
+        let borrow_points = [
+            (d, 0.01),
+            (d + 196, 0.012),
+            (d + 364, 0.0125),
+            (d + 728, 0.0120),
+        ];
+        let borrow = RateCurveAct365::new(d, &borrow_points, Extrap::Flat, Extrap::Flat).unwrap();
         let spot = 97.0;
 
-        DividendBootstrap::new(div_stream, &rate, &borrow, spot, d + 2, hwm)
-            .unwrap()
+        DividendBootstrap::new(div_stream, &rate, &borrow, spot, d + 2, hwm).unwrap()
     }
 
     fn assert_cash(result: Result<f64, qm::Error>, expected: f64) {
         let amount = result.unwrap();
-        assert!(approx_eq(amount, expected, 1e-12), "cash={} expected={}",
-            amount, expected);
+        assert!(
+            approx_eq(amount, expected, 1e-12),
+            "cash={} expected={}",
+            amount,
+            expected
+        );
     }
 }

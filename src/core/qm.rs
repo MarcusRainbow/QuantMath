@@ -1,23 +1,25 @@
 //! Core definitions for quantmath
 
+use ndarray;
+use serde_json;
 use std::error;
 use std::fmt;
 use std::io;
 use std::num;
 use std::str;
-use ndarray;
-use serde_json;
 
 /// Error returned by any rfin method
 #[derive(Debug, Clone)]
 pub struct Error {
-    message: String 
+    message: String,
 }
 
 impl Error {
     /// Creates a new error
     pub fn new(message: &str) -> Error {
-        Error { message: message.to_string() }
+        Error {
+            message: message.to_string(),
+        }
     }
 }
 
@@ -42,7 +44,9 @@ impl From<io::Error> for Error {
 impl From<num::ParseIntError> for Error {
     fn from(error: num::ParseIntError) -> Self {
         Error::new(&format!(
-            "Error {} when parsing integer. Badly-formed date?", error))
+            "Error {} when parsing integer. Badly-formed date?",
+            error
+        ))
     }
 }
 
@@ -86,6 +90,10 @@ mod tests {
     }
 
     fn fail_or_succeed(ok: bool) -> Result<(), Error> {
-        if ok { Ok(()) } else { Err(Error::new("failure message")) }
+        if ok {
+            Ok(())
+        } else {
+            Err(Error::new("failure message"))
+        }
     }
-} 
+}

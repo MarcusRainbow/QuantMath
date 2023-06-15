@@ -1,23 +1,19 @@
-use math::interpolation::CubicSpline;
-use math::interpolation::Interpolate;
-use math::interpolation::Extrap;
 use core::qm;
+use math::interpolation::CubicSpline;
+use math::interpolation::Extrap;
+use math::interpolation::Interpolate;
+use serde::Serialize;
 use std::f64::NAN;
 use std::fmt::Debug;
-use serde::Serialize;
 
 /// A VolSmile is a curve of volatilities by strike, all for a specific date.
 
-pub trait VolSmile : Serialize + Clone + Debug {
-
+pub trait VolSmile: Serialize + Clone + Debug {
     /// These volatilities must be converted to variances by squaring and
     /// multiplying by some t. The t to use depends on the vol surface. We
     /// assume that the VolSmile simply provides volatilities, and it is up
     /// to the VolSurface to interpret these in terms of variances.
-    fn volatilities(
-        &self,
-        strikes: &[f64],
-        volatilities: &mut[f64]) -> Result<(), qm::Error>;
+    fn volatilities(&self, strikes: &[f64], volatilities: &mut [f64]) -> Result<(), qm::Error>;
 
     /// Convenience function to fetch a single volatility. This does not
     /// have to be implemented by every implementer of the trait, though
@@ -34,16 +30,11 @@ pub trait VolSmile : Serialize + Clone + Debug {
 /// different at other dates.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatSmile {
-    vol: f64
+    vol: f64,
 }
 
 impl VolSmile for FlatSmile {
-
-    fn volatilities(
-        &self,
-        strikes: &[f64],
-        volatilities: &mut[f64]) -> Result<(), qm::Error> {
-
+    fn volatilities(&self, strikes: &[f64], volatilities: &mut [f64]) -> Result<(), qm::Error> {
         let n = strikes.len();
         assert!(n == volatilities.len());
 
@@ -55,7 +46,6 @@ impl VolSmile for FlatSmile {
 }
 
 impl FlatSmile {
-
     /// Creates a flat smile with the given volatility.
     pub fn new(vol: f64) -> Result<FlatSmile, qm::Error> {
         Ok(FlatSmile { vol: vol })
@@ -65,16 +55,11 @@ impl FlatSmile {
 /// A simple implementation of a VolSmile in terms of a cubic spline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CubicSplineSmile {
-    smile: CubicSpline<f64>
+    smile: CubicSpline<f64>,
 }
 
 impl VolSmile for CubicSplineSmile {
-
-    fn volatilities(
-        &self,
-        strikes: &[f64],
-        volatilities: &mut[f64]) -> Result<(), qm::Error> {
-
+    fn volatilities(&self, strikes: &[f64], volatilities: &mut [f64]) -> Result<(), qm::Error> {
         let n = strikes.len();
         assert!(n == volatilities.len());
 
@@ -86,7 +71,6 @@ impl VolSmile for CubicSplineSmile {
 }
 
 impl CubicSplineSmile {
-
     /// Creates a cubic spline smile that interpolates between the given
     /// pillar volatilities. The supplied vector is of (strike, volatility)
     /// pairs.
@@ -112,8 +96,12 @@ mod tests {
         smile.volatilities(&strikes, &mut vols).unwrap();
 
         for i in 0..vols.len() {
-            assert!(approx_eq(vols[i], vol, 1e-12),
-                "vol={} expected={}", vols[i], vol);
+            assert!(
+                approx_eq(vols[i], vol, 1e-12),
+                "vol={} expected={}",
+                vols[i],
+                vol
+            );
         }
     }
 
@@ -130,8 +118,12 @@ mod tests {
         let expected = vec![0.5, 0.4, 0.3, 0.25025, 0.22, 0.2245, 0.25, 0.28];
 
         for i in 0..vols.len() {
-            assert!(approx_eq(vols[i], expected[i], 1e-12),
-                "vol={} expected={}", vols[i], expected[i]);
+            assert!(
+                approx_eq(vols[i], expected[i], 1e-12),
+                "vol={} expected={}",
+                vols[i],
+                expected[i]
+            );
         }
     }
 }

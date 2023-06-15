@@ -1,18 +1,18 @@
+use core::factories::Qrc;
+use core::factories::Registry;
+use core::factories::TypeId;
+use core::qm;
 use dates::Date;
+use erased_serde as esd;
+use math::interpolation::Extrap;
 use math::interpolation::Interpolate;
 use math::interpolation::Linear;
-use math::interpolation::Extrap;
-use core::qm;
-use core::factories::TypeId;
-use core::factories::Registry;
-use core::factories::Qrc;
-use std::sync::Arc;
-use std::fmt::Debug;
-use erased_serde as esd;
 use serde as sd;
+use serde::Deserialize;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
-use serde::Deserialize;
+use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Curves representing rate multipled by time are used in various ways in
 /// finance. For example, yield curves, hazard rate curves, repo rate curves.
@@ -21,13 +21,14 @@ use serde::Deserialize;
 /// calculated. It contains yields, represented by the letter r, which is
 /// a function of time such that the discount factor between time t1 and t2
 /// (fractions of a year) is exp(-r(t2) * t2) / exp(-r(t1) * t1).
-pub trait RateCurve : esd::Serialize + TypeId + Sync + Send + Debug {
-
+pub trait RateCurve: esd::Serialize + TypeId + Sync + Send + Debug {
     /// Returns the base date
     fn base_date(&self) -> Date;
 
     /// Returns true if the curve is zero for all dates
-    fn is_zero(&self) -> bool { false }
+    fn is_zero(&self) -> bool {
+        false
+    }
 
     /// This is the function to implement internally. However, in general
     /// users should call rt instead. r and t are really just internal to this
@@ -38,8 +39,8 @@ pub trait RateCurve : esd::Serialize + TypeId + Sync + Send + Debug {
     /// the log of the discount factor from the base date to the given date
     /// times -1.
     fn rt(&self, date: Date) -> Result<f64, qm::Error> {
-       let (r, t) = self.r_and_t(date)?;
-       Ok(r * t)
+        let (r, t) = self.r_and_t(date)?;
+        Ok(r * t)
     }
 
     /// Utility method to return the discount factor between two dates. You
@@ -47,7 +48,7 @@ pub trait RateCurve : esd::Serialize + TypeId + Sync + Send + Debug {
     /// just here for convenience.
     fn df(&self, from: Date, to: Date) -> Result<f64, qm::Error> {
         if from == to {
-            return Ok(1.0)    // optimisation when the dates are the same
+            return Ok(1.0); // optimisation when the dates are the same
         }
 
         let from_rt = self.rt(from)?;
@@ -65,7 +66,8 @@ pub type TypeRegistry = Registry<BoxFnSeed<RcRateCurve>>;
 /// Implement deserialization for subclasses of the type
 impl<'de> sd::Deserialize<'de> for RcRateCurve {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: sd::Deserializer<'de>
+    where
+        D: sd::Deserializer<'de>,
     {
         sdt::de::external::deserialize(deserializer, get_registry())
     }
@@ -77,9 +79,18 @@ pub fn get_registry() -> &'static TypeRegistry {
         static ref REG: TypeRegistry = {
             let mut reg = TypeRegistry::new();
             reg.insert("ZeroRateCurve", BoxFnSeed::new(ZeroRateCurve::from_serial));
-            reg.insert("RateCurveAct365", BoxFnSeed::new(RateCurveAct365::from_serial));
-            reg.insert("AnnualisedFlatBump", BoxFnSeed::new(AnnualisedFlatBump::from_serial));
-            reg.insert("ContinuouslyCompoundedFlatBump", BoxFnSeed::new(ContinuouslyCompoundedFlatBump::from_serial));
+            reg.insert(
+                "RateCurveAct365",
+                BoxFnSeed::new(RateCurveAct365::from_serial),
+            );
+            reg.insert(
+                "AnnualisedFlatBump",
+                BoxFnSeed::new(AnnualisedFlatBump::from_serial),
+            );
+            reg.insert(
+                "ContinuouslyCompoundedFlatBump",
+                BoxFnSeed::new(ContinuouslyCompoundedFlatBump::from_serial),
+            );
             reg.insert("RelativeBump", BoxFnSeed::new(RelativeBump::from_serial));
             reg
         };
@@ -90,19 +101,25 @@ pub fn get_registry() -> &'static TypeRegistry {
 /// A simple rate curve that always returns zero
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ZeroRateCurve {
-    base: Date
+    base: Date,
 }
 
 impl TypeId for ZeroRateCurve {
-    fn get_type_id(&self) -> &'static str { "ZeroRateCurve" }
+    fn get_type_id(&self) -> &'static str {
+        "ZeroRateCurve"
+    }
 }
 
 impl RateCurve for ZeroRateCurve {
-    fn r_and_t(&self, _date: Date) -> Result<(f64, f64), qm::Error> { 
-        Ok((0.0, 0.0)) 
+    fn r_and_t(&self, _date: Date) -> Result<(f64, f64), qm::Error> {
+        Ok((0.0, 0.0))
     }
-    fn base_date(&self) -> Date { self.base }
-    fn is_zero(&self) -> bool { true }
+    fn base_date(&self) -> Date {
+        self.base
+    }
+    fn is_zero(&self) -> bool {
+        true
+    }
 }
 
 impl ZeroRateCurve {
@@ -133,16 +150,17 @@ pub struct RateCurveAct365 {
 }
 
 impl TypeId for RateCurveAct365 {
-    fn get_type_id(&self) -> &'static str { "RateCurveAct365" }
+    fn get_type_id(&self) -> &'static str {
+        "RateCurveAct365"
+    }
 }
 
 impl RateCurve for RateCurveAct365 {
     fn r_and_t(&self, date: Date) -> Result<(f64, f64), qm::Error> {
-
         // Act/365 basis. Small optimisation if time is zero
         let act = date - self.base;
         if act == 0 {
-            return Ok((0.0, 0.0))
+            return Ok((0.0, 0.0));
         }
 
         let t = (act as f64) / 365.0;
@@ -156,13 +174,18 @@ impl RateCurve for RateCurveAct365 {
 }
 
 impl RateCurveAct365 {
-
     // Creates a new interpolator object for yield curves, hazard rates etc.
-    pub fn new(base: Date, curve: &[(Date, f64)], left: Extrap, right: Extrap)
-        -> Result<RateCurveAct365, qm::Error> {
-
+    pub fn new(
+        base: Date,
+        curve: &[(Date, f64)],
+        left: Extrap,
+        right: Extrap,
+    ) -> Result<RateCurveAct365, qm::Error> {
         let interp = Linear::new(curve, left, right)?;
-        Ok(RateCurveAct365 { base: base, interp: interp })
+        Ok(RateCurveAct365 {
+            base: base,
+            interp: interp,
+        })
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
@@ -174,27 +197,27 @@ impl RateCurveAct365 {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AnnualisedFlatBump {
     curve: RcRateCurve,
-    bump: f64
+    bump: f64,
 }
 
 impl TypeId for AnnualisedFlatBump {
-    fn get_type_id(&self) -> &'static str { "AnnualisedFlatBump" }
+    fn get_type_id(&self) -> &'static str {
+        "AnnualisedFlatBump"
+    }
 }
 
 impl RateCurve for AnnualisedFlatBump {
-
     fn r_and_t(&self, date: Date) -> Result<(f64, f64), qm::Error> {
-
         // The annualised yield is defined as y, where
         // exp(rt) = y^t so y = exp(rt)^(1/t)
         //
         // Bumping the annualised yield gives
         // exp(rt_bumped) = (y + dy)^t = (exp(rt)^(1/t) + dy)^t
-        //  
-        // Thus rt_bumped = log((exp(rt)^(1/t) + dy)^t) 
+        //
+        // Thus rt_bumped = log((exp(rt)^(1/t) + dy)^t)
         //                = t * log(exp(rt)^(1/t) + dy)
         //                = t * log(exp(r) + dy)
-         
+
         let (r, t) = self.curve.r_and_t(date)?;
 
         let r_bumped = (r.exp() + self.bump).ln();
@@ -204,11 +227,14 @@ impl RateCurve for AnnualisedFlatBump {
     fn base_date(&self) -> Date {
         self.curve.base_date()
     }
-} 
+}
 
 impl AnnualisedFlatBump {
     pub fn new(curve: RcRateCurve, bump: f64) -> AnnualisedFlatBump {
-        AnnualisedFlatBump { curve: curve, bump: bump }
+        AnnualisedFlatBump {
+            curve: curve,
+            bump: bump,
+        }
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
@@ -220,15 +246,16 @@ impl AnnualisedFlatBump {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ContinuouslyCompoundedFlatBump {
     curve: RcRateCurve,
-    bump: f64
+    bump: f64,
 }
 
 impl TypeId for ContinuouslyCompoundedFlatBump {
-    fn get_type_id(&self) -> &'static str { "ContinuouslyCompoundedFlatBump" }
+    fn get_type_id(&self) -> &'static str {
+        "ContinuouslyCompoundedFlatBump"
+    }
 }
 
 impl RateCurve for ContinuouslyCompoundedFlatBump {
-
     fn r_and_t(&self, date: Date) -> Result<(f64, f64), qm::Error> {
         let (r, t) = self.curve.r_and_t(date)?;
         Ok((r + self.bump, t))
@@ -237,16 +264,20 @@ impl RateCurve for ContinuouslyCompoundedFlatBump {
     fn base_date(&self) -> Date {
         self.curve.base_date()
     }
-} 
+}
 
 impl ContinuouslyCompoundedFlatBump {
-    pub fn new(curve: RcRateCurve, bump: f64)
-        -> ContinuouslyCompoundedFlatBump {
-        ContinuouslyCompoundedFlatBump { curve: curve, bump: bump }
+    pub fn new(curve: RcRateCurve, bump: f64) -> ContinuouslyCompoundedFlatBump {
+        ContinuouslyCompoundedFlatBump {
+            curve: curve,
+            bump: bump,
+        }
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
-        Ok(Qrc::new(Arc::new(ContinuouslyCompoundedFlatBump::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(
+            ContinuouslyCompoundedFlatBump::deserialize(de)?,
+        )))
     }
 }
 
@@ -255,15 +286,16 @@ impl ContinuouslyCompoundedFlatBump {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RelativeBump {
     curve: RcRateCurve,
-    one_plus_bump: f64
+    one_plus_bump: f64,
 }
 
 impl TypeId for RelativeBump {
-    fn get_type_id(&self) -> &'static str { "RelativeBump" }
+    fn get_type_id(&self) -> &'static str {
+        "RelativeBump"
+    }
 }
 
 impl RateCurve for RelativeBump {
-
     fn r_and_t(&self, date: Date) -> Result<(f64, f64), qm::Error> {
         let (r, t) = self.curve.r_and_t(date)?;
         Ok((r * self.one_plus_bump, t))
@@ -276,7 +308,10 @@ impl RateCurve for RelativeBump {
 
 impl RelativeBump {
     pub fn new(curve: RcRateCurve, bump: f64) -> RelativeBump {
-        RelativeBump { curve: curve, one_plus_bump: bump }
+        RelativeBump {
+            curve: curve,
+            one_plus_bump: bump,
+        }
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcRateCurve, esd::Error> {
@@ -292,22 +327,24 @@ mod tests {
 
     #[test]
     fn zero_curve() {
-
         let base = Date::from_ymd(2017, 01, 01);
         let c = ZeroRateCurve::new(base);
 
         assert_rt(c.rt(base + 7), 0.0);
     }
-    
+
     #[test]
     fn check_curves() {
-
         let base = Date::from_ymd(2017, 01, 01);
         let d = base;
-        let points = [(d, 0.05), (d + 14, 0.08), (d + 56, 0.09),
-            (d + 112, 0.085), (d + 224, 0.082)];
-        let c = RateCurveAct365::new(base, &points,
-            Extrap::Flat, Extrap::Flat).unwrap();
+        let points = [
+            (d, 0.05),
+            (d + 14, 0.08),
+            (d + 56, 0.09),
+            (d + 112, 0.085),
+            (d + 224, 0.082),
+        ];
+        let c = RateCurveAct365::new(base, &points, Extrap::Flat, Extrap::Flat).unwrap();
 
         assert_rt(c.rt(d + 0), 0.05 * 0.0 / 365.0);
         assert_rt(c.rt(d + 7), 0.065 * 7.0 / 365.0);
@@ -318,17 +355,18 @@ mod tests {
 
     #[test]
     fn rate_curve_serde() {
-
-        // a rate curve with some points  
+        // a rate curve with some points
         let base = Date::from_ymd(2017, 01, 01);
         let d = base;
         let points = [(d, 0.05), (d + 14, 0.08)];
-        let curve = RateCurveAct365::new(base, &points,
-            Extrap::Flat, Extrap::Flat).unwrap();
+        let curve = RateCurveAct365::new(base, &points, Extrap::Flat, Extrap::Flat).unwrap();
 
         // Convert the curve to a JSON string.
         let serialized = serde_json::to_string(&curve).unwrap();
-        assert_eq!(serialized, r#"{"base":"2017-01-01","interp":{"left":"Flat","right":"Flat","points":[["2017-01-01",0.05],["2017-01-15",0.08]]}}"#);
+        assert_eq!(
+            serialized,
+            r#"{"base":"2017-01-01","interp":{"left":"Flat","right":"Flat","points":[["2017-01-01",0.05],["2017-01-15",0.08]]}}"#
+        );
 
         // Convert the JSON string back to an interpolator.
         let deserialized: RateCurveAct365 = serde_json::from_str(&serialized).unwrap();
@@ -341,19 +379,22 @@ mod tests {
 
     #[test]
     fn rate_curve_tagged_serde() {
-
-        // a rate curve with some points  
+        // a rate curve with some points
         let base = Date::from_ymd(2017, 01, 01);
         let d = base;
         let points = [(d, 0.05), (d + 14, 0.08)];
-        let curve = RcRateCurve::new(Arc::new(RateCurveAct365::new(base, &points,
-            Extrap::Flat, Extrap::Flat).unwrap()));
-        
+        let curve = RcRateCurve::new(Arc::new(
+            RateCurveAct365::new(base, &points, Extrap::Flat, Extrap::Flat).unwrap(),
+        ));
+
         let bumped = RcRateCurve::new(Arc::new(RelativeBump::new(curve, 0.01)));
 
         // Convert the curve to a JSON string.
         let serialized = serde_json::to_string(&bumped).unwrap();
-        assert_eq!(serialized, r#"{"RelativeBump":{"curve":{"RateCurveAct365":{"base":"2017-01-01","interp":{"left":"Flat","right":"Flat","points":[["2017-01-01",0.05],["2017-01-15",0.08]]}}},"one_plus_bump":0.01}}"#);
+        assert_eq!(
+            serialized,
+            r#"{"RelativeBump":{"curve":{"RateCurveAct365":{"base":"2017-01-01","interp":{"left":"Flat","right":"Flat","points":[["2017-01-01",0.05],["2017-01-15",0.08]]}}},"one_plus_bump":0.01}}"#
+        );
 
         // Convert the JSON string back to an interpolator.
         let deserialized: RcRateCurve = serde_json::from_str(&serialized).unwrap();
@@ -365,9 +406,12 @@ mod tests {
     }
 
     fn assert_rt(rt: Result<f64, qm::Error>, v: f64) {
-
         let interpolated = rt.unwrap();
-        assert!(approx_eq(interpolated, v, 1e-12), "interpolated={} v={}",
-            interpolated, v);
+        assert!(
+            approx_eq(interpolated, v, 1e-12),
+            "interpolated={} v={}",
+            interpolated,
+            v
+        );
     }
 }

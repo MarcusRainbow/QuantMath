@@ -1,33 +1,34 @@
 pub mod blackdiffusion;
 
-use models::blackdiffusion::BlackDiffusionFactory;
+use core::factories::{Qrc, Registry, TypeId};
 use core::qm;
-use instruments::RcInstrument;
-use instruments::MonteCarloDependencies;
+use dates::datetime::DateDayFraction;
+use dates::Date;
+use erased_serde as esd;
 use instruments::MonteCarloContext;
+use instruments::MonteCarloDependencies;
+use instruments::RcInstrument;
+use models::blackdiffusion::BlackDiffusionFactory;
+use risk::marketdata::MarketData;
 use risk::Bumpable;
 use risk::BumpablePricingContext;
-use risk::marketdata::MarketData;
-use dates::Date;
-use dates::datetime::DateDayFraction;
-use core::factories::{TypeId, Qrc, Registry};
-use std::collections::HashMap;
-use std::clone::Clone;
-use erased_serde as esd;
 use serde as sd;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
+use std::clone::Clone;
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 /// Interface that must be implemented by a model factory in order to support
 /// Monte-Carlo pricing.
-pub trait MonteCarloModelFactory : esd::Serialize + TypeId + Sync + Send + Debug {
- 
+pub trait MonteCarloModelFactory: esd::Serialize + TypeId + Sync + Send + Debug {
     /// Given a timeline (which also specifies the underlyings we need to
     /// evolve), and a pricing context, create a Monte-Carlo model.
-    fn factory(&self, timeline: &MonteCarloTimeline, 
-        context: Box<BumpablePricingContext>)
-        -> Result<Box<MonteCarloModel>, qm::Error>;
+    fn factory(
+        &self,
+        timeline: &MonteCarloTimeline,
+        context: Box<BumpablePricingContext>,
+    ) -> Result<Box<MonteCarloModel>, qm::Error>;
 }
 
 // Get serialization to work recursively for instruments by using the
@@ -38,7 +39,8 @@ pub type TypeRegistry = Registry<BoxFnSeed<Qrc<MonteCarloModelFactory>>>;
 /// Implement deserialization for subclasses of the type
 impl<'de> sd::Deserialize<'de> for Qrc<MonteCarloModelFactory> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: sd::Deserializer<'de>
+    where
+        D: sd::Deserializer<'de>,
     {
         sdt::de::external::deserialize(deserializer, get_registry())
     }
@@ -49,7 +51,10 @@ pub fn get_registry() -> &'static TypeRegistry {
     lazy_static! {
         static ref REG: TypeRegistry = {
             let mut reg = TypeRegistry::new();
-            reg.insert("BlackDiffusionFactory", BoxFnSeed::new(BlackDiffusionFactory::from_serial));
+            reg.insert(
+                "BlackDiffusionFactory",
+                BoxFnSeed::new(BlackDiffusionFactory::from_serial),
+            );
             reg
         };
     }
@@ -60,8 +65,7 @@ pub type RcMonteCarloModelFactory = Qrc<MonteCarloModelFactory>;
 
 /// Interface that must be implemented by a model in order to support
 /// Monte-Carlo pricing.
-pub trait MonteCarloModel : MonteCarloContext + Bumpable + MonteCarloModelClone {
-
+pub trait MonteCarloModel: MonteCarloContext + Bumpable + MonteCarloModelClone {
     /// Converts this model to a MonteCarloContext that can be used for pricing
     fn as_mc_context(&self) -> &MonteCarloContext;
 
@@ -77,7 +81,8 @@ pub trait MonteCarloModelClone {
 }
 
 impl<T> MonteCarloModelClone for T
-    where T: 'static + MonteCarloModel + Clone,
+where
+    T: 'static + MonteCarloModel + Clone,
 {
     fn clone_box(&self) -> Box<MonteCarloModel> {
         Box::new(self.clone())
@@ -96,7 +101,7 @@ pub struct MonteCarloTimeline {
     _spot_date: Date,
     observations: HashMap<RcInstrument, Vec<DateDayFraction>>,
     flows: Vec<RcInstrument>,
-    collated: bool
+    collated: bool,
 }
 
 impl MonteCarloTimeline {
@@ -105,15 +110,17 @@ impl MonteCarloTimeline {
     /// wish to value. Finally, invoke collate to ensure the timeline is
     /// sorted correctly.
     pub fn new(spot_date: Date) -> MonteCarloTimeline {
-        MonteCarloTimeline { _spot_date: spot_date, 
-            observations: HashMap::new(), flows: Vec::new(),
-            collated: false }
+        MonteCarloTimeline {
+            _spot_date: spot_date,
+            observations: HashMap::new(),
+            flows: Vec::new(),
+            collated: false,
+        }
     }
 
     pub fn collate(&mut self) -> Result<(), qm::Error> {
-
         // Sort each of the observations vectors by date/day-fraction and
-        // ensure there are no duplicates. 
+        // ensure there are no duplicates.
 
         // validate that the observations are all in the future
 
@@ -135,20 +142,18 @@ impl MonteCarloTimeline {
 }
 
 impl MonteCarloDependencies for MonteCarloTimeline {
-
-    fn observation(&mut self, instrument: &RcInstrument,
-        date_time: DateDayFraction) {
-
+    fn observation(&mut self, instrument: &RcInstrument, date_time: DateDayFraction) {
         // Record the observations in the order the client specifies them
         // for any one instrument
-        self.observations.entry(instrument.clone())
-            .or_insert(Vec::<DateDayFraction>::new()).push(date_time);
+        self.observations
+            .entry(instrument.clone())
+            .or_insert(Vec::<DateDayFraction>::new())
+            .push(date_time);
     }
 
     fn flow(&mut self, instrument: &RcInstrument) {
-
         // We must record flows in the order the client specifies them, as
         // the client later relies on this order
         self.flows.push(instrument.clone());
     }
-} 
+}

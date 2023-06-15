@@ -4,7 +4,7 @@ use data::bump::Bumper;
 #[derive(Clone)]
 pub enum BumpSpot {
     Relative { bump: f64 },
-    Replace { spot: f64 }
+    Replace { spot: f64 },
 }
 
 impl BumpSpot {
@@ -18,13 +18,10 @@ impl BumpSpot {
 }
 
 impl Bumper<f64> for BumpSpot {
-
     fn apply(&self, old_spot: f64) -> f64 {
         match self {
             &BumpSpot::Relative { bump } => old_spot * (1.0 + bump),
-            &BumpSpot::Replace { spot } => spot
+            &BumpSpot::Replace { spot } => spot,
         }
     }
 }
-
-                

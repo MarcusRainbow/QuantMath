@@ -1,6 +1,6 @@
-use data::divstream::RcDividendStream;
-use data::divstream::DividendStream;
 use data::bump::Bumper;
+use data::divstream::DividendStream;
+use data::divstream::RcDividendStream;
 use std::sync::Arc;
 
 /// Bump that defines all the supported bumps and risk transformations of a
@@ -16,11 +16,11 @@ impl BumpDivs {
 }
 
 impl Bumper<RcDividendStream> for BumpDivs {
-
     fn apply(&self, divs: RcDividendStream) -> RcDividendStream {
         match self {
-            &BumpDivs::BumpAllRelative { size }
-                => RcDividendStream::new(Arc::new(DividendStream::new_bump_all(&*divs, size)))
+            &BumpDivs::BumpAllRelative { size } => {
+                RcDividendStream::new(Arc::new(DividendStream::new_bump_all(&*divs, size)))
+            }
         }
     }
 }

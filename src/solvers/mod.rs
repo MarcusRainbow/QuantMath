@@ -1,7 +1,7 @@
 pub mod impliedvol;
 
-use risk::Pricer;
 use core::qm;
+use risk::Pricer;
 
 /// Solvers iteratively reprice with different data until they match the
 /// target price. A one-dimensional solver looks for a single value, such

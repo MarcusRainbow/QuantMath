@@ -1,24 +1,24 @@
-use std::fmt::Display;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
+use core::dedup::InstanceId;
+use core::factories::Qrc;
+use core::factories::TypeId;
+use core::qm;
+use dates::datetime::DateTime;
+use dates::rules::RcDateRule;
+use dates::Date;
+use erased_serde as esd;
+use instruments::assets::Currency;
+use instruments::assets::RcCurrency;
+use instruments::DependencyContext;
 use instruments::Instrument;
 use instruments::Priceable;
 use instruments::PricingContext;
-use instruments::DependencyContext;
 use instruments::SpotRequirement;
-use instruments::assets::Currency;
-use instruments::assets::RcCurrency;
-use dates::Date;
-use dates::datetime::DateTime;
-use dates::rules::RcDateRule;
-use core::qm;
-use core::factories::TypeId;
-use core::factories::Qrc;
-use core::dedup::InstanceId;
 use serde::Deserialize;
-use erased_serde as esd;
+use std::fmt;
+use std::fmt::Display;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::Arc;
 
 /// Represents a unit amount of currency to be paid at a specific date.
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -28,15 +28,19 @@ pub struct ZeroCoupon {
     currency: RcCurrency,
     ex_date: DateTime,
     payment_date: Date,
-    settlement: RcDateRule
+    settlement: RcDateRule,
 }
 
 impl TypeId for ZeroCoupon {
-    fn get_type_id(&self) -> &'static str { "ZeroCoupon" }
+    fn get_type_id(&self) -> &'static str {
+        "ZeroCoupon"
+    }
 }
 
 impl InstanceId for ZeroCoupon {
-    fn id(&self) -> &str { &self.id }
+    fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl ZeroCoupon {
@@ -47,21 +51,32 @@ impl ZeroCoupon {
     /// be supplied in case the user does not pass in a discount date
     /// to discount to. Normally, the settlement rule should be that of
     /// the instrument that span off the zero coupon.
-    pub fn new(id: &str, credit_id: &str, currency: RcCurrency,
-        ex_date: DateTime, payment_date: Date, settlement: RcDateRule) -> ZeroCoupon {
-
-        ZeroCoupon { id: id.to_string(), credit_id: credit_id.to_string(),
-            currency: currency, ex_date: ex_date, payment_date: payment_date,
-            settlement: settlement }
+    pub fn new(
+        id: &str,
+        credit_id: &str,
+        currency: RcCurrency,
+        ex_date: DateTime,
+        payment_date: Date,
+        settlement: RcDateRule,
+    ) -> ZeroCoupon {
+        ZeroCoupon {
+            id: id.to_string(),
+            credit_id: credit_id.to_string(),
+            currency: currency,
+            ex_date: ex_date,
+            payment_date: payment_date,
+            settlement: settlement,
+        }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<Instrument>, esd::Error> {
+    pub fn from_serial<'de>(
+        de: &mut esd::Deserializer<'de>,
+    ) -> Result<Qrc<Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(ZeroCoupon::deserialize(de)?)))
     }
 }
 
 impl Instrument for ZeroCoupon {
-
     fn payoff_currency(&self) -> &Currency {
         &*self.currency
     }
@@ -77,11 +92,9 @@ impl Instrument for ZeroCoupon {
         &self.settlement
     }
 
-    fn dependencies(&self, context: &mut DependencyContext)
-        -> SpotRequirement {
-
+    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement {
         context.yield_curve(&self.credit_id, self.payment_date);
-        
+
         // for a zero coupon, the spot is always one
         // (in units of its own currency)
         SpotRequirement::NotRequired
@@ -106,7 +119,7 @@ impl PartialEq for ZeroCoupon {
     fn eq(&self, other: &ZeroCoupon) -> bool {
         self.id == other.id
     }
-}    
+}
 
 impl Eq for ZeroCoupon {}
 
@@ -117,12 +130,18 @@ impl Hash for ZeroCoupon {
 }
 
 impl Priceable for ZeroCoupon {
-    fn as_instrument(&self) -> &Instrument { self }
+    fn as_instrument(&self) -> &Instrument {
+        self
+    }
 
     /// Currency is worth one currency unit, but only if we are discounting
     /// to the date which is when we would receive the currency.
-    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64])
-        -> Result<(), qm::Error> {
+    fn prices(
+        &self,
+        context: &PricingContext,
+        dates: &[DateTime],
+        out: &mut [f64],
+    ) -> Result<(), qm::Error> {
         assert_eq!(dates.len(), out.len());
 
         let yc = context.yield_curve(&self.credit_id, self.payment_date)?;
@@ -136,25 +155,24 @@ impl Priceable for ZeroCoupon {
             };
         }
 
-
-        Ok(())  
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
-    use math::interpolation::Extrap;
     use data::curves::RateCurveAct365;
     use data::curves::RcRateCurve;
     use data::forward::Forward;
     use data::volsurface::RcVolSurface;
-    use dates::calendar::WeekdayCalendar;
     use dates::calendar::RcCalendar;
+    use dates::calendar::WeekdayCalendar;
+    use dates::datetime::TimeOfDay;
     use dates::rules::BusinessDays;
     use dates::Date;
-    use dates::datetime::TimeOfDay;
+    use math::interpolation::Extrap;
+    use math::numerics::approx_eq;
     use std::sync::Arc;
 
     fn sample_currency(step: u32) -> Currency {
@@ -166,27 +184,37 @@ mod tests {
     fn sample_zero_coupon(currency: RcCurrency, step: u32) -> ZeroCoupon {
         let calendar = RcCalendar::new(Arc::new(WeekdayCalendar::new()));
         let settlement = RcDateRule::new(Arc::new(BusinessDays::new_step(calendar, step)));
-        ZeroCoupon::new("GBP.2018-07-05", "OPT", currency,
+        ZeroCoupon::new(
+            "GBP.2018-07-05",
+            "OPT",
+            currency,
             DateTime::new(Date::from_ymd(2018, 07, 03), TimeOfDay::Open),
-            Date::from_ymd(2018, 07, 05), settlement)
+            Date::from_ymd(2018, 07, 05),
+            settlement,
+        )
     }
 
-    struct SamplePricingContext { 
-    }
+    struct SamplePricingContext {}
 
     impl PricingContext for SamplePricingContext {
         fn spot_date(&self) -> Date {
             Date::from_ymd(2018, 06, 01)
         }
 
-        fn yield_curve(&self, _credit_id: &str,
-            _high_water_mark: Date) -> Result<RcRateCurve, qm::Error> {
-
+        fn yield_curve(
+            &self,
+            _credit_id: &str,
+            _high_water_mark: Date,
+        ) -> Result<RcRateCurve, qm::Error> {
             let d = Date::from_ymd(2018, 05, 30);
-            let points = [(d, 0.05), (d + 14, 0.08), (d + 56, 0.09),
-                (d + 112, 0.085), (d + 224, 0.082)];
-            let c = RateCurveAct365::new(d, &points,
-                Extrap::Flat, Extrap::Flat)?;
+            let points = [
+                (d, 0.05),
+                (d + 14, 0.08),
+                (d + 56, 0.09),
+                (d + 112, 0.085),
+                (d + 224, 0.082),
+            ];
+            let c = RateCurveAct365::new(d, &points, Extrap::Flat, Extrap::Flat)?;
             Ok(RcRateCurve::new(Arc::new(c)))
         }
 
@@ -194,26 +222,30 @@ mod tests {
             Err(qm::Error::new("Spot not supported"))
         }
 
-        fn forward_curve(&self, _instrument: &Instrument, 
-            _high_water_mark: Date) -> Result<Arc<Forward>, qm::Error> {
+        fn forward_curve(
+            &self,
+            _instrument: &Instrument,
+            _high_water_mark: Date,
+        ) -> Result<Arc<Forward>, qm::Error> {
             Err(qm::Error::new("Forward not supported"))
         }
 
-        fn vol_surface(&self, _instrument: &Instrument, _high_water_mark: Date,
-            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
-            -> Result<RcVolSurface, qm::Error> {
+        fn vol_surface(
+            &self,
+            _instrument: &Instrument,
+            _high_water_mark: Date,
+            _forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>,
+        ) -> Result<RcVolSurface, qm::Error> {
             Err(qm::Error::new("VolSurface not supported"))
         }
 
-        fn correlation(&self, _first: &Instrument, _second: &Instrument)
-            -> Result<f64, qm::Error> {
+        fn correlation(&self, _first: &Instrument, _second: &Instrument) -> Result<f64, qm::Error> {
             Err(qm::Error::new("correlation not supported"))
         }
     }
 
-    fn sample_pricing_context()
-        -> SamplePricingContext {
-        SamplePricingContext { }
+    fn sample_pricing_context() -> SamplePricingContext {
+        SamplePricingContext {}
     }
 
     #[test]
@@ -227,7 +259,11 @@ mod tests {
     }
 
     fn assert_approx(value: f64, expected: f64) {
-        assert!(approx_eq(value, expected, 1e-12),
-            "value={} expected={}", value, expected);
+        assert!(
+            approx_eq(value, expected, 1e-12),
+            "value={} expected={}",
+            value,
+            expected
+        );
     }
 }

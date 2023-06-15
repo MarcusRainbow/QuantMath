@@ -1,10 +1,10 @@
 use core::qm;
-use instruments::RcInstrument;
-use instruments::assets::RcCurrency;
-use risk::{RcReportGenerator, BoxReport};
-use risk::marketdata::RcMarketData;
 use data::fixings::RcFixingTable;
+use instruments::assets::RcCurrency;
+use instruments::RcInstrument;
 use pricers::RcPricerFactory;
+use risk::marketdata::RcMarketData;
+use risk::{BoxReport, RcReportGenerator};
 
 /// A handle is used when passing objects or errors into or out of
 /// quantmath to other languages such as C or Python, where they
@@ -26,56 +26,56 @@ impl Handle {
     pub fn from_empty(result: Result<(), qm::Error>) -> Handle {
         match result {
             Ok(()) => Handle::Empty,
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
     pub fn from_instrument(result: Result<RcInstrument, qm::Error>) -> Handle {
         match result {
             Ok(instr) => Handle::Instrument(instr),
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
     pub fn from_currency(result: Result<RcCurrency, qm::Error>) -> Handle {
         match result {
             Ok(ccy) => Handle::Currency(ccy),
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
     pub fn from_fixing_table(result: Result<RcFixingTable, qm::Error>) -> Handle {
         match result {
             Ok(fix) => Handle::FixingTable(fix),
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
     pub fn from_market_data(result: Result<RcMarketData, qm::Error>) -> Handle {
         match result {
             Ok(mkt) => Handle::MarketData(mkt),
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
     pub fn from_pricer_factory(result: Result<RcPricerFactory, qm::Error>) -> Handle {
         match result {
             Ok(pf) => Handle::PricerFactory(pf),
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
     pub fn from_report_generator(result: Result<RcReportGenerator, qm::Error>) -> Handle {
         match result {
             Ok(gen) => Handle::ReportGenerator(gen),
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
     pub fn from_reports(result: Result<Vec<BoxReport>, qm::Error>) -> Handle {
         match result {
             Ok(reports) => Handle::Reports(reports),
-            Err(err) => Handle::Err(err)
+            Err(err) => Handle::Err(err),
         }
     }
 
@@ -87,7 +87,7 @@ impl Handle {
         match self {
             &Handle::Empty => Ok(()),
             &Handle::Err(ref err) => Err(err.clone()),
-            _ => Err(self.wrong_type("Empty"))
+            _ => Err(self.wrong_type("Empty")),
         }
     }
 
@@ -95,7 +95,7 @@ impl Handle {
         match self {
             &Handle::Instrument(ref instr) => Ok(instr.clone()),
             &Handle::Err(ref err) => Err(err.clone()),
-            _ => Err(self.wrong_type("Instrument"))
+            _ => Err(self.wrong_type("Instrument")),
         }
     }
 
@@ -103,7 +103,7 @@ impl Handle {
         match self {
             &Handle::Currency(ref ccy) => Ok(ccy.clone()),
             &Handle::Err(ref err) => Err(err.clone()),
-            _ => Err(self.wrong_type("Currency"))
+            _ => Err(self.wrong_type("Currency")),
         }
     }
 
@@ -111,7 +111,7 @@ impl Handle {
         match self {
             &Handle::MarketData(ref mkt) => Ok(mkt.clone()),
             &Handle::Err(ref err) => Err(err.clone()),
-            _ => Err(self.wrong_type("MarketData"))
+            _ => Err(self.wrong_type("MarketData")),
         }
     }
 
@@ -119,7 +119,7 @@ impl Handle {
         match self {
             &Handle::FixingTable(ref fix) => Ok(fix.clone()),
             &Handle::Err(ref err) => Err(err.clone()),
-            _ => Err(self.wrong_type("FixingTable"))
+            _ => Err(self.wrong_type("FixingTable")),
         }
     }
 
@@ -127,7 +127,7 @@ impl Handle {
         match self {
             &Handle::PricerFactory(ref pf) => Ok(pf.clone()),
             &Handle::Err(ref err) => Err(err.clone()),
-            _ => Err(self.wrong_type("PricerFactory"))
+            _ => Err(self.wrong_type("PricerFactory")),
         }
     }
 
@@ -135,7 +135,7 @@ impl Handle {
         match self {
             &Handle::ReportGenerator(ref gen) => Ok(gen.clone()),
             &Handle::Err(ref err) => Err(err.clone()),
-            _ => Err(self.wrong_type("ReportGenerator"))
+            _ => Err(self.wrong_type("ReportGenerator")),
         }
     }
 
@@ -143,19 +143,18 @@ impl Handle {
         match self {
             Handle::Reports(reports) => Ok(reports),
             Handle::Err(err) => Err(err),
-            _ => Err(self.wrong_type("Reports"))
+            _ => Err(self.wrong_type("Reports")),
         }
     }
 
     pub fn as_error(&self) -> qm::Error {
         match self {
             &Handle::Err(ref err) => err.clone(),
-            _ => self.wrong_type("Error")
+            _ => self.wrong_type("Error"),
         }
     }
 
     fn wrong_type(&self, requested: &str) -> qm::Error {
-
         let supplied = match self {
             &Handle::Empty => "Empty",
             &Handle::Instrument(_) => "Instrument",
@@ -165,10 +164,13 @@ impl Handle {
             &Handle::PricerFactory(_) => "PricerFactory",
             &Handle::ReportGenerator(_) => "ReportGenerator",
             &Handle::Reports(_) => "Reports",
-            &Handle::Err(_) => "Error"
+            &Handle::Err(_) => "Error",
         };
 
-        qm::Error::new(&format!("Wrong handle type: {} required but {} supplied", requested, supplied))
+        qm::Error::new(&format!(
+            "Wrong handle type: {} required but {} supplied",
+            requested, supplied
+        ))
     }
 }
 
@@ -177,7 +179,7 @@ impl Clone for Handle {
     /// is held in non-cloneable boxes. If a handle containing reports is cloned, the result is an
     /// error handle.
     fn clone(&self) -> Handle {
-      match self {
+        match self {
             &Handle::Empty => Handle::Empty,
             &Handle::Instrument(ref instr) => Handle::Instrument(instr.clone()),
             &Handle::Currency(ref ccy) => Handle::Currency(ccy.clone()),
@@ -186,20 +188,20 @@ impl Clone for Handle {
             &Handle::PricerFactory(ref pf) => Handle::PricerFactory(pf.clone()),
             &Handle::ReportGenerator(ref gen) => Handle::ReportGenerator(gen.clone()),
             &Handle::Reports(_) => Handle::Err(qm::Error::new("Reports cannot be cloned")),
-            &Handle::Err(ref err) => Handle::Err(err.clone())
+            &Handle::Err(ref err) => Handle::Err(err.clone()),
         }
     }
 }
 
 pub mod extern_handle {
     use super::*;
-    use instruments::RcInstrument;
-    use instruments::assets::RcCurrency;
-    use risk::RcReportGenerator;
-    use risk::marketdata::RcMarketData;
     use data::fixings::RcFixingTable;
-    use pricers::RcPricerFactory;
     use facade::write_results;
+    use instruments::assets::RcCurrency;
+    use instruments::RcInstrument;
+    use pricers::RcPricerFactory;
+    use risk::marketdata::RcMarketData;
+    use risk::RcReportGenerator;
     use std::error::Error;
     use std::io::Cursor;
 
@@ -209,9 +211,10 @@ pub mod extern_handle {
     /// handle *must* be freed or the reference count will remain incremented and
     /// the object itself will never be deleted.
     pub fn from_handle(result: Result<Handle, qm::Error>) -> u64 {
-        let boxed = Box::new( match result {
+        let boxed = Box::new(match result {
             Ok(handle) => handle,
-            Err(err) => Handle::from_error(err) });
+            Err(err) => Handle::from_error(err),
+        });
         Box::into_raw(boxed) as u64
     }
 
@@ -264,7 +267,7 @@ pub mod extern_handle {
     }
 
     /// Converts a report into a JSON string. This call does not consume the handle
-    /// that is passed in. 
+    /// that is passed in.
     pub fn reports_as_string(handle: u64) -> String {
         let handle_ptr = handle as *mut Handle;
         unsafe {
@@ -274,9 +277,9 @@ pub mod extern_handle {
                     let mut buffer = Vec::new();
                     write_results(&reports, true, &mut Cursor::new(&mut buffer)).unwrap();
                     String::from_utf8(buffer).unwrap()
-                },
+                }
                 Handle::Err(ref err) => err.description().to_string(),
-                _ => "reports_as_string: not a report handle".to_string()
+                _ => "reports_as_string: not a report handle".to_string(),
             }
         }
     }
@@ -285,16 +288,20 @@ pub mod extern_handle {
     /// is_error, which has returned true, so we know the handle contains an error. If
     /// it is called when the handle does not contain an error, this is itself an
     /// error.
-    /// 
+    ///
     /// The handle is not freed as a result of this call.
     pub fn as_error(handle: u64) -> qm::Error {
-        handle_from_ext(handle).as_error()       
+        handle_from_ext(handle).as_error()
     }
 
     /// Tests whether a handle contains an error. Never consumes the handle. This function
     /// must never panic, as it is invoked direct from C.
     pub fn is_error(handle: u64) -> bool {
-        if let &Handle::Err(_) = handle_from_ext(handle) { true } else { false }
+        if let &Handle::Err(_) = handle_from_ext(handle) {
+            true
+        } else {
+            false
+        }
     }
 
     /// The handle is freed as a result of this call. This function

@@ -1,17 +1,17 @@
-use std::ffi::CStr;
-use std::str;
-use std::fs::File;
-use std::io::Cursor;
-use std::ffi::CString;
-use std::error::Error;
-use std::panic::catch_unwind;
-use std::panic::RefUnwindSafe;
-use libc::c_char;
-use core::qm;
 use core::dedup::DedupControl;
+use core::qm;
+use facade;
 use facade::handle::extern_handle as eh;
 use facade::handle::Handle;
-use facade;
+use libc::c_char;
+use std::error::Error;
+use std::ffi::CStr;
+use std::ffi::CString;
+use std::fs::File;
+use std::io::Cursor;
+use std::panic::catch_unwind;
+use std::panic::RefUnwindSafe;
+use std::str;
 
 /// Controls what to do if we are reading or writing a recursive structure
 /// and we hit a node that is the same as the type we are controlling.
@@ -24,7 +24,7 @@ use facade;
 pub enum QmDedupControl {
     QmErrorIfMissing,
     QmInline,
-    QmWriteOnce
+    QmWriteOnce,
 }
 
 /// Loads an instrument from a JSON UTF8 file. Currencies and subinstruments can
@@ -36,13 +36,14 @@ pub enum QmDedupControl {
 /// the handle and propagate the error.
 #[no_mangle]
 pub extern "C" fn qm_instrument_from_json_file(
-    source: *const c_char, 
+    source: *const c_char,
     dedup_ccy: QmDedupControl,
     number_of_currencies: u32,
     currencies: *const u64,
     dedup_instr: QmDedupControl,
     number_of_instruments: u32,
-    instruments: *const u64) -> u64 {
+    instruments: *const u64,
+) -> u64 {
     return_handle(&|| {
         let mut file = open_c_file(source)?;
 
@@ -55,9 +56,13 @@ pub extern "C" fn qm_instrument_from_json_file(
             unsafe { instr_vec.push(eh::as_instrument(*instruments.offset(i))?) };
         }
 
-        let result = facade::instrument_from_json(&mut file, 
-            convert_dedup(&dedup_ccy), &ccy_vec,
-            convert_dedup(&dedup_instr), &instr_vec);
+        let result = facade::instrument_from_json(
+            &mut file,
+            convert_dedup(&dedup_ccy),
+            &ccy_vec,
+            convert_dedup(&dedup_instr),
+            &instr_vec,
+        );
         Ok(Handle::from_instrument(result))
     })
 }
@@ -65,13 +70,14 @@ pub extern "C" fn qm_instrument_from_json_file(
 /// Same as qm_instrument_from_json_file, but taking inline text.
 #[no_mangle]
 pub extern "C" fn qm_instrument_from_json_string(
-    source: *const c_char, 
+    source: *const c_char,
     dedup_ccy: QmDedupControl,
     number_of_currencies: u32,
     currencies: *const u64,
     dedup_instr: QmDedupControl,
     number_of_instruments: u32,
-    instruments: *const u64) -> u64 {
+    instruments: *const u64,
+) -> u64 {
     return_handle(&|| {
         let bytes = bytes_from_c_string(source);
 
@@ -85,9 +91,13 @@ pub extern "C" fn qm_instrument_from_json_string(
             unsafe { instr_vec.push(eh::as_instrument(*instruments.offset(i))?) };
         }
 
-        let result = facade::instrument_from_json(&mut Cursor::new(bytes), 
-            convert_dedup(&dedup_ccy), &ccy_vec,
-            convert_dedup(&dedup_instr), &instr_vec);
+        let result = facade::instrument_from_json(
+            &mut Cursor::new(bytes),
+            convert_dedup(&dedup_ccy),
+            &ccy_vec,
+            convert_dedup(&dedup_instr),
+            &instr_vec,
+        );
         Ok(Handle::from_instrument(result))
     })
 }
@@ -96,7 +106,7 @@ pub extern "C" fn qm_instrument_from_json_string(
 /// be passed into the instrument creation functions. The source is a UTF8-encoded filename referring
 /// to a text file containing UTF8-encoded JSON. (UTF8 is the same as ASCII for the standard characters
 /// 0..127.).
-/// 
+///
 /// The resulting handle must be freed with free_handle. In the event of error, the
 /// resulting handle is of type error, and returns true for qm_is_error. You can
 /// test for errors immediately after invoking this method, or you can simply use
@@ -255,18 +265,18 @@ pub extern "C" fn qm_reports_from_json_string(source: *const c_char) -> u64 {
 /// Converts a handle representing a set of reports into a string. The string must
 /// be freed using qm_free_string. The handle is left unchanged and unfreed by this
 /// call.
-/// 
+///
 /// If the handle is an error or does not contain a set of reports, an error message
 /// is returned instead. The string must be freed using qm_free_string whether it is
 /// an error or not.
 #[no_mangle]
 pub extern "C" fn qm_reports_as_json_string(handle: u64) -> *mut c_char {
-    let reports_string = match catch_unwind(||
-        CString::new(eh::reports_as_string(handle)).unwrap()) {
+    let reports_string = match catch_unwind(|| CString::new(eh::reports_as_string(handle)).unwrap())
+    {
         Ok(result) => result,
         // the unwrap below could theoretically panic into C code, but in reality we
         // are passing in a hard-coded string which is known never to cause a panic
-        Err(_) => CString::new("Caught panic when converting result string").unwrap()
+        Err(_) => CString::new("Caught panic when converting result string").unwrap(),
     };
 
     reports_string.into_raw()
@@ -276,11 +286,11 @@ pub extern "C" fn qm_reports_as_json_string(handle: u64) -> *mut c_char {
 /// pricing is to be done; the instrument specifies what is to be priced; the fixing_table
 /// and market_data specify the context for pricing, and the report generators specify what
 /// is to be calculated.
-/// 
+///
 /// The results are returned as a handle containing reports. These can be viewed as JSON by
 /// invoking qm_reports_as_json_string, or can be compared with other reports by invoking
 /// qm_assert_approx_eq_reports, which will free the reports handle for you.
-/// 
+///
 /// Reports are not cloneable, and are generally consumed by functions that use them, except for
 /// simple ones such as is_error or qm_reports_as_json_string. If you do not invoke a method such as
 /// qm_assert_approx_eq_reports, you must manually free the reports using free_handle. If the reports
@@ -288,11 +298,15 @@ pub extern "C" fn qm_reports_as_json_string(handle: u64) -> *mut c_char {
 /// test for errors immediately after invoking this method, by calling qm_is_error, or you can simply use
 /// the handle and propagate the error.
 #[no_mangle]
-pub extern "C" fn qm_calculate(pricer_factory: u64, instrument: u64, 
-    fixing_table: u64, market_data: u64,
-    number_of_report_generators: u32, report_generators: *const u64) -> u64 {
+pub extern "C" fn qm_calculate(
+    pricer_factory: u64,
+    instrument: u64,
+    fixing_table: u64,
+    market_data: u64,
+    number_of_report_generators: u32,
+    report_generators: *const u64,
+) -> u64 {
     return_handle(&|| {
-
         let pf = eh::as_pricer_factory(pricer_factory)?;
         let instr = eh::as_instrument(instrument)?;
         let fix = eh::as_fixing_table(fixing_table)?;
@@ -310,7 +324,7 @@ pub extern "C" fn qm_calculate(pricer_factory: u64, instrument: u64,
 /// Compares two reports for equality. If they are equal, it returns a handle of type Empty, which
 /// is not an error. If they are not equal, it returns a handle of type Error, where the error
 /// message details the differences between the reports. This is normally used for testing.
-/// 
+///
 /// Both of the report handles passed into the function are freed by the function, so you must not
 /// invoke free_handle on them. The tolerances are absolute, and specify the allowed differences:
 /// tol_price is the allowed difference in the price -- for Monte-Carlo this must be larger than the
@@ -325,18 +339,28 @@ pub extern "C" fn qm_calculate(pricer_factory: u64, instrument: u64,
 /// test for errors immediately after invoking this method, or you can simply use
 /// the handle and propagate the error.
 #[no_mangle]
-pub extern "C" fn qm_assert_approx_eq_reports(reports_freed: u64, expected_freed: u64, 
-    tol_price: f64, tol_ccy_risk: f64, tol_unit_risk: f64) -> u64 {
+pub extern "C" fn qm_assert_approx_eq_reports(
+    reports_freed: u64,
+    expected_freed: u64,
+    tol_price: f64,
+    tol_ccy_risk: f64,
+    tol_unit_risk: f64,
+) -> u64 {
     return_handle(&|| {
         // first unpack the handles without error checking, to ensure that we do not
         // leak in the case of errors. (Note that as_reports frees the underlying handle.)
         let reports = eh::as_reports(reports_freed);
         let expected = eh::as_reports(expected_freed);
 
-        let result = facade::assert_approx_eq_reports(&reports?, &expected?,
-            tol_price, tol_ccy_risk, tol_unit_risk);
+        let result = facade::assert_approx_eq_reports(
+            &reports?,
+            &expected?,
+            tol_price,
+            tol_ccy_risk,
+            tol_unit_risk,
+        );
         Ok(Handle::from_empty(result))
-    })   
+    })
 }
 
 /// Tests whether a handle represents an error. If it does, you should normally invoke
@@ -350,17 +374,17 @@ pub extern "C" fn qm_is_error(handle: u64) -> bool {
 /// Returns the error string associated with this handle. If the handle does not represent
 /// an error, the call will give you an error message anyway, for using a handle of the
 /// wrong type.
-/// 
+///
 /// The resulting string must be freed using qm_free_string
 #[no_mangle]
 pub extern "C" fn qm_error_string(handle: u64) -> *mut c_char {
-    let error_string = match catch_unwind(||
-        CString::new(eh::as_error(handle).description()).unwrap()) {
-        Ok(result) => result,
-        // the unwrap below could theoretically panic into C code, but in reality we
-        // are passing in a hard-coded string which is known never to cause a panic
-        Err(_) => CString::new("Caught panic when converting error string").unwrap()
-    };
+    let error_string =
+        match catch_unwind(|| CString::new(eh::as_error(handle).description()).unwrap()) {
+            Ok(result) => result,
+            // the unwrap below could theoretically panic into C code, but in reality we
+            // are passing in a hard-coded string which is known never to cause a panic
+            Err(_) => CString::new("Caught panic when converting error string").unwrap(),
+        };
 
     error_string.into_raw()
 }
@@ -379,7 +403,9 @@ pub extern "C" fn qm_free_string(string: *mut c_char) {
 pub extern "C" fn qm_clone(handle: u64) -> u64 {
     match catch_unwind(|| eh::clone_handle(handle)) {
         Ok(handle) => handle,
-        Err(_) => eh::from_handle(Ok(Handle::from_error(qm::Error::new("Caught panic during clone"))))
+        Err(_) => eh::from_handle(Ok(Handle::from_error(qm::Error::new(
+            "Caught panic during clone",
+        )))),
     }
 }
 
@@ -402,18 +428,18 @@ fn open_c_file(source: *const c_char) -> Result<File, qm::Error> {
     Ok(file)
 }
 
-fn bytes_from_c_string<'a>(source: *const c_char) -> &'a[u8] {
+fn bytes_from_c_string<'a>(source: *const c_char) -> &'a [u8] {
     unsafe { CStr::from_ptr(source).to_bytes() }
 }
 
-fn return_handle<F>(f: &F) -> u64 
+fn return_handle<F>(f: &F) -> u64
 where
     F: Fn() -> Result<Handle, qm::Error>,
-    F: RefUnwindSafe 
+    F: RefUnwindSafe,
 {
-    let result = match catch_unwind(|| f() ) {
+    let result = match catch_unwind(|| f()) {
         Ok(result) => result,
-        Err(_) => Err(qm::Error::new("Caught panic when creating handle"))
+        Err(_) => Err(qm::Error::new("Caught panic when creating handle")),
     };
     eh::from_handle(result)
 }
@@ -422,16 +448,18 @@ fn convert_dedup(dedup: &QmDedupControl) -> DedupControl {
     match dedup {
         &QmDedupControl::QmErrorIfMissing => DedupControl::ErrorIfMissing,
         &QmDedupControl::QmInline => DedupControl::Inline,
-        &QmDedupControl::QmWriteOnce => DedupControl::WriteOnce
+        &QmDedupControl::QmWriteOnce => DedupControl::WriteOnce,
     }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use facade::tests::{sample_currency_json, sample_forward_european_json, sample_fixing_table_json,
-        sample_market_data_json, sample_pricer_factory_json, sample_report_generator_json, 
-        sample_results_json, sample_equity_json};
+    use facade::tests::{
+        sample_currency_json, sample_equity_json, sample_fixing_table_json,
+        sample_forward_european_json, sample_market_data_json, sample_pricer_factory_json,
+        sample_report_generator_json, sample_results_json,
+    };
     use std::ffi::CString;
     use std::ptr::null;
 
@@ -469,9 +497,15 @@ pub mod tests {
         let instruments = vec![0_u64; 0];
 
         let equity_c = CString::new(sample_equity_json()).unwrap();
-        let equity = qm_instrument_from_json_string(equity_c.as_ptr(),
-            QmDedupControl::QmWriteOnce, 1_u32, currencies.as_ptr(),
-            QmDedupControl::QmWriteOnce, 0_u32, instruments.as_ptr());
+        let equity = qm_instrument_from_json_string(
+            equity_c.as_ptr(),
+            QmDedupControl::QmWriteOnce,
+            1_u32,
+            currencies.as_ptr(),
+            QmDedupControl::QmWriteOnce,
+            0_u32,
+            instruments.as_ptr(),
+        );
         if qm_is_error(equity) {
             let message = qm_error_string(equity);
             let message_bytes = unsafe { CStr::from_ptr(message).to_bytes() };
@@ -492,7 +526,6 @@ pub mod tests {
     }
 
     fn price_european_using_c_interface() -> Result<(), qm::Error> {
-
         // this example leaks horribly in the case of errors
 
         let pf_c = CString::new(sample_pricer_factory_json()).unwrap();
@@ -502,8 +535,15 @@ pub mod tests {
         }
 
         let instr_c = CString::new(sample_forward_european_json()).unwrap();
-        let european = qm_instrument_from_json_string(instr_c.as_ptr(), 
-            QmDedupControl::QmInline, 0, null(), QmDedupControl::QmInline, 0, null());
+        let european = qm_instrument_from_json_string(
+            instr_c.as_ptr(),
+            QmDedupControl::QmInline,
+            0,
+            null(),
+            QmDedupControl::QmInline,
+            0,
+            null(),
+        );
         if qm_is_error(european) {
             return convert_error(european);
         }
@@ -528,8 +568,14 @@ pub mod tests {
 
         let report_generators = vec![delta_gamma];
 
-        let reports = qm_calculate(pricer_factory, european, fixing_table, market_data,
-            report_generators.len() as u32, report_generators.as_ptr());
+        let reports = qm_calculate(
+            pricer_factory,
+            european,
+            fixing_table,
+            market_data,
+            report_generators.len() as u32,
+            report_generators.as_ptr(),
+        );
         if qm_is_error(reports) {
             return convert_error(reports);
         }

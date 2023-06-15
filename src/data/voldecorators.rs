@@ -1,18 +1,18 @@
-use std::sync::Arc;
-use data::volsurface::VolSurface;
-use data::volsurface::RcVolSurface;
+use core::factories::Qrc;
+use core::factories::TypeId;
+use core::qm;
 use data::forward::Forward;
 use data::volsurface::DivAssumptions;
-use dates::datetime::DateDayFraction;
+use data::volsurface::RcVolSurface;
+use data::volsurface::VolSurface;
 use dates::calendar::RcCalendar;
+use dates::datetime::DateDayFraction;
 use dates::Date;
-use math::interpolation::Interpolate;
-use core::qm;
-use core::factories::TypeId;
-use core::factories::Qrc;
-use std::fmt;
-use serde::Deserialize;
 use erased_serde as esd;
+use math::interpolation::Interpolate;
+use serde::Deserialize;
+use std::fmt;
+use std::sync::Arc;
 
 /// Time evolve a vol surface such that volatilities at all expiries
 /// remain constant, even between pillars. This is the evolution to use if
@@ -22,37 +22,45 @@ use erased_serde as esd;
 pub struct ConstantExpiryTimeEvolution {
     base_vol: RcVolSurface,
     vol_time_offset: f64,
-    base_date: DateDayFraction
+    base_date: DateDayFraction,
 }
 
 impl ConstantExpiryTimeEvolution {
-    pub fn new(base_vol: RcVolSurface, vol_time_offset: f64,
-        base_date: DateDayFraction) -> ConstantExpiryTimeEvolution {
-
-        ConstantExpiryTimeEvolution { 
-            base_vol: base_vol, vol_time_offset: vol_time_offset,
-            base_date: base_date }
+    pub fn new(
+        base_vol: RcVolSurface,
+        vol_time_offset: f64,
+        base_date: DateDayFraction,
+    ) -> ConstantExpiryTimeEvolution {
+        ConstantExpiryTimeEvolution {
+            base_vol: base_vol,
+            vol_time_offset: vol_time_offset,
+            base_date: base_date,
+        }
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
-        Ok(Qrc::new(Arc::new(ConstantExpiryTimeEvolution::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(
+            ConstantExpiryTimeEvolution::deserialize(de)?,
+        )))
     }
 }
 
 impl TypeId for ConstantExpiryTimeEvolution {
-    fn get_type_id(&self) -> &'static str { "ConstantExpiryTimeEvolution" }
+    fn get_type_id(&self) -> &'static str {
+        "ConstantExpiryTimeEvolution"
+    }
 }
 
 impl VolSurface for ConstantExpiryTimeEvolution {
-
     /// The volatilities remain constant. All that changes is the vol time
     /// that we return from the decorator. (Vol times internally must remain
     /// unchanged, otherwise interpolated vols change.)
-    fn volatilities(&self,
+    fn volatilities(
+        &self,
         date_time: DateDayFraction,
         strikes: &[f64],
-        out: &mut[f64]) -> Result<(f64), qm::Error> {
-
+        out: &mut [f64],
+    ) -> Result<(f64), qm::Error> {
         let vol_time = self.base_vol.volatilities(date_time, strikes, out)?;
 
         // The adjusted vol time may be zero or negative if the date_time
@@ -91,41 +99,50 @@ impl VolSurface for ConstantExpiryTimeEvolution {
 pub struct RollingExpiryTimeEvolution {
     base_vol: RcVolSurface,
     vol_time_offset: f64,
-    base_date: DateDayFraction
+    base_date: DateDayFraction,
 }
 
 impl TypeId for RollingExpiryTimeEvolution {
-    fn get_type_id(&self) -> &'static str { "RollingExpiryTimeEvolution" }
+    fn get_type_id(&self) -> &'static str {
+        "RollingExpiryTimeEvolution"
+    }
 }
 
 impl RollingExpiryTimeEvolution {
-    pub fn new(base_vol: RcVolSurface, vol_time_offset: f64,
-        base_date: DateDayFraction) -> RollingExpiryTimeEvolution {
-        RollingExpiryTimeEvolution { 
-            base_vol: base_vol, vol_time_offset: vol_time_offset,
-            base_date: base_date }
+    pub fn new(
+        base_vol: RcVolSurface,
+        vol_time_offset: f64,
+        base_date: DateDayFraction,
+    ) -> RollingExpiryTimeEvolution {
+        RollingExpiryTimeEvolution {
+            base_vol: base_vol,
+            vol_time_offset: vol_time_offset,
+            base_date: base_date,
+        }
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
-        Ok(Qrc::new(Arc::new(RollingExpiryTimeEvolution::deserialize(de)?)))
+        Ok(Qrc::new(Arc::new(RollingExpiryTimeEvolution::deserialize(
+            de,
+        )?)))
     }
 }
 
 impl VolSurface for RollingExpiryTimeEvolution {
-
     /// To roll the vol surface, we shift the date_time requested backwards
     /// by the requisite number of days.
-    fn volatilities(&self,
+    fn volatilities(
+        &self,
         date_time: DateDayFraction,
         strikes: &[f64],
-        out: &mut[f64]) -> Result<(f64), qm::Error> {
-
+        out: &mut [f64],
+    ) -> Result<(f64), qm::Error> {
         //print!("RollingExpiryTimeEvolution: date_time={:?} strikes={:?}\n", date_time, strikes);
 
         let calendar = self.calendar();
         let vol_time_offset = -self.vol_time_offset * calendar.standard_basis();
-        let adj_date = calendar.step_partial(date_time.date(),
-            vol_time_offset, vol_time_offset >= 0.0);
+        let adj_date =
+            calendar.step_partial(date_time.date(), vol_time_offset, vol_time_offset >= 0.0);
         let rolled = DateDayFraction::new(adj_date, date_time.day_fraction());
 
         //print!("   rolled={:?}\n", rolled);
@@ -167,16 +184,21 @@ impl VolSurface for RollingExpiryTimeEvolution {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ParallelBumpVol {
     base_vol: RcVolSurface,
-    bump: f64
+    bump: f64,
 }
 
 impl TypeId for ParallelBumpVol {
-    fn get_type_id(&self) -> &'static str { "ParallelBumpVol" }
+    fn get_type_id(&self) -> &'static str {
+        "ParallelBumpVol"
+    }
 }
 
 impl ParallelBumpVol {
     pub fn new(base_vol: RcVolSurface, bump: f64) -> ParallelBumpVol {
-        ParallelBumpVol { base_vol: base_vol, bump: bump }
+        ParallelBumpVol {
+            base_vol: base_vol,
+            bump: bump,
+        }
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
@@ -185,12 +207,12 @@ impl ParallelBumpVol {
 }
 
 impl VolSurface for ParallelBumpVol {
-
-    fn volatilities(&self,
+    fn volatilities(
+        &self,
         date_time: DateDayFraction,
         strikes: &[f64],
-        out: &mut[f64]) -> Result<(f64), qm::Error> {
-
+        out: &mut [f64],
+    ) -> Result<(f64), qm::Error> {
         let vol_time = self.base_vol.volatilities(date_time, strikes, out)?;
 
         for i in 0..out.len() {
@@ -231,19 +253,22 @@ impl VolSurface for ParallelBumpVol {
 pub struct TimeScaledBumpVol {
     base_vol: RcVolSurface,
     bump: f64,
-    vol_time_floor: f64
+    vol_time_floor: f64,
 }
 
 impl TypeId for TimeScaledBumpVol {
-    fn get_type_id(&self) -> &'static str { "TimeScaledBumpVol" }
+    fn get_type_id(&self) -> &'static str {
+        "TimeScaledBumpVol"
+    }
 }
 
 impl TimeScaledBumpVol {
-    pub fn new(base_vol: RcVolSurface, bump: f64, vol_time_floor: f64)
-        -> TimeScaledBumpVol {
-
-        TimeScaledBumpVol { base_vol: base_vol, bump: bump,
-            vol_time_floor: vol_time_floor }
+    pub fn new(base_vol: RcVolSurface, bump: f64, vol_time_floor: f64) -> TimeScaledBumpVol {
+        TimeScaledBumpVol {
+            base_vol: base_vol,
+            bump: bump,
+            vol_time_floor: vol_time_floor,
+        }
     }
 
     pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<RcVolSurface, esd::Error> {
@@ -252,12 +277,12 @@ impl TimeScaledBumpVol {
 }
 
 impl VolSurface for TimeScaledBumpVol {
-
-    fn volatilities(&self,
+    fn volatilities(
+        &self,
         date_time: DateDayFraction,
         strikes: &[f64],
-        out: &mut[f64]) -> Result<(f64), qm::Error> {
-
+        out: &mut [f64],
+    ) -> Result<(f64), qm::Error> {
         let vol_time = self.base_vol.volatilities(date_time, strikes, out)?;
         let scaled_bump = self.bump / vol_time.max(self.vol_time_floor).sqrt();
 
@@ -300,43 +325,49 @@ impl VolSurface for TimeScaledBumpVol {
 pub struct StickyDeltaBumpVol {
     base_vol: RcVolSurface,
     #[serde(skip)]
-    bumped_forward: Arc<Forward>
+    bumped_forward: Arc<Forward>,
 }
 
 impl TypeId for StickyDeltaBumpVol {
-    fn get_type_id(&self) -> &'static str { "StickyDeltaBumpVol" }
+    fn get_type_id(&self) -> &'static str {
+        "StickyDeltaBumpVol"
+    }
 }
 
 impl StickyDeltaBumpVol {
-    pub fn new(base_vol: RcVolSurface, bumped_forward: Arc<Forward>)
-        -> StickyDeltaBumpVol {
-        StickyDeltaBumpVol { base_vol: base_vol, 
-            bumped_forward: bumped_forward }
+    pub fn new(base_vol: RcVolSurface, bumped_forward: Arc<Forward>) -> StickyDeltaBumpVol {
+        StickyDeltaBumpVol {
+            base_vol: base_vol,
+            bumped_forward: bumped_forward,
+        }
     }
 }
 
 impl fmt::Debug for StickyDeltaBumpVol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "StickyDeltaBumpVol {{ base_vol: {:?}, bumped_forward: <not representablel> }}", self.base_vol)
+        write!(
+            f,
+            "StickyDeltaBumpVol {{ base_vol: {:?}, bumped_forward: <not representablel> }}",
+            self.base_vol
+        )
     }
 }
 
 impl VolSurface for StickyDeltaBumpVol {
-
-    fn volatilities(&self,
+    fn volatilities(
+        &self,
         date_time: DateDayFraction,
         strikes: &[f64],
-        out: &mut[f64]) -> Result<(f64), qm::Error> {
-
+        out: &mut [f64],
+    ) -> Result<(f64), qm::Error> {
         let n = strikes.len();
         if n == 0 {
-            return self.base_vol.volatilities(date_time, strikes, out)
+            return self.base_vol.volatilities(date_time, strikes, out);
         }
 
         match self.base_vol.forward() {
             None => self.base_vol.volatilities(date_time, strikes, out),
             Some(fwd) => {
-
                 // adjust the strikes before we pass them in. This uses a buffer
                 // which is allocated on the heap. If this proves expensive,
                 // consider some other method such as passing workspaces in.
@@ -376,11 +407,11 @@ impl VolSurface for StickyDeltaBumpVol {
         match self.div_assumptions() {
             DivAssumptions::NoCashDivs => Ok(0.0),
             DivAssumptions::IndependentLogNormals => Ok(0.0),
-            DivAssumptions::FixedDivs => 
-                self.bumped_forward.fixed_divs_after(date),
+            DivAssumptions::FixedDivs => self.bumped_forward.fixed_divs_after(date),
             DivAssumptions::JumpDivs => Err(qm::Error::new(
                 "You should not invoke displacement for a JumpDivs vol \
-                surface. This needs more careful handling."))
+                surface. This needs more careful handling.",
+            )),
         }
     }
 }
@@ -388,45 +419,46 @@ impl VolSurface for StickyDeltaBumpVol {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
-    use dates::Date;
     use data::forward::InterpolatedForward;
-    use data::volsurface::VolTimeDynamics;
     use data::volsurface::tests::sample_vol_surface;
     use data::volsurface::RcVolSurface;
+    use data::volsurface::VolTimeDynamics;
+    use dates::Date;
     use math::interpolation::Extrap;
     use math::interpolation::Linear;
+    use math::numerics::approx_eq;
 
     #[test]
     fn constant_expiry_vol_surface() {
-
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
         let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 2.0 / 252.0;
         let bumped_base = base_date + 2;
-        let bumped = ConstantExpiryTimeEvolution::new(unbumped.clone(), bump,
-            bumped_base);
+        let bumped = ConstantExpiryTimeEvolution::new(unbumped.clone(), bump, bumped_base);
 
         let strikes = vec![45.0, 55.0, 65.0, 75.0, 85.0, 95.0, 105.0, 115.0];
         let mut unbumped_variances = vec![0.0; strikes.len()];
         let mut bumped_variances = vec![0.0; strikes.len()];
 
         let expiry = DateDayFraction::new(base_date.date() + 14, 0.7);
-        unbumped.variances(expiry, &strikes, &mut unbumped_variances).unwrap();
-        bumped.variances(expiry, &strikes, &mut bumped_variances).unwrap();
+        unbumped
+            .variances(expiry, &strikes, &mut unbumped_variances)
+            .unwrap();
+        bumped
+            .variances(expiry, &strikes, &mut bumped_variances)
+            .unwrap();
 
         let expected_fraction = (8.0 + 0.7 - 0.2) / (10.0 + 0.7 - 0.2);
         for i in 0..strikes.len() {
             let fraction = bumped_variances[i] / unbumped_variances[i];
             assert_approx(fraction, expected_fraction, 1e-12);
         }
-    }            
+    }
 
     #[test]
     fn constant_expiry_dynamics() {
-
         // same as the previous test, but this time we use the dynamics enum
-        // to do the modification. Note that we add four days because 
+        // to do the modification. Note that we add four days because
         // 2012-05-25 is a Friday and we want to add two business days.
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
         let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
@@ -439,28 +471,30 @@ mod tests {
         let mut bumped_variances = vec![0.0; strikes.len()];
 
         let expiry = DateDayFraction::new(base_date.date() + 14, 0.7);
-        unbumped.variances(expiry, &strikes, &mut unbumped_variances).unwrap();
-        bumped.variances(expiry, &strikes, &mut bumped_variances).unwrap();
+        unbumped
+            .variances(expiry, &strikes, &mut unbumped_variances)
+            .unwrap();
+        bumped
+            .variances(expiry, &strikes, &mut bumped_variances)
+            .unwrap();
 
         // Note that constant expiry dynamics rolls to the start of the
         // spot date. Thus unlike the constant_expiry_vol_surface test,
         // the numerator does not subtact 0.2 for elapsed time in the current
-        // day. 
+        // day.
         let expected_fraction = (8.0 + 0.7) / (10.0 + 0.7 - 0.2);
         for i in 0..strikes.len() {
             let fraction = bumped_variances[i] / unbumped_variances[i];
             assert_approx(fraction, expected_fraction, 1e-12);
         }
-    }            
+    }
 
     #[test]
     fn rolling_expiry_vol_surface() {
-
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
         let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 5.0 / 252.0;
-        let bumped = RollingExpiryTimeEvolution::new(unbumped.clone(), bump,
-            base_date + 7);
+        let bumped = RollingExpiryTimeEvolution::new(unbumped.clone(), bump, base_date + 7);
 
         // Manually roll the vol surface by creating a sample with a different
         // base date. Five business days after Friday 25 is Friday 1
@@ -472,11 +506,17 @@ mod tests {
         let mut bumped_variances = vec![0.0; strikes.len()];
 
         let expiry = DateDayFraction::new(base_date.date() + 10, 0.7);
-        rolled.variances(expiry, &strikes, &mut rolled_variances).unwrap();
-        bumped.variances(expiry, &strikes, &mut bumped_variances).unwrap();
+        rolled
+            .variances(expiry, &strikes, &mut rolled_variances)
+            .unwrap();
+        bumped
+            .variances(expiry, &strikes, &mut bumped_variances)
+            .unwrap();
 
         let mut unbumped_variances = vec![0.0; strikes.len()];
-        unbumped.variances(expiry, &strikes, &mut unbumped_variances).unwrap();
+        unbumped
+            .variances(expiry, &strikes, &mut unbumped_variances)
+            .unwrap();
 
         for i in 0..strikes.len() {
             assert_approx(bumped_variances[i], rolled_variances[i], 1e-12);
@@ -485,7 +525,6 @@ mod tests {
 
     #[test]
     fn rolling_expiry_dynamics() {
-
         // same as the previous test, but this time we use the dynamics enum
         // to do the modification
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
@@ -504,11 +543,17 @@ mod tests {
         let mut bumped_variances = vec![0.0; strikes.len()];
 
         let expiry = DateDayFraction::new(base_date.date() + 10, 0.7);
-        rolled.variances(expiry, &strikes, &mut rolled_variances).unwrap();
-        bumped.variances(expiry, &strikes, &mut bumped_variances).unwrap();
+        rolled
+            .variances(expiry, &strikes, &mut rolled_variances)
+            .unwrap();
+        bumped
+            .variances(expiry, &strikes, &mut bumped_variances)
+            .unwrap();
 
         let mut unbumped_variances = vec![0.0; strikes.len()];
-        unbumped.variances(expiry, &strikes, &mut unbumped_variances).unwrap();
+        unbumped
+            .variances(expiry, &strikes, &mut unbumped_variances)
+            .unwrap();
 
         for i in 0..strikes.len() {
             assert_approx(bumped_variances[i], rolled_variances[i], 1e-12);
@@ -517,7 +562,6 @@ mod tests {
 
     #[test]
     fn parallel_bumped_vol_surface() {
-
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
         let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 0.01;
@@ -528,8 +572,12 @@ mod tests {
         let mut bumped_vols = vec![0.0; strikes.len()];
 
         let expiry = DateDayFraction::new(base_date.date() + 14, 0.7);
-        unbumped.volatilities(expiry, &strikes, &mut unbumped_vols).unwrap();
-        bumped.volatilities(expiry, &strikes, &mut bumped_vols).unwrap();
+        unbumped
+            .volatilities(expiry, &strikes, &mut unbumped_vols)
+            .unwrap();
+        bumped
+            .volatilities(expiry, &strikes, &mut bumped_vols)
+            .unwrap();
 
         for i in 0..strikes.len() {
             assert_approx(bumped_vols[i], unbumped_vols[i] + bump, 1e-12);
@@ -538,7 +586,6 @@ mod tests {
 
     #[test]
     fn scaled_bumped_vol_surface() {
-
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.2);
         let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
         let bump = 0.01;
@@ -550,8 +597,12 @@ mod tests {
         let mut bumped_vols = vec![0.0; strikes.len()];
 
         let expiry = DateDayFraction::new(base_date.date() + 14, 0.7);
-        unbumped.volatilities(expiry, &strikes, &mut unbumped_vols).unwrap();
-        bumped.volatilities(expiry, &strikes, &mut bumped_vols).unwrap();
+        unbumped
+            .volatilities(expiry, &strikes, &mut unbumped_vols)
+            .unwrap();
+        bumped
+            .volatilities(expiry, &strikes, &mut bumped_vols)
+            .unwrap();
 
         let adj_bump = bump * 12.0_f64.sqrt();
         for i in 0..strikes.len() {
@@ -561,16 +612,22 @@ mod tests {
 
     #[test]
     fn sticky_delta_bumped_vol_surface() {
-
         let base_date = DateDayFraction::new(Date::from_ymd(2012, 05, 25), 0.0);
         let unbumped = RcVolSurface::new(Arc::new(sample_vol_surface(base_date)));
-    
+
         // these points are 10% larger than those in the sample surface
         let d = base_date.date();
-        let points = [(d, 99.0), (d+30, 99.11), (d+60, 99.22), (d+90, 99.11),
-            (d+120, 99.0), (d+240, 98.89), (d+480, 98.78), (d+960, 98.78)];
-        let cs = Box::new(Linear::new(&points,
-            Extrap::Natural, Extrap::Natural).unwrap());
+        let points = [
+            (d, 99.0),
+            (d + 30, 99.11),
+            (d + 60, 99.22),
+            (d + 90, 99.11),
+            (d + 120, 99.0),
+            (d + 240, 98.89),
+            (d + 480, 98.78),
+            (d + 960, 98.78),
+        ];
+        let cs = Box::new(Linear::new(&points, Extrap::Natural, Extrap::Natural).unwrap());
         let fwd = Arc::new(InterpolatedForward::new(cs));
 
         let bumped = StickyDeltaBumpVol::new(unbumped.clone(), fwd);
@@ -583,8 +640,12 @@ mod tests {
         // if we fetch at strikes that are bumped by 10%, we should end
         // up with the same vols and hence the same variances.
         let expiry = DateDayFraction::new(d + 14, 0.7);
-        unbumped.variances(expiry, &strikes, &mut unbumped_var).unwrap();
-        bumped.variances(expiry, &bumped_strikes, &mut bumped_var).unwrap();
+        unbumped
+            .variances(expiry, &strikes, &mut unbumped_var)
+            .unwrap();
+        bumped
+            .variances(expiry, &bumped_strikes, &mut bumped_var)
+            .unwrap();
 
         for i in 0..strikes.len() {
             assert_approx(bumped_var[i], unbumped_var[i], 1e-12);
@@ -592,7 +653,12 @@ mod tests {
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {
-        assert!(approx_eq(value, expected, tolerance),
-            "value={} expected={} tolerance={}", value, expected, tolerance);
+        assert!(
+            approx_eq(value, expected, tolerance),
+            "value={} expected={} tolerance={}",
+            value,
+            expected,
+            tolerance
+        );
     }
 }
