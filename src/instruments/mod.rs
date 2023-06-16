@@ -1,46 +1,46 @@
 pub mod assets;
+pub mod basket;
 pub mod bonds;
 pub mod options;
-pub mod basket;
 
-use instruments::assets::Currency;
-use instruments::assets::CreditEntity;
-use instruments::assets::Equity;
-use instruments::bonds::ZeroCoupon;
-use instruments::basket::Basket;
-use instruments::options::SpotStartingEuropean;
-use instruments::options::ForwardStartingEuropean;
-use dates::Date;
-use dates::datetime::TimeOfDay;
-use dates::rules::RcDateRule;
-use dates::datetime::DateTime;
-use dates::datetime::DateDayFraction;
-use data::curves::RcRateCurve;
-use data::forward::Forward;
-use data::volsurface::RcVolSurface;
-use data::volsurface::VolTimeDynamics;
-use data::volsurface::VolForwardDynamics;
-use data::fixings::FixingTable;
-use core::qm;
-use core::factories::TypeId;
-use core::factories::Registry;
-use core::factories::Qrc;
-use core::dedup::{Dedup, DedupControl, Drc, FromId, InstanceId};
-use math::interpolation::Interpolate;
-use std::sync::Arc;
-use std::hash::Hash;
-use std::collections::HashMap;
-use std::cell::RefCell;
-use std::cmp::Ordering;
-use std::hash::Hasher;
-use std::f64::NAN;
-use std::fmt::Debug;
-use std::fmt;
-use ndarray::ArrayView2;
+use crate::core::dedup::{Dedup, DedupControl, Drc, FromId, InstanceId};
+use crate::core::factories::Qrc;
+use crate::core::factories::Registry;
+use crate::core::factories::TypeId;
+use crate::core::qm;
+use crate::data::curves::RcRateCurve;
+use crate::data::fixings::FixingTable;
+use crate::data::forward::Forward;
+use crate::data::volsurface::RcVolSurface;
+use crate::data::volsurface::VolForwardDynamics;
+use crate::data::volsurface::VolTimeDynamics;
+use crate::dates::datetime::DateDayFraction;
+use crate::dates::datetime::DateTime;
+use crate::dates::datetime::TimeOfDay;
+use crate::dates::rules::RcDateRule;
+use crate::dates::Date;
+use crate::instruments::assets::CreditEntity;
+use crate::instruments::assets::Currency;
+use crate::instruments::assets::Equity;
+use crate::instruments::basket::Basket;
+use crate::instruments::bonds::ZeroCoupon;
+use crate::instruments::options::ForwardStartingEuropean;
+use crate::instruments::options::SpotStartingEuropean;
+use crate::math::interpolation::Interpolate;
 use erased_serde as esd;
+use ndarray::ArrayView2;
 use serde as sd;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
+use std::cell::RefCell;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::f64::NAN;
+use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::Arc;
 
 /// There are a few controversial design decisions here. The first is to do
 /// with the separation of products from indices, which is the case in
@@ -49,8 +49,7 @@ use serde_tagged::de::BoxFnSeed;
 /// and rather specious, so I have classed all tradeable instruments together,
 /// as Instrument.
 
-pub trait Instrument : esd::Serialize + TypeId + InstanceId + Sync + Send + Debug {
-
+pub trait Instrument: esd::Serialize + TypeId + InstanceId + Sync + Send + Debug {
     /// The currency you receive when this instrument pays cashflows.
     /// For those such as equities and physically-settled options, it is
     /// the currency used for representing the value.
@@ -68,7 +67,7 @@ pub trait Instrument : esd::Serialize + TypeId + InstanceId + Sync + Send + Debu
     /// Reports the internal dependencies of this product. Returns an enum
     /// to specify the external dependencies for a spot value on the product
     /// itself.
-    fn dependencies(&self, context: &mut DependencyContext) -> SpotRequirement; 
+    fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement;
 
     /// Instruments that are margined at the forward level have a value that is
     /// effectively driftless. Examples are equity futures, and options as
@@ -89,8 +88,7 @@ pub trait Instrument : esd::Serialize + TypeId + InstanceId + Sync + Send + Debu
 
     /// For underlyings that support volatility, converts a date plus time
     /// of day to a date plus time fraction. Other underlyings give an error.
-    fn time_to_day_fraction(&self, _date_time: DateTime)
-        -> Result<DateDayFraction, qm::Error> {
+    fn time_to_day_fraction(&self, _date_time: DateTime) -> Result<DateDayFraction, qm::Error> {
         Err(qm::Error::new("Underlying does not support volatility"))
     }
 
@@ -116,18 +114,20 @@ pub trait Instrument : esd::Serialize + TypeId + InstanceId + Sync + Send + Debu
     /// instruments are unaffected by fixings. These instruments simply return
     /// None, as do any that happen to be unaffected by the particular fixings
     /// supplied. This is the default implementation.
-    fn fix(&self, _fixing_table: &FixingTable)
-        -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
-        Ok(None) 
+    fn fix(
+        &self,
+        _fixing_table: &FixingTable,
+    ) -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
+        Ok(None)
     }
 
     /// Cast from instrument to a priceable. Returns None if not possible.
-    fn as_priceable(&self) -> Option<&Priceable> {
+    fn as_priceable(&self) -> Option<&dyn Priceable> {
         None
     }
 
     /// Cast from instrument to an mc_priceable. Returns None if not possible.
-    fn as_mc_priceable(&self) -> Option<&MonteCarloPriceable> {
+    fn as_mc_priceable(&self) -> Option<&dyn MonteCarloPriceable> {
         None
     }
 }
@@ -135,17 +135,17 @@ pub trait Instrument : esd::Serialize + TypeId + InstanceId + Sync + Send + Debu
 /// Utility method to fix all instruments in a vector, returning them as a weighted vector.
 /// Currently we do not attempt to net instruments of the same type, though we could do so.
 /// If there are no changes to any instruments, we return None.
-pub fn fix_all(instruments: &[(f64, RcInstrument)], fixing_table: &FixingTable)
-    -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
-
+pub fn fix_all(
+    instruments: &[(f64, RcInstrument)],
+    fixing_table: &FixingTable,
+) -> Result<Option<Vec<(f64, RcInstrument)>>, qm::Error> {
     // optional modified basket, in case anything changed
-    let mut basket : Vec<(f64, RcInstrument)> = Vec::new();
+    let mut basket: Vec<(f64, RcInstrument)> = Vec::new();
     let mut uncopied = 0;
     let mut modified = false;
 
     for &(weight, ref instrument) in instruments.iter() {
         if let Some(decomposition) = instrument.fix(fixing_table)? {
-
             // create a new basket and copy all the previous elements into it
             if !modified {
                 for &(prev_weight, ref prev_instrument) in instruments.iter().take(uncopied) {
@@ -177,12 +177,13 @@ pub fn fix_all(instruments: &[(f64, RcInstrument)], fixing_table: &FixingTable)
 // Get serialization to work recursively for instruments by using the
 // technology defined in core/factories. RcInstrument is a container
 // class holding an RcInstrument
-pub type TypeRegistry = Registry<BoxFnSeed<Qrc<Instrument>>>;
+pub type TypeRegistry = Registry<BoxFnSeed<Qrc<dyn Instrument>>>;
 
 /// Implement deserialization for subclasses of the type
-impl<'de> sd::Deserialize<'de> for Qrc<Instrument> {
+impl<'de> sd::Deserialize<'de> for Qrc<dyn Instrument> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: sd::Deserializer<'de>
+    where
+        D: sd::Deserializer<'de>,
     {
         sdt::de::external::deserialize(deserializer, get_registry())
     }
@@ -199,8 +200,14 @@ pub fn get_registry() -> &'static TypeRegistry {
             reg.insert("Equity", BoxFnSeed::new(Equity::from_serial));
             reg.insert("ZeroCoupon", BoxFnSeed::new(ZeroCoupon::from_serial));
             reg.insert("Basket", BoxFnSeed::new(Basket::from_serial));
-            reg.insert("SpotStartingEuropean", BoxFnSeed::new(SpotStartingEuropean::from_serial));
-            reg.insert("ForwardStartingEuropean", BoxFnSeed::new(ForwardStartingEuropean::from_serial));
+            reg.insert(
+                "SpotStartingEuropean",
+                BoxFnSeed::new(SpotStartingEuropean::from_serial),
+            );
+            reg.insert(
+                "ForwardStartingEuropean",
+                BoxFnSeed::new(ForwardStartingEuropean::from_serial),
+            );
             reg
         };
     }
@@ -209,7 +216,7 @@ pub fn get_registry() -> &'static TypeRegistry {
 
 /// When making hash maps or sets of instruments, we only key by the id, which
 /// should be unique across all instrument types.
-pub type RcInstrument = Drc<Instrument, Qrc<Instrument>>;
+pub type RcInstrument = Drc<dyn Instrument, Qrc<dyn Instrument>>;
 
 impl Ord for RcInstrument {
     fn cmp(&self, other: &RcInstrument) -> Ordering {
@@ -237,24 +244,25 @@ impl Hash for RcInstrument {
     }
 }
 
-/// Support for deduplication of instruments when serializing and deserializing
-
+// Support for deduplication of instruments when serializing and deserializing
 thread_local! {
-    pub static DEDUP_INSTRUMENT : RefCell<Dedup<Instrument, Qrc<Instrument>>> 
+    pub static DEDUP_INSTRUMENT : RefCell<Dedup< dyn Instrument, Qrc< dyn Instrument>>>
         = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
 }
 
 impl FromId for RcInstrument {
     fn from_id(id: &str) -> Option<Self> {
-        DEDUP_INSTRUMENT.with(|tls| tls.borrow().get(id).clone())
+        DEDUP_INSTRUMENT.with(|tls| tls.borrow().get(id))
     }
 }
 
 impl sd::Serialize for RcInstrument {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: sd::Serializer {
+    where
+        S: sd::Serializer,
+    {
         self.serialize_with_dedup(serializer, &DEDUP_INSTRUMENT, |s| {
-            let qrc : &Qrc<Instrument> = self.content();
+            let qrc: &Qrc<dyn Instrument> = self.content();
             qrc.serialize(s)
         })
     }
@@ -289,7 +297,10 @@ where
             if let Some(result) = FromId::from_id(value) {
                 Ok(result)
             } else {
-                Err(sd::de::Error::invalid_value(sd::de::Unexpected::Str(value), &self))
+                Err(sd::de::Error::invalid_value(
+                    sd::de::Unexpected::Str(value),
+                    &self,
+                ))
             }
         }
 
@@ -297,7 +308,9 @@ where
         where
             M: sd::de::MapAccess<'de>,
         {
-            let obj: Qrc<Instrument> = sd::de::Deserialize::deserialize(sd::de::value::MapAccessDeserializer::new(visitor))?;
+            let obj: Qrc<dyn Instrument> = sd::de::Deserialize::deserialize(
+                sd::de::value::MapAccessDeserializer::new(visitor),
+            )?;
             Ok(Drc::new(obj))
         }
     }
@@ -307,8 +320,9 @@ where
 
 impl<'de> sd::Deserialize<'de> for RcInstrument {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: sd::Deserializer<'de> {
-
+    where
+        D: sd::Deserializer<'de>,
+    {
         Self::deserialize_with_dedup(deserializer, &DEDUP_INSTRUMENT, |d| {
             string_or_struct_polymorphic(d)
         })
@@ -336,14 +350,12 @@ pub trait DependencyContext {
     /// requests. If the vol surface depends on forwards beyond this mark, it
     /// is up to the supplier to provide them, regardless of this high water
     /// mark.
-    fn forward_curve(&mut self, instrument: &RcInstrument, 
-        high_water_mark: Date);
+    fn forward_curve(&mut self, instrument: &RcInstrument, high_water_mark: Date);
 
     /// Specify a dependency on a vol surfce, given any instrument. Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
-    fn vol_surface(&mut self, instrument: &RcInstrument,
-        high_water_mark: Date);
+    fn vol_surface(&mut self, instrument: &RcInstrument, high_water_mark: Date);
 
     /// Specify a dependency on a specific fixing, by underlier id and
     /// date-time
@@ -369,7 +381,7 @@ pub enum SpotRequirement {
     /// of valuing itself, or at least that valuation is not used. The only
     /// risks due to this instrument are delta to the spot value itself. For
     /// example, equities return this enum.
-    Required
+    Required,
 }
 
 /// Some instruments such as equities or fx rates have no expiry date. You
@@ -380,7 +392,7 @@ pub enum SpotRequirement {
 
 pub trait Dateable {
     /// Set the date of this index, so it can be priced
-    fn new_dated(&self, date: Date) -> Dated;
+    fn new_dated(&self, date: Date) -> dyn Dated;
 }
 
 /// Some instruments such as vanilla options or futures have an expiry date.
@@ -412,7 +424,7 @@ pub trait Dated {
 /// well defined, such as equities or vanilla European options, support a
 /// Priceable interface. More exotic instruments do not.
 
-pub trait Priceable : Instrument {
+pub trait Priceable: Instrument {
     /// Allow an instrument to price itself. This method can be left as the
     /// default implementation, which delegates to prices. The price returned
     /// is the expected screen price which will be seen on Bloomberg terminals
@@ -420,8 +432,7 @@ pub trait Priceable : Instrument {
     /// the price of an equity is the spot. Discounting is done to the instrument's
     /// own settlement period added to the val_date. You can determine this by
     /// invoking settlement.apply(val_date.date())
-    fn price(&self, context: &PricingContext, val_date: DateTime) -> Result<f64, qm::Error> {
-
+    fn price(&self, context: &dyn PricingContext, val_date: DateTime) -> Result<f64, qm::Error> {
         let dates = [val_date];
         let mut prices = [NAN];
         self.prices(context, &dates, &mut prices)?;
@@ -432,42 +443,56 @@ pub trait Priceable : Instrument {
     /// of dates. This is much more efficient than fetching the price independently,
     /// especially for priceables such as ETFs that iterate over some day-by-day
     /// algorithm to manage their state.
-    fn prices(&self, context: &PricingContext, dates: &[DateTime], out: &mut [f64])
-        -> Result<(), qm::Error>;
- 
+    fn prices(
+        &self,
+        context: &dyn PricingContext,
+        dates: &[DateTime],
+        out: &mut [f64],
+    ) -> Result<(), qm::Error>;
+
     /// Return this object as an instrument. (There is a proposal in Rust to
     /// handle this sort of coercion, but it is not yet part of the language.)
-    fn as_instrument(&self) -> &Instrument;
+    fn as_instrument(&self) -> &dyn Instrument;
 }
 
 /// Sometimes it is useful to treat a priceable as if it were a forward curve.
 /// The only issue is that a priceable takes a DateTime and a forward takes a date.
 /// We require the user to pass in a time of day, so we can convert.
 pub struct ForwardFromPriceable<'a> {
-    priceable: &'a Priceable,
-    context: &'a PricingContext,
-    time_of_day: TimeOfDay
+    priceable: &'a dyn Priceable,
+    context: &'a dyn PricingContext,
+    time_of_day: TimeOfDay,
 }
 
 impl<'a> ForwardFromPriceable<'a> {
-    pub fn new(priceable: &'a Priceable, context: &'a PricingContext, time_of_day: TimeOfDay)
-        -> ForwardFromPriceable<'a> {
-        ForwardFromPriceable { priceable, context, time_of_day }
+    pub fn new(
+        priceable: &'a dyn Priceable,
+        context: &'a dyn PricingContext,
+        time_of_day: TimeOfDay,
+    ) -> ForwardFromPriceable<'a> {
+        ForwardFromPriceable {
+            priceable,
+            context,
+            time_of_day,
+        }
     }
 }
 
 impl<'a> Forward for ForwardFromPriceable<'a> {
-    fn as_interp(&self) -> &Interpolate<Date> { self }
+    fn as_interp(&self) -> &dyn Interpolate<Date> {
+        self
+    }
 
     fn forward(&self, date: Date) -> Result<f64, qm::Error> {
-        self.priceable.price(self.context, DateTime::new(date, self.time_of_day))
+        self.priceable
+            .price(self.context, DateTime::new(date, self.time_of_day))
     }
 }
 
 /// A pricing context contains the market data needed for an instrument to
 /// price itself. As we add new types of market data, we can add new methods to
 /// this interface.
-pub trait PricingContext : Sync + Send {
+pub trait PricingContext: Sync + Send {
     /// Gets the date that spot is associated with. Note this is the
     /// date when that spot value is shown on a Bloomberg screen (other
     /// financial data suppliers exist), not when the payment is made.
@@ -484,15 +509,21 @@ pub trait PricingContext : Sync + Send {
     /// Gets a Forward, given any instrument, for example an equity. Also
     /// specify a high water mark, beyond which we never directly ask for
     /// forwards.
-    fn forward_curve(&self, instrument: &Instrument, high_water_mark: Date)
-        -> Result<Arc<Forward>, qm::Error>;
+    fn forward_curve(
+        &self,
+        instrument: &dyn Instrument,
+        high_water_mark: Date,
+    ) -> Result<Arc<dyn Forward>, qm::Error>;
 
     /// Gets a Vol Surface, given any instrument, for example an equity.  Also
     /// specify a high water mark, beyond which we never directly ask for
     /// vols.
-    fn vol_surface(&self, instrument: &Instrument, high_water_mark: Date,
-        forward_fn: &Fn() -> Result<Arc<Forward>, qm::Error>)
-         -> Result<RcVolSurface, qm::Error>;
+    fn vol_surface(
+        &self,
+        instrument: &dyn Instrument,
+        high_water_mark: Date,
+        forward_fn: &dyn Fn() -> Result<Arc<dyn Forward>, qm::Error>,
+    ) -> Result<RcVolSurface, qm::Error>;
 
     /// Gets an instantaneous correlation between two instruments. At present,
     /// we consider this to be constant. (A datetime parameter could be added
@@ -504,8 +535,11 @@ pub trait PricingContext : Sync + Send {
     /// integrate in two dimensions over a local vol surface. However, it is
     /// common practice to convert to terminal correlations using only a term
     /// structure of at the money vols for each asset.
-    fn correlation(&self, first: &Instrument, second: &Instrument)
-        -> Result<f64, qm::Error>;
+    fn correlation(
+        &self,
+        first: &dyn Instrument,
+        second: &dyn Instrument,
+    ) -> Result<f64, qm::Error>;
 }
 
 /// Allow an instrument to be priced using Monte-Carlo. The way this works is
@@ -524,8 +558,7 @@ pub trait PricingContext : Sync + Send {
 /// Finally, there is a reduce step, which adds up all the values in whichever
 /// variable represents the discounted values. All of this map-reduce logic is
 /// orchestrated by the mc_price method in the top-level instrument.
-pub trait MonteCarloPriceable : Instrument {
-
+pub trait MonteCarloPriceable: Instrument {
     /// Specifies the dependency structure of the instrument. This affects
     /// the layout of the paths that are presented to it in the price call.
     /// For example, this specifies which underlyings are required at which
@@ -535,8 +568,11 @@ pub trait MonteCarloPriceable : Instrument {
     /// same value, other than discounting, on any date up to expiry. However,
     /// an equity has a value that must be taken from the path on the as-of
     /// date, so its dependencies must include those dates.
-    fn mc_dependencies(&self, dates: &[DateDayFraction],
-        output: &mut MonteCarloDependencies) -> Result<(), qm::Error>;
+    fn mc_dependencies(
+        &self,
+        dates: &[DateDayFraction],
+        output: &mut dyn MonteCarloDependencies,
+    ) -> Result<(), qm::Error>;
 
     /// The start date for the instrument. This is the date when all fractional
     /// product terms such as strikes and barriers turn into absolute values.
@@ -553,15 +589,14 @@ pub trait MonteCarloPriceable : Instrument {
     /// information is required such as convergence graphs or per-flow pricing,
     /// this is collected by a decorator to the context. (The context is
     /// immutable, so this must be done using RefCell.)
-    fn mc_price(&self, context: &MonteCarloContext) -> Result<f64, qm::Error>;
+    fn mc_price(&self, context: &dyn MonteCarloContext) -> Result<f64, qm::Error>;
 
     /// Return this object as an instrument
-    fn as_instrument(&self) -> &Instrument;
+    fn as_instrument(&self) -> &dyn Instrument;
 }
 
 /// Collects the dependencies needed for Monte-Carlo pricing
 pub trait MonteCarloDependencies {
-
     /// Specifies an observation of an underlying. (Note that it is very
     /// common for observations of multiple underlyings to be on slightly
     /// different dates, if they have different calendars.)
@@ -569,8 +604,7 @@ pub trait MonteCarloDependencies {
     /// All the returned observations should be in the future (or unfixed,
     /// today). Historical observations should have been handled by the freeze
     /// method.
-    fn observation(&mut self, instrument: &RcInstrument,
-        date_time: DateDayFraction);
+    fn observation(&mut self, instrument: &RcInstrument, date_time: DateDayFraction);
 
     /// Specifies a potential cashflow or stock transfer. In theory, any
     /// instrument may be specified. However, the instruments must be either
@@ -594,16 +628,14 @@ pub trait MonteCarloContext {
     /// models may choose to represent all observations today by the spot
     /// value, but this is an approximation and a modelling choice. In that
     /// case, the model must supply the same value for all paths.
-    fn paths(&self, instrument: &RcInstrument)
-        -> Result<ArrayView2<f64>, qm::Error>;
+    fn paths(&self, instrument: &RcInstrument) -> Result<ArrayView2<f64>, qm::Error>;
 
     /// Value the flows resulting from the valuation. The quantities argument is
     /// an array ordered by paths then flows, where flows are in the same
     /// order as they were passed to the flow method in MonteCarloDependencies.
-    fn evaluate_flows(&self, quantities: ArrayView2<f64>) 
-        -> Result<f64, qm::Error>;
+    fn evaluate_flows(&self, quantities: ArrayView2<f64>) -> Result<f64, qm::Error>;
 
     /// Access to the underlying pricing context. Note that this is unaffected by
     /// the filtration within any path.
-    fn pricing_context(&self) -> &PricingContext;
+    fn pricing_context(&self) -> &dyn PricingContext;
 }

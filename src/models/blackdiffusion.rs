@@ -1,13 +1,25 @@
-use std::any::Any;
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::Arc;
-use rand;
-use rand::StdRng;
-use nalgebra::linalg::Cholesky;
+use crate::core::factories::Qrc;
+use crate::core::factories::TypeId;
+use crate::core::qm;
+use crate::data::bump::Bump;
+use crate::dates::datetime::DateDayFraction;
+use crate::dates::datetime::DateTime;
+use crate::dates::datetime::TimeOfDay;
+use crate::instruments::Instrument;
+use crate::instruments::MonteCarloContext;
+use crate::instruments::PricingContext;
+use crate::instruments::RcInstrument;
+use crate::models::MonteCarloModel;
+use crate::models::MonteCarloModelFactory;
+use crate::models::MonteCarloTimeline;
+use crate::risk::dependencies::DependencyCollector;
+use crate::risk::marketdata::MarketData;
+use crate::risk::Bumpable;
+use crate::risk::BumpablePricingContext;
+use crate::risk::Saveable;
+use erased_serde as esd;
 use nalgebra::base::DMatrix;
-use statrs::distribution::Distribution;
-use statrs::distribution::Normal;
+use nalgebra::linalg::Cholesky;
 use ndarray::Array;
 use ndarray::Array1;
 use ndarray::Array2;
@@ -15,27 +27,15 @@ use ndarray::Array3;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
-use core::qm;
-use instruments::Instrument;
-use instruments::MonteCarloContext;
-use instruments::PricingContext;
-use instruments::RcInstrument;
-use risk::BumpablePricingContext;
-use risk::Bumpable;
-use risk::Saveable;
-use risk::marketdata::MarketData;
-use risk::dependencies::DependencyCollector;
-use data::bump::Bump;
-use models::MonteCarloModel;
-use models::MonteCarloTimeline;
-use models::MonteCarloModelFactory;
-use dates::datetime::DateDayFraction;
-use dates::datetime::DateTime;
-use dates::datetime::TimeOfDay;
-use core::factories::TypeId;
-use core::factories::Qrc;
+use rand;
+use rand::StdRng;
 use serde::Deserialize;
-use erased_serde as esd;
+use statrs::distribution::Distribution;
+use statrs::distribution::Normal;
+use std::any::Any;
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::sync::Arc;
 
 /// The BlackDiffusionFactory is able to create a BlackDiffusion model, given
 /// the timeline of the product(s) to value, and the market data to value it
@@ -48,34 +48,48 @@ pub struct BlackDiffusionFactory {
     /// Substep size in business days for correlation calculation
     correlation_substep: usize,
     path_substep: f64,
-    number_of_paths: usize
+    number_of_paths: usize,
 }
 
 impl BlackDiffusionFactory {
-    pub fn new(correlation_substep: usize, path_substep: f64,
-        number_of_paths: usize) -> BlackDiffusionFactory {
-
-        BlackDiffusionFactory { correlation_substep: correlation_substep,
-            path_substep: path_substep, number_of_paths: number_of_paths }
+    pub fn new(
+        correlation_substep: usize,
+        path_substep: f64,
+        number_of_paths: usize,
+    ) -> BlackDiffusionFactory {
+        BlackDiffusionFactory {
+            correlation_substep,
+            path_substep,
+            number_of_paths,
+        }
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<MonteCarloModelFactory>, esd::Error> {
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
+    ) -> Result<Qrc<dyn MonteCarloModelFactory>, esd::Error> {
         Ok(Qrc::new(Arc::new(BlackDiffusionFactory::deserialize(de)?)))
     }
 }
 
 impl TypeId for BlackDiffusionFactory {
-    fn get_type_id(&self) -> &'static str { "BlackDiffusionFactory" }
+    fn get_type_id(&self) -> &'static str {
+        "BlackDiffusionFactory"
+    }
 }
 
 impl MonteCarloModelFactory for BlackDiffusionFactory {
-
-    fn factory(&self, timeline: &MonteCarloTimeline,
-        context: Box<BumpablePricingContext>)
-        -> Result<Box<MonteCarloModel>, qm::Error> {
-
-        let model = BlackDiffusion::new(timeline, context,
-            self.correlation_substep, self.path_substep, self.number_of_paths)?;
+    fn factory(
+        &self,
+        timeline: &MonteCarloTimeline,
+        context: Box<dyn BumpablePricingContext>,
+    ) -> Result<Box<dyn MonteCarloModel>, qm::Error> {
+        let model = BlackDiffusion::new(
+            timeline,
+            context,
+            self.correlation_substep,
+            self.path_substep,
+            self.number_of_paths,
+        )?;
         Ok(Box::new(model))
     }
 }
@@ -85,7 +99,7 @@ impl MonteCarloModelFactory for BlackDiffusionFactory {
 ///  dS/S = mu(t) dt + sigma(t) dW
 ///
 /// In other words, it is a log-normal diffusion process where the drift and
-/// the volatility are both dependent on t but not on other factors, 
+/// the volatility are both dependent on t but not on other factors,
 /// particularly S. This makes Black Diffusion a simple model, but means it
 /// only correctly values vanilla options whose strikes are those chosen to
 /// extract the sigma used here, in practice at the money according to the
@@ -121,21 +135,20 @@ impl MonteCarloModelFactory for BlackDiffusionFactory {
 /// vol time difference case by treating them mathematically as if they did
 /// line up. Where some assets really have more observations than others, we
 /// need fancier handling, either in the maths of the correlation matrix, or
-/// by evolving over the union of the dates, then discarding some. 
+/// by evolving over the union of the dates, then discarding some.
 #[derive(Clone)]
 pub struct BlackDiffusion {
     observations: Vec<DateDayFraction>,
     flows: Vec<RcInstrument>,
-    context: Box<BumpablePricingContext>,
+    context: Box<dyn BumpablePricingContext>,
     key: HashMap<String, usize>,
     instruments: Vec<RcInstrument>,
     substepping: Vec<usize>,
     correlated_gaussians: Array3<f64>,
-    paths: Array3<f64>
+    paths: Array3<f64>,
 }
 
 impl BlackDiffusion {
-
     /// Create a new BlackDiffusion model, given a timeline to define the
     /// instrument(s) we want to price, a context to define the market data,
     /// and a count of paths.
@@ -147,25 +160,24 @@ impl BlackDiffusion {
     /// The path_substep parameter is a measure of the maximum sqrt_variance
     /// step size. As volatilities increase, it becomes necessary to take
     /// smaller steps in time, to converge on the correct drift and variance.
-    pub fn new(timeline: &MonteCarloTimeline,
-        context: Box<BumpablePricingContext>,
+    pub fn new(
+        timeline: &MonteCarloTimeline,
+        context: Box<dyn BumpablePricingContext>,
         correlation_substep: usize,
         path_substep: f64,
-        n_paths: usize)
-        -> Result<BlackDiffusion, qm::Error> {
-
+        n_paths: usize,
+    ) -> Result<BlackDiffusion, qm::Error> {
         // key to all observations and all instruments
         let mut observations = Vec::new();
         let mut key = HashMap::new();
         let mut instruments = Vec::new();
         for (asset, obs) in timeline.observations().iter() {
-
             // at present, we just insist that all observations are the same
             if observations.is_empty() {
                 observations = obs.to_vec();
-/*            } else if observations != obs {
-                return Err(qm::Error::new("Mismatching observations"))
-*/
+                /*            } else if observations != obs {
+                                return Err(qm::Error::new("Mismatching observations"))
+                */
             }
 
             // store the assets in the order we are told about them
@@ -175,58 +187,76 @@ impl BlackDiffusion {
 
         // Calculate the substepping required, given the path_substep
         // constraint. This should be done only once, for all risks.
-        let substepping = calculate_substepping(&observations,
-            context.as_pricing_context(), &instruments, path_substep)?;
+        let substepping = calculate_substepping(
+            &observations,
+            context.as_pricing_context(),
+            &instruments,
+            path_substep,
+        )?;
 
         // Populate the correlated gaussians. (Really, this should be redone
-        // whenever any forward or vol changes, but that would slow all 
+        // whenever any forward or vol changes, but that would slow all
         // risks down, and it is only a second order effect.)
         let correlated_gaussians = fetch_correlated_gaussians(
-            context.as_pricing_context(), &instruments,
-            correlation_substep, &substepping, n_paths)?;
+            context.as_pricing_context(),
+            &instruments,
+            correlation_substep,
+            &substepping,
+            n_paths,
+        )?;
 
-        let paths = fetch_paths(&observations, &correlated_gaussians,
-            context.as_pricing_context(), &instruments, 
-            &substepping, n_paths)?;
+        let paths = fetch_paths(
+            &observations,
+            &correlated_gaussians,
+            context.as_pricing_context(),
+            &instruments,
+            &substepping,
+            n_paths,
+        )?;
 
         // create the model with these paths and gaussians
-        Ok(BlackDiffusion { 
-            observations: observations,
+        Ok(BlackDiffusion {
+            observations,
             flows: timeline.flows().to_vec(),
-            context: context,
-            key: key,
-            instruments: instruments,
-            substepping: substepping,
-            correlated_gaussians: correlated_gaussians,
-            paths: paths })
+            context,
+            key,
+            instruments,
+            substepping,
+            correlated_gaussians,
+            paths,
+        })
     }
 
     /// Refetch a single asset
-    pub fn refetch(&mut self, id: &str, bumped: bool,
-        saved_paths: Option<&mut HashMap<usize, Array2<f64>>>) -> Result<bool, qm::Error> {
-
+    pub fn refetch(
+        &mut self,
+        id: &str,
+        bumped: bool,
+        saved_paths: Option<&mut HashMap<usize, Array2<f64>>>,
+    ) -> Result<bool, qm::Error> {
         // if nothing was bumped, there is nothing to do
         if !bumped {
-            return Ok(false)
+            return Ok(false);
         }
 
         let id_string = id.to_string();
         if let Some(asset) = self.key.get(&id_string) {
-
             // save the old path then replace it
             let path = self.paths.subview_mut(Axis(2), *asset);
             if let Some(s) = saved_paths {
                 s.insert(*asset, path.to_owned());
             }
-            fetch_path(self.instruments[*asset].deref(), 
-                self.context.as_pricing_context(), &self.observations,
+            fetch_path(
+                self.instruments[*asset].deref(),
+                self.context.as_pricing_context(),
+                &self.observations,
                 self.correlated_gaussians.subview(Axis(2), *asset),
                 &self.substepping,
-                path)?;
-
+                path,
+            )?;
         } else {
-            return Err(qm::Error::new("Failed to find asset"))
-        }        
+            return Err(qm::Error::new("Failed to find asset"));
+        }
 
         Ok(true)
     }
@@ -235,12 +265,16 @@ impl BlackDiffusion {
     /// correlated gaussians, so does not work for a correlation bump. It also
     /// assumes the form of the instrument(s) being priced is unchanged.
     pub fn refetch_all(&mut self) -> Result<(), qm::Error> {
-
         let n_paths = self.paths.shape()[0];
 
-        self.paths = fetch_paths(&self.observations, &self.correlated_gaussians,
-            self.context.as_pricing_context(), &self.instruments,
-            &self.substepping, n_paths)?;
+        self.paths = fetch_paths(
+            &self.observations,
+            &self.correlated_gaussians,
+            self.context.as_pricing_context(),
+            &self.instruments,
+            &self.substepping,
+            n_paths,
+        )?;
         Ok(())
     }
 }
@@ -250,23 +284,22 @@ impl BlackDiffusion {
 /// intermediate steps for each observation.
 pub fn calculate_substepping(
     observations: &[DateDayFraction],
-    context: &PricingContext,
-    instruments: &Vec<RcInstrument>,
-    path_substep: f64) -> Result<Vec<usize>, qm::Error> {
-
+    context: &dyn PricingContext,
+    instruments: &[RcInstrument],
+    path_substep: f64,
+) -> Result<Vec<usize>, qm::Error> {
     let n_obs = observations.len();
     if n_obs == 0 {
-        return Err(qm::Error::new("No observations"))
+        return Err(qm::Error::new("No observations"));
     }
 
-    let mut substepping = vec!(1_usize; n_obs);
+    let mut substepping = vec![1_usize; n_obs];
     let hwm = observations.last().unwrap().date();
 
     // We need the maximum number of steps required by each asset. Iterate
     // through them all.
     for instrument in instruments.iter() {
-
-        let instr : &Instrument = instrument.deref();
+        let instr: &dyn Instrument = instrument.deref();
         let fwd = context.forward_curve(instr, hwm)?;
         let surface = context.vol_surface(instr, hwm, &|| Ok(fwd.clone()))?;
 
@@ -278,7 +311,7 @@ pub fn calculate_substepping(
             let fwd_var = var - prev_var;
             prev_var = var;
             if fwd_var < 0.0 {
-                return Err(qm::Error::new("Negative forward variance"))
+                return Err(qm::Error::new("Negative forward variance"));
             }
 
             // if the forward variance is too big, chop it up
@@ -294,12 +327,12 @@ pub fn calculate_substepping(
 /// numbers weighted by a gaussian distribution with correlations defined
 /// by the correlation matrix in the pricing context.
 pub fn fetch_correlated_gaussians(
-    context: &PricingContext,
+    context: &dyn PricingContext,
     instruments: &Vec<RcInstrument>,
     _correlation_substep: usize,
     substepping: &[usize],
-    n_paths: usize) -> Result<Array3<f64>, qm::Error> {
-
+    n_paths: usize,
+) -> Result<Array3<f64>, qm::Error> {
     // calculate how many substeps we need altogether
     let n_steps = substepping.iter().sum();
     assert!(n_steps > 0);
@@ -336,11 +369,12 @@ pub fn fetch_correlated_gaussians(
     // if let Some(cholesky) = correl.cholesky(UPLO::Lower) {
 
     // convert to a DMatrix
-    let slice = correl.as_slice().ok_or_else(|| qm::Error::new(
-        "Correlation cannot be accessed as a slice"))?;
+    let slice = correl
+        .as_slice()
+        .ok_or_else(|| qm::Error::new("Correlation cannot be accessed as a slice"))?;
     let correld = DMatrix::from_column_slice(n_assets, n_assets, slice);
-    let rootd = Cholesky::new(correld).ok_or_else(|| qm::Error::new(
-        "Correlation matrix is not positive semi-definite"))?;
+    let rootd = Cholesky::new(correld)
+        .ok_or_else(|| qm::Error::new("Correlation matrix is not positive semi-definite"))?;
 
     // convert back to an Array2
     let root_slice = rootd.unpack().as_slice().to_vec();
@@ -361,7 +395,6 @@ pub fn fetch_correlated_gaussians(
 
     for mut path in result.outer_iter_mut() {
         for mut step in path.outer_iter_mut() {
-
             // create uncorrelated gaussians
             for draw in draws.iter_mut() {
                 *draw = normal.sample::<StdRng>(&mut rand);
@@ -379,11 +412,11 @@ pub fn fetch_correlated_gaussians(
 pub fn fetch_paths(
     observations: &[DateDayFraction],
     correlated_gaussians: &Array3<f64>,
-    context: &PricingContext,
+    context: &dyn PricingContext,
     instruments: &Vec<RcInstrument>,
     substepping: &[usize],
-    n_paths: usize) -> Result<Array3<f64>, qm::Error> {
-
+    n_paths: usize,
+) -> Result<Array3<f64>, qm::Error> {
     // create a 3d tensor indexed by path, then observation, then asset
     let n_assets = instruments.len();
     let n_obs = observations.len();
@@ -392,26 +425,28 @@ pub fn fetch_paths(
     assert!(n_paths > 0);
     let mut paths = Array3::<f64>::zeros((n_paths, n_obs, n_assets));
 
-    for ((asset, gaussians), path) in
-        instruments.iter().zip(
-        correlated_gaussians.axis_iter(Axis(2))).zip(
-        paths.axis_iter_mut(Axis(2))) {
-
-        let instr: &Instrument = asset.deref();
-        fetch_path(instr, context, &observations, gaussians,
-            substepping, path)?;
+    for ((asset, gaussians), path) in instruments
+        .iter()
+        .zip(correlated_gaussians.axis_iter(Axis(2)))
+        .zip(paths.axis_iter_mut(Axis(2)))
+    {
+        let instr: &dyn Instrument = asset.deref();
+        fetch_path(instr, context, observations, gaussians, substepping, path)?;
     }
 
     Ok(paths)
 }
 
-pub fn fetch_path(instrument: &Instrument, context: &PricingContext,
-    observations: &[DateDayFraction], correlated_gaussians: ArrayView2<f64>,
+pub fn fetch_path(
+    instrument: &dyn Instrument,
+    context: &dyn PricingContext,
+    observations: &[DateDayFraction],
+    correlated_gaussians: ArrayView2<f64>,
     substepping: &[usize],
-    mut path: ArrayViewMut2<f64>) -> Result<(), qm::Error> {
-
+    mut path: ArrayViewMut2<f64>,
+) -> Result<(), qm::Error> {
     let n_obs = observations.len();
-    assert!(n_obs > 0);  // otherwise we should not be evolving this asset
+    assert!(n_obs > 0); // otherwise we should not be evolving this asset
     let shape = correlated_gaussians.shape();
     assert_eq!(shape.len(), 2);
     assert_eq!(path.shape()[0], shape[0]);
@@ -421,7 +456,7 @@ pub fn fetch_path(instrument: &Instrument, context: &PricingContext,
     let hwm = observations.last().unwrap().date();
     let forward_curve = context.forward_curve(instrument, hwm)?;
     let vol_surface = context.vol_surface(instrument, hwm, &|| Ok(forward_curve.clone()))?;
-    
+
     // Fetch the forwards and variances on each observation date
     // We use the at the forward variances, using the live forward curve
     // (consider optionally using the forwards in the vol surface).
@@ -446,26 +481,26 @@ pub fn fetch_path(instrument: &Instrument, context: &PricingContext,
     for (var, substep) in variances.iter().zip(substepping.iter()) {
         let fwd_var = (var - prev_var) / (*substep as f64);
         if fwd_var < 0.0 {
-            return Err(qm::Error::new("Negative forward variance")) 
+            return Err(qm::Error::new("Negative forward variance"));
         }
         sigmas.push(fwd_var.sqrt());
         prev_var = *var;
     }
 
     // for each of the paths
-    for (ref gaussians, ref mut one_path) in 
-        correlated_gaussians.outer_iter().zip(path.outer_iter_mut()) {
-
+    for (ref gaussians, ref mut one_path) in
+        correlated_gaussians.outer_iter().zip(path.outer_iter_mut())
+    {
         // walk along each path
         let mut point = 1.0;
-        let mut g = 0;	// index into the gaussians
+        let mut g = 0; // index into the gaussians
         for i in 0..n_obs {
             let sigma = sigmas[i];
             for _ in 0..substepping[i] {
                 point *= 1.0 + gaussians[g] * sigma;
                 g += 1;
             }
-                
+
             one_path[i] = point * forwards[i] + displacements[i];
         }
     }
@@ -477,27 +512,30 @@ pub fn fetch_path(instrument: &Instrument, context: &PricingContext,
 }
 
 impl MonteCarloModel for BlackDiffusion {
-
-    fn as_mc_context(&self) -> &MonteCarloContext { self }
-    fn as_bumpable(&self) -> &Bumpable { self }
-    fn as_mut_bumpable(&mut self) -> &mut Bumpable { self }
-    fn raw_market_data(&self) -> &MarketData { self.context.raw_market_data() }
+    fn as_mc_context(&self) -> &dyn MonteCarloContext {
+        self
+    }
+    fn as_bumpable(&self) -> &dyn Bumpable {
+        self
+    }
+    fn as_mut_bumpable(&mut self) -> &mut dyn Bumpable {
+        self
+    }
+    fn raw_market_data(&self) -> &MarketData {
+        self.context.raw_market_data()
+    }
 }
 
 impl MonteCarloContext for BlackDiffusion {
-
-    fn paths(&self, instrument: &RcInstrument)
-        -> Result<ArrayView2<f64>, qm::Error> {
-
+    fn paths(&self, instrument: &RcInstrument) -> Result<ArrayView2<f64>, qm::Error> {
         let id = instrument.id().to_string();
-        let asset = self.key.get(&id).ok_or_else(|| qm::Error::new(
-            &format!("BlackDiffusion does not know about '{}'", id)))?;
+        let asset = self.key.get(&id).ok_or_else(|| {
+            qm::Error::new(&format!("BlackDiffusion does not know about '{}'", id))
+        })?;
         Ok(self.paths.subview(Axis(2), *asset))
     }
 
-    fn evaluate_flows(&self, quantities: ArrayView2<f64>)
-        -> Result<f64, qm::Error> {
-
+    fn evaluate_flows(&self, quantities: ArrayView2<f64>) -> Result<f64, qm::Error> {
         let flows_shape = quantities.shape();
         let paths_shape = self.paths.shape();
         let n_paths = paths_shape[0];
@@ -507,53 +545,54 @@ impl MonteCarloContext for BlackDiffusion {
 
         // For now, always value as of the spot date at the open. (We may want to relax this
         // restriction later, by passing a slice of date-times into the method.)
-        let val_date = DateTime::new(self.context.as_pricing_context().spot_date(), TimeOfDay::Open);
+        let val_date = DateTime::new(
+            self.context.as_pricing_context().spot_date(),
+            TimeOfDay::Open,
+        );
 
         // weighted sum of all of the flows
         let mut total = 0.0;
-        for (flow, quantity) in self.flows.iter().zip(
-            quantities.axis_iter(Axis(1))) {
-
+        for (flow, quantity) in self.flows.iter().zip(quantities.axis_iter(Axis(1))) {
             // BlackDiffusion is a non-stochastic-rate model, so we can
             // save time by evaluating the pure rate flows using Priceable
             if flow.is_pure_rates() {
-
                 // value of the instrument times the average quantity
                 let average = quantity.scalar_sum() / n_paths_f64;
-                let pricer = flow.as_priceable().ok_or_else(|| qm::Error::new(
-                    "All pure-rates flows must be priceable"))?;
+                let pricer = flow
+                    .as_priceable()
+                    .ok_or_else(|| qm::Error::new("All pure-rates flows must be priceable"))?;
                 let value = pricer.price(self.context.as_pricing_context(), val_date)?;
                 total += average * value;
 
                 //println!("BlackDiffusion::evaluate_flows value={} average={} \
                 //    total={}", value, average, total);
-
             } else {
-
                 // otherwise we must price by Monte-Carlo over each path
                 // TODO how do we pass in the weights?
-                return Err(qm::Error::new("not implemented"))
+                return Err(qm::Error::new("not implemented"));
             }
         }
         Ok(total)
     }
 
-    fn pricing_context(&self) -> &PricingContext {
-        &*self.context.as_pricing_context()
+    fn pricing_context(&self) -> &dyn PricingContext {
+        self.context.as_pricing_context()
     }
 }
 
 impl Bumpable for BlackDiffusion {
-
-    fn bump(&mut self, bump: &Bump, any_saved: Option<&mut Saveable>)
-        -> Result<bool, qm::Error> {
-
+    fn bump(
+        &mut self,
+        bump: &Bump,
+        any_saved: Option<&mut dyn Saveable>,
+    ) -> Result<bool, qm::Error> {
         // we have to unpack the option<saveable> into options on all its
         // components all at the same time, to avoid problems with borrowing.
         let saved = to_saved(any_saved)?;
-        let (saved_data, saved_paths) 
-            : (Option<&mut Saveable>, Option<&mut HashMap<usize, Array2<f64>>>)
-            = if let Some(s) = saved {
+        let (saved_data, saved_paths): (
+            Option<&mut dyn Saveable>,
+            Option<&mut HashMap<usize, Array2<f64>>>,
+        ) = if let Some(s) = saved {
             (Some(&mut *s.saved_data), Some(&mut s.paths))
         } else {
             (None, None)
@@ -564,28 +603,30 @@ impl Bumpable for BlackDiffusion {
 
         // refetch any paths that may have changed
         match bump {
-            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Vol(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Yield(ref credit_id, _) => {
+            Bump::Spot(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Divs(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Borrow(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Vol(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Yield(credit_id, _) => {
                 // we have to copy these ids to avoid a tangle with borrowing
-                let v = self.dependencies()?
-                    .forward_id_by_credit_id(&credit_id).to_vec();
+                let v = self
+                    .dependencies()?
+                    .forward_id_by_credit_id(credit_id)
+                    .to_vec();
 
                 // we also have to unpack then repack saved_paths to clarify borrowing
                 // (is this something the Rust compiler could be cleverer about?)
                 if let Some(s) = saved_paths {
                     for id in v.iter() {
-                        self.refetch(&id, bumped, Some(s))?;
+                        self.refetch(id, bumped, Some(s))?;
                     }
                 } else {
                     for id in v.iter() {
-                        self.refetch(&id, bumped, None)?;
+                        self.refetch(id, bumped, None)?;
                     }
                 }
                 Ok(bumped)
-            },
+            }
             &Bump::SpotDate(_) => {
                 if bumped {
                     // Theta bumping in Monte-Carlo is a difficult compromise. We want to
@@ -601,24 +642,22 @@ impl Bumpable for BlackDiffusion {
         }
     }
 
-    fn new_saveable(&self) -> Box<Saveable> {
+    fn new_saveable(&self) -> Box<dyn Saveable> {
         Box::new(SavedBlackDiffusion::new(
-            self.context.as_bumpable().new_saveable()))
+            self.context.as_bumpable().new_saveable(),
+        ))
     }
 
     fn dependencies(&self) -> Result<&DependencyCollector, qm::Error> {
         self.context.dependencies()
     }
 
-    fn context(&self) -> &PricingContext {
+    fn context(&self) -> &dyn PricingContext {
         self.context.as_pricing_context()
     }
 
-    fn restore(&mut self, any_saved: &Saveable) -> Result<(), qm::Error> {
-
-        if let Some(saved) 
-            = any_saved.as_any().downcast_ref::<SavedBlackDiffusion>()  {
-
+    fn restore(&mut self, any_saved: &dyn Saveable) -> Result<(), qm::Error> {
+        if let Some(saved) = any_saved.as_any().downcast_ref::<SavedBlackDiffusion>() {
             // first restore the underlying market data and cached curves
             self.context.as_mut_bumpable().restore(&*saved.saved_data)?;
 
@@ -628,16 +667,15 @@ impl Bumpable for BlackDiffusion {
                 dest.assign(paths);
             }
             Ok(())
-
         } else {
             Err(qm::Error::new("Mismatching save space for restore"))
         }
     }
 }
 
-fn to_saved(opt_saveable: Option<&mut Saveable>) 
-    -> Result<Option<&mut SavedBlackDiffusion>, qm::Error> {
-
+fn to_saved(
+    opt_saveable: Option<&mut dyn Saveable>,
+) -> Result<Option<&mut SavedBlackDiffusion>, qm::Error> {
     if let Some(saveable) = opt_saveable {
         if let Some(saved) = saveable.as_mut_any().downcast_mut::<SavedBlackDiffusion>() {
             Ok(Some(saved))
@@ -651,24 +689,28 @@ fn to_saved(opt_saveable: Option<&mut Saveable>)
 
 /// Save space for BlackDiffusion to use during bumping
 pub struct SavedBlackDiffusion {
-    saved_data: Box<Saveable>,
-    paths: HashMap<usize, Array2<f64>>
+    saved_data: Box<dyn Saveable>,
+    paths: HashMap<usize, Array2<f64>>,
 }
 
 impl SavedBlackDiffusion {
-
     /// Creates an empty set of paths, which can be used for saving state
     /// so it can be restored after a bump
-    pub fn new(saved_data: Box<Saveable>) -> SavedBlackDiffusion {
+    pub fn new(saved_data: Box<dyn Saveable>) -> SavedBlackDiffusion {
         SavedBlackDiffusion {
-            saved_data: saved_data,
-            paths: HashMap::new() }
+            saved_data,
+            paths: HashMap::new(),
+        }
     }
 }
 
 impl Saveable for SavedBlackDiffusion {
-    fn as_any(&self) -> &Any { self }
-    fn as_mut_any(&mut self) -> &mut Any { self }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_mut_any(&mut self) -> &mut dyn Any {
+        self
+    }
 
     fn clear(&mut self) {
         self.saved_data.clear();

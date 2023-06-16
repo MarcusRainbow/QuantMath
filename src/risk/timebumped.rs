@@ -1,21 +1,21 @@
-use risk::Report;
-use risk::BoxReport;
-use risk::ReportGenerator;
-use risk::RcReportGenerator;
-use risk::Pricer;
-use risk::Saveable;
-use risk::ApproxEqReport;
-use risk::bumptime::BumpTime;
-use risk::ReportTolerances;
-use std::any::Any;
-use std::sync::Arc;
-use std::fmt;
-use math::numerics::{ApproxEq, approx_eq};
-use core::qm;
-use core::factories::TypeId;
-use core::factories::{Qrc, Qbox};
-use serde::Deserialize;
+use crate::core::factories::TypeId;
+use crate::core::factories::{Qbox, Qrc};
+use crate::core::qm;
+use crate::math::numerics::{approx_eq, ApproxEq};
+use crate::risk::bumptime::BumpTime;
+use crate::risk::ApproxEqReport;
+use crate::risk::BoxReport;
+use crate::risk::Pricer;
+use crate::risk::RcReportGenerator;
+use crate::risk::Report;
+use crate::risk::ReportGenerator;
+use crate::risk::ReportTolerances;
+use crate::risk::Saveable;
 use erased_serde as esd;
+use serde::Deserialize;
+use std::any::Any;
+use std::fmt;
+use std::sync::Arc;
 
 /// A report of price and risks calculated as of a future date. If no
 /// subreports are requested, it is just a Theta calculator.
@@ -23,49 +23,79 @@ use erased_serde as esd;
 pub struct TimeBumpedReport {
     price: f64,
     theta: f64,
-    subreports: Vec<BoxReport>
+    subreports: Vec<BoxReport>,
 }
 
 impl Report for TimeBumpedReport {
-    fn as_any(&self) -> &dyn Any { self }
-    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 impl TypeId for TimeBumpedReport {
-    fn get_type_id(&self) -> &'static str { "TimeBumpedReport" }
+    fn get_type_id(&self) -> &'static str {
+        "TimeBumpedReport"
+    }
 }
 
 impl TimeBumpedReport {
     pub fn new(price: f64, theta: f64, subreports: Vec<BoxReport>) -> TimeBumpedReport {
-        TimeBumpedReport { price, theta, subreports }
+        TimeBumpedReport {
+            price,
+            theta,
+            subreports,
+        }
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<Qbox<dyn Report>, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<Qbox<dyn Report>, esd::Error> {
         Ok(Qbox::new(Box::new(TimeBumpedReport::deserialize(de)?)))
     }
 
-    pub fn price(&self) -> f64 { self.price }
-    pub fn theta(&self) -> f64 { self.theta }
-    pub fn subreports(&self) -> &[BoxReport] { &self.subreports }
+    pub fn price(&self) -> f64 {
+        self.price
+    }
+    pub fn theta(&self) -> f64 {
+        self.theta
+    }
+    pub fn subreports(&self) -> &[BoxReport] {
+        &self.subreports
+    }
 }
 
 impl<'v> ApproxEq<ReportTolerances, &'v TimeBumpedReport> for &'v TimeBumpedReport {
-    fn validate(self, other: &'v TimeBumpedReport, tol: &ReportTolerances, 
-        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
-
-        // Use the price tolerance for theta as well as bumped price, as Monte-Carlo may not use the 
+    fn validate(
+        self,
+        other: &'v TimeBumpedReport,
+        tol: &ReportTolerances,
+        msg: &str,
+        diffs: &mut fmt::Formatter,
+    ) -> fmt::Result {
+        // Use the price tolerance for theta as well as bumped price, as Monte-Carlo may not use the
         // same random numbers for bumped and unbumped in this case.
         let tolerance = tol.price();
 
         if !approx_eq(self.price, other.price, tolerance) {
-            writeln!(diffs, "TimeBumpedReport: price {} != {} tol={}", self.price, other.price, tolerance)?;
+            writeln!(
+                diffs,
+                "TimeBumpedReport: price {} != {} tol={}",
+                self.price, other.price, tolerance
+            )?;
         }
         if !approx_eq(self.theta, other.theta, tolerance) {
-            writeln!(diffs, "TimeBumpedReport: theta {} != {} tol={}", self.theta, other.theta, tolerance)?;
+            writeln!(
+                diffs,
+                "TimeBumpedReport: theta {} != {} tol={}",
+                self.theta, other.theta, tolerance
+            )?;
         }
 
         if self.subreports.len() != other.subreports.len() {
-            writeln!(diffs, "TimeBumpedReport: number of subreports {} != {}", self.subreports.len(), other.subreports.len())?;
+            writeln!(
+                diffs,
+                "TimeBumpedReport: number of subreports {} != {}",
+                self.subreports.len(),
+                other.subreports.len()
+            )?;
         }
 
         for (subreport, other_subreport) in self.subreports.iter().zip(other.subreports.iter()) {
@@ -77,12 +107,22 @@ impl<'v> ApproxEq<ReportTolerances, &'v TimeBumpedReport> for &'v TimeBumpedRepo
 }
 
 impl ApproxEqReport for TimeBumpedReport {
-    fn validate_report(&self, other: &dyn Report, tol: &ReportTolerances,
-        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result {
+    fn validate_report(
+        &self,
+        other: &dyn Report,
+        tol: &ReportTolerances,
+        msg: &str,
+        diffs: &mut fmt::Formatter,
+    ) -> fmt::Result {
         if let Some(other_report) = other.as_any().downcast_ref::<TimeBumpedReport>() {
             self.validate(other_report, tol, msg, diffs)
         } else {
-            write!(diffs, "TimeBumpedReport: mismatching report {} != {}", self.get_type_id(), other.get_type_id())?;
+            write!(
+                diffs,
+                "TimeBumpedReport: mismatching report {} != {}",
+                self.get_type_id(),
+                other.get_type_id()
+            )?;
             Ok(())
         }
     }
@@ -93,14 +133,17 @@ impl ApproxEqReport for TimeBumpedReport {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TimeBumpedReportGenerator {
     bump: BumpTime,
-    subgenerators: Vec<RcReportGenerator>
+    subgenerators: Vec<RcReportGenerator>,
 }
 
 impl TimeBumpedReportGenerator {
     /// Creates a new TimeBumpedReport generator, which initially just calculates
     /// theta.
     pub fn new(bump: BumpTime) -> TimeBumpedReportGenerator {
-        TimeBumpedReportGenerator { bump, subgenerators: Vec::new() }
+        TimeBumpedReportGenerator {
+            bump,
+            subgenerators: Vec::new(),
+        }
     }
 
     /// Adds a subgenerator, for example calculating delta within the time-forward
@@ -109,23 +152,32 @@ impl TimeBumpedReportGenerator {
         self.subgenerators.push(generator);
     }
 
-    pub fn from_serial<'de>(de: &mut esd::Deserializer<'de>) -> Result<Qrc<ReportGenerator>, esd::Error> {
-        Ok(Qrc::new(Arc::new(TimeBumpedReportGenerator::deserialize(de)?)))
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
+    ) -> Result<Qrc<dyn ReportGenerator>, esd::Error> {
+        Ok(Qrc::new(Arc::new(TimeBumpedReportGenerator::deserialize(
+            de,
+        )?)))
     }
 }
 
 impl TypeId for TimeBumpedReportGenerator {
-    fn get_type_id(&self) -> &'static str { "TimeBumpedReportGenerator" }
+    fn get_type_id(&self) -> &'static str {
+        "TimeBumpedReportGenerator"
+    }
 }
 
 impl ReportGenerator for TimeBumpedReportGenerator {
-    fn generate(&self, pricer: &mut dyn Pricer, saveable: &mut dyn Saveable, unbumped: f64)
-        -> Result<BoxReport, qm::Error> {
-        
+    fn generate(
+        &self,
+        pricer: &mut dyn Pricer,
+        saveable: &mut dyn Saveable,
+        unbumped: f64,
+    ) -> Result<BoxReport, qm::Error> {
         // The time bump irreversibly modifies the pricer. Make a clone of it, to ensure
         // we do not modify the original
         let mut pricer_clone = pricer.clone_box();
-    
+
         // apply the time bump to the cloned pricer
         pricer_clone.bump_time(&self.bump)?;
 
@@ -140,21 +192,25 @@ impl ReportGenerator for TimeBumpedReportGenerator {
             subreports.push(report);
         }
 
-        Ok(Qbox::new(Box::new(TimeBumpedReport::new(time_bumped, theta, subreports))))
+        Ok(Qbox::new(Box::new(TimeBumpedReport::new(
+            time_bumped,
+            theta,
+            subreports,
+        ))))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
-    use risk::deltagamma::tests::sample_pricer;
-    use risk::deltagamma::DeltaGammaReportGenerator;
-    use risk::deltagamma::DeltaGammaReport;
-    use risk::vegavolga::VegaVolgaReportGenerator;
-    use risk::vegavolga::VegaVolgaReport;
-    use data::bumpspotdate::SpotDynamics;
-    use data::bumpvol::BumpVol;
+    use crate::data::bumpspotdate::SpotDynamics;
+    use crate::data::bumpvol::BumpVol;
+    use crate::math::numerics::approx_eq;
+    use crate::risk::deltagamma::tests::sample_pricer;
+    use crate::risk::deltagamma::DeltaGammaReport;
+    use crate::risk::deltagamma::DeltaGammaReportGenerator;
+    use crate::risk::vegavolga::VegaVolgaReport;
+    use crate::risk::vegavolga::VegaVolgaReportGenerator;
 
     #[test]
     fn theta_european_call() {
@@ -168,7 +224,9 @@ mod tests {
         let bump = BumpTime::new(theta_date, theta_date, SpotDynamics::StickyForward);
         let generator = TimeBumpedReportGenerator::new(bump);
         let mut save = pricer.as_bumpable().new_saveable();
-        let report = generator.generate(&mut *pricer, &mut *save, unbumped).unwrap();
+        let report = generator
+            .generate(&mut *pricer, &mut *save, unbumped)
+            .unwrap();
         let results = report.as_any().downcast_ref::<TimeBumpedReport>().unwrap();
         assert_approx(results.price(), 16.696665883860128, 1e-12);
         assert_approx(results.theta(), -0.014051516972845235, 1e-12);
@@ -179,23 +237,35 @@ mod tests {
         // create a pricer for a european at the money call
         let mut pricer = sample_pricer();
         let unbumped = pricer.price().unwrap();
-        
+
         // calculate theta and contained greeks by bumping forward by one day
         let theta_date = pricer.as_bumpable().context().spot_date() + 1;
         let bump = BumpTime::new(theta_date, theta_date, SpotDynamics::StickyForward);
         let mut generator = TimeBumpedReportGenerator::new(bump);
-        generator.add(RcReportGenerator::new(Arc::new(DeltaGammaReportGenerator::new(0.01))));
-        generator.add(RcReportGenerator::new(Arc::new(VegaVolgaReportGenerator::new(BumpVol::new_flat_additive(0.01)))));
+        generator.add(RcReportGenerator::new(Arc::new(
+            DeltaGammaReportGenerator::new(0.01),
+        )));
+        generator.add(RcReportGenerator::new(Arc::new(
+            VegaVolgaReportGenerator::new(BumpVol::new_flat_additive(0.01)),
+        )));
         let mut save = pricer.as_bumpable().new_saveable();
-        let report = generator.generate(&mut *pricer, &mut *save, unbumped).unwrap();
+        let report = generator
+            .generate(&mut *pricer, &mut *save, unbumped)
+            .unwrap();
         let results = report.as_any().downcast_ref::<TimeBumpedReport>().unwrap();
         assert_approx(results.price(), 16.696665883860128, 1e-12);
         assert_approx(results.theta(), -0.014051516972845235, 1e-12);
 
         let subreports = results.subreports();
         assert_eq!(subreports.len(), 2);
-        let delta_gammas = subreports[0].as_any().downcast_ref::<DeltaGammaReport>().unwrap();
-        let vega_volgas = subreports[1].as_any().downcast_ref::<VegaVolgaReport>().unwrap();
+        let delta_gammas = subreports[0]
+            .as_any()
+            .downcast_ref::<DeltaGammaReport>()
+            .unwrap();
+        let vega_volgas = subreports[1]
+            .as_any()
+            .downcast_ref::<VegaVolgaReport>()
+            .unwrap();
         let delta_gamma = delta_gammas.results().get("BP.L").unwrap();
         let vega_volga = vega_volgas.results().get("BP.L").unwrap();
         assert_approx(delta_gamma.delta(), 0.6281208393656919, 1e-12);
@@ -209,7 +279,11 @@ mod tests {
     }
 
     fn assert_approx(value: f64, expected: f64, tolerance: f64) {
-        assert!(approx_eq(value, expected, tolerance),
-            "value={} expected={}", value, expected);
+        assert!(
+            approx_eq(value, expected, tolerance),
+            "value={} expected={}",
+            value,
+            expected
+        );
     }
 }

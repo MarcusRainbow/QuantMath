@@ -1,17 +1,17 @@
-use risk::Bumpable;
-use dates::Date;
-use dates::datetime::DateTime;
-use core::qm;
+use crate::core::qm;
+use crate::data::bump::Bump;
+use crate::data::bumpspotdate::BumpSpotDate;
+use crate::data::bumpspotdate::SpotDynamics;
+use crate::data::fixings::FixingTable;
+use crate::dates::datetime::DateTime;
+use crate::dates::Date;
+use crate::instruments::fix_all;
+use crate::instruments::Instrument;
+use crate::instruments::PricingContext;
+use crate::instruments::RcInstrument;
+use crate::risk::dependencies::DependencyCollector;
+use crate::risk::Bumpable;
 use std::collections::HashMap;
-use instruments::Instrument;
-use instruments::RcInstrument;
-use instruments::fix_all;
-use instruments::PricingContext;
-use data::fixings::FixingTable;
-use data::bumpspotdate::BumpSpotDate;
-use data::bumpspotdate::SpotDynamics;
-use data::bump::Bump;
-use risk::dependencies::DependencyCollector;
 
 /// Bump that defines all the supported bumps to the spot date and ex-from
 /// date. This bump has to live in risk rather than data, because it affects
@@ -19,27 +19,31 @@ use risk::dependencies::DependencyCollector;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BumpTime {
     spot_date_bump: BumpSpotDate,
-    _ex_from: Date
+    _ex_from: Date,
 }
 
 impl BumpTime {
     pub fn new(spot_date: Date, ex_from: Date, spot_dynamics: SpotDynamics) -> BumpTime {
-        BumpTime { spot_date_bump: BumpSpotDate::new(spot_date, spot_dynamics),
-            _ex_from: ex_from }
+        BumpTime {
+            spot_date_bump: BumpSpotDate::new(spot_date, spot_dynamics),
+            _ex_from: ex_from,
+        }
     }
 
     /// Applies the bump to the list of instruments. If the list of instruments has not
     /// changed, it also applies the bump to the model. If the list of instruments has
     /// changed, the model will need to be completely rebuilt. In that case, the method
     /// returns true.
-    pub fn apply(&self, instruments: &mut Vec<(f64, RcInstrument)>,
-        bumpable: &mut Bumpable) -> Result<bool, qm::Error> {
-
+    pub fn apply(
+        &self,
+        instruments: &mut Vec<(f64, RcInstrument)>,
+        bumpable: &mut dyn Bumpable,
+    ) -> Result<bool, qm::Error> {
         // Modify the vector of instruments, if any fixings between the old and new spot dates
         // affect any of them. If any are updated, hold onto the updated list of dependencies.
-        let modified = self.update_instruments(
-            instruments, bumpable.context(), bumpable.dependencies()?)?;
-        
+        let modified =
+            self.update_instruments(instruments, bumpable.context(), bumpable.dependencies()?)?;
+
         // Now apply a bump to the model, to shift the spot date. (TODO it may be inefficient to
         // completely refetch all dependent data if the model will need rebuilding anyway. Maybe
         // pass the modified flag into the new_spot_date bump so the model knows not to do the
@@ -54,9 +58,12 @@ impl BumpTime {
     /// Creates a fixing table representing any fixings between the old and new spot dates, and
     /// applies it to the instruments, modifying the vector if necessary. If any have changed,
     /// returns true.
-    pub fn update_instruments(&self, instruments: &mut Vec<(f64, RcInstrument)>,
-        context: &PricingContext, dependencies: &DependencyCollector) -> Result<bool, qm::Error> {
-
+    pub fn update_instruments(
+        &self,
+        instruments: &mut Vec<(f64, RcInstrument)>,
+        context: &dyn PricingContext,
+        dependencies: &DependencyCollector,
+    ) -> Result<bool, qm::Error> {
         // are there any fixings between the old and new spot dates?
         let old_spot_date = context.spot_date();
         let new_spot_date = self.spot_date_bump.spot_date();
@@ -74,23 +81,26 @@ impl BumpTime {
                         SpotDynamics::StickyForward => {
                             // it looks inefficient to keep fetching the curves each time round
                             // the loop, but by far the most common case has at most one fixing
-                            let inst: &Instrument = &*instrument.clone();
+                            let inst: &dyn Instrument = &*instrument.clone();
                             let curve = context.forward_curve(inst, new_spot_date)?;
-                            curve.forward(date)? },
-                        SpotDynamics::StickySpot => {
-                            context.spot(id)? }
+                            curve.forward(date)?
+                        }
+                        SpotDynamics::StickySpot => context.spot(id)?,
                     };
 
-                    fixing_map.entry(id.to_string()).or_insert(Vec::<(DateTime, f64)>::new())
+                    fixing_map
+                        .entry(id.to_string())
+                        .or_insert(Vec::<(DateTime, f64)>::new())
                         .push((*fixing, value));
-                }           
+                }
             }
         }
 
         // Apply the fixings to each of the instruments, and build up a new vector of them
         let mut any_changes = !fixing_map.is_empty();
         if any_changes {
-            let fixing_table = FixingTable::from_iter_known_until(new_spot_date, fixing_map.iter())?;
+            let fixing_table =
+                FixingTable::from_iter_known_until(new_spot_date, fixing_map.iter())?;
             if let Some(ref mut replacement) = fix_all(instruments, &fixing_table)? {
                 instruments.clear();
                 instruments.append(replacement);

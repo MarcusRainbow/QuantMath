@@ -1,23 +1,23 @@
 pub mod calendar;
-pub mod rules;
 pub mod datetime;
+pub mod rules;
 
-use serde::Serializer;
-use serde::Serialize;
-use serde::Deserializer;
-use serde::Deserialize;
+use crate::core::qm;
+use crate::math::interpolation::Interpolable;
 use serde::de::Error;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
+use std::cmp::Ordering;
+use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Display;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Sub;
 use std::ops::SubAssign;
-use std::fmt;
-use std::fmt::Debug;
-use std::fmt::Display;
 use std::str::FromStr;
-use std::cmp::Ordering;
-use core::qm;
-use math::interpolation::Interpolable;
 
 /// Date represents a date in risk space. In practice, this starts at the
 /// open in Tokyo and finishes at the close in Chicago. (There are no
@@ -53,7 +53,7 @@ use math::interpolation::Interpolable;
 /// integer represents infinite date, which sorts after any date. Unknown
 /// dates are represented by negative infinite date. (Consider adding a
 /// third special date for this, but I don't think it is needed.)
- 
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Date(i32);
 
@@ -67,7 +67,7 @@ impl Add<i32> for Date {
 }
 
 impl AddAssign<i32> for Date {
-    fn add_assign(&mut self, other: i32) { 
+    fn add_assign(&mut self, other: i32) {
         // todo: handle overflow?
         self.0 += other;
     }
@@ -101,17 +101,16 @@ impl FromStr for Date {
     /// Reads a date from a string, which must be an ISO format date
     /// of the form YYYY-MM-DD
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-
         // It upsets me how inefficient this is. In C I'd use scanf,
         // which would allow me to parse the string without any heap
         // access or intermediate objects.
-        let ymd: Vec<&str> = s.split("-").collect();
+        let ymd: Vec<&str> = s.split('-').collect();
 
         let mut array: [i32; 3] = [0; 3];
         for (i, elem) in array.iter_mut().enumerate() {
             *elem = match ymd[i].parse::<i32>() {
                 Ok(number) => number,
-                Err(_e) => return Err(qm::Error::new(s))
+                Err(_e) => return Err(qm::Error::new(s)),
             };
         }
 
@@ -119,7 +118,7 @@ impl FromStr for Date {
         // before returning it
         let result = Date::from_ymd(array[0], array[1], array[2]);
         if !result.is_valid() {
-            return Err(qm::Error::new(s))
+            return Err(qm::Error::new(s));
         }
 
         Ok(result)
@@ -128,8 +127,9 @@ impl FromStr for Date {
 
 impl Serialize for Date {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer {
-
+    where
+        S: Serializer,
+    {
         // TODO try to find a way of serializing that does not involve
         // unnecessarily constructing a string
         let s = format!("{}", self);
@@ -139,14 +139,15 @@ impl Serialize for Date {
 
 impl<'de> Deserialize<'de> for Date {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where D: Deserializer<'de> {
-
+    where
+        D: Deserializer<'de>,
+    {
         // TODO try to find a way of deserializing that does not involve
         // unnecessarily constructing a string
         let s = String::deserialize(deserializer)?;
         match Date::from_str(&s) {
             Ok(date) => Ok(date),
-            Err(e) => Err(Error::custom(e.to_string()))
+            Err(e) => Err(Error::custom(e.to_string())),
         }
     }
 }
@@ -172,7 +173,8 @@ impl Debug for Date {
             4 => "Fri",
             5 => "Sat",
             6 => "Sun",
-            _ => "???"};
+            _ => "???",
+        };
 
         write!(f, "{} {:04}-{:02}-{:02}", day, y, m, d)
     }
@@ -234,8 +236,8 @@ impl Date {
     /// Returns 0 for Monday, 1 for Tuesday,..., 6 for Sunday
     /// Panics if not a valid date
     pub fn day_of_week(self) -> i32 {
-        assert!(self.is_valid());	// for example, ensure self.0 > 0
-        (self.0 + 3) % 7                // because the epoch was Friday
+        assert!(self.is_valid()); // for example, ensure self.0 > 0
+        (self.0 + 3) % 7 // because the epoch was Friday
     }
 }
 
@@ -244,7 +246,7 @@ impl Date {
 pub fn truncated_julian_from_ymd(year: i32, month: i32, date: i32) -> i32 {
     let year_month = (month - 14) / 12;
     let julian = date - 32075
-        + 1461 * (year + 4800 + year_month) / 4 
+        + 1461 * (year + 4800 + year_month) / 4
         + 367 * (month - 2 - year_month * 12) / 12
         - 3 * ((year + 4900 + year_month) / 100) / 4;
     julian - 2440000
@@ -270,10 +272,10 @@ pub fn ymd_from_truncated_julian(truncated_julian: i32) -> (i32, i32, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use math::numerics::approx_eq;
-    use math::interpolation::Linear;
-    use math::interpolation::Extrap;
-    use math::interpolation::Interpolate;
+    use crate::math::interpolation::Extrap;
+    use crate::math::interpolation::Interpolate;
+    use crate::math::interpolation::Linear;
+    use crate::math::numerics::approx_eq;
     use serde_json;
 
     #[test]
@@ -317,7 +319,6 @@ mod tests {
     fn round_trip_date_via_ymd() {
         // roughly from 1970 to 2120
         for i in 588..(588 + 150 * 365) {
-
             // create a date from a julian and from the equivalent year,
             // month and date, and validate that they match
             let d1 = Date::from_truncated_julian(i);
@@ -350,7 +351,7 @@ mod tests {
             Err(e) => {
                 let message = format!("{}", e);
                 assert!(message.contains(text));
-            } 
+            }
         }
     }
 
@@ -365,7 +366,6 @@ mod tests {
     fn round_trip_date_via_string() {
         // roughly from 1970 to 2120
         for i in 588..(588 + 150 * 365) {
-
             // create a date from a julian, then try round-tripping via
             // text and check that they match
             let d1 = Date::from_truncated_julian(i);
@@ -387,7 +387,6 @@ mod tests {
 
     #[test]
     fn add_and_subtract_dates() {
-
         // + operator taking a date and an integer
         let thursday = Date::from_ymd(2018, 05, 10);
         let saturday = thursday + 2;
@@ -413,7 +412,6 @@ mod tests {
 
     #[test]
     fn equality_and_order_for_dates() {
-
         let thursday = Date::from_ymd(2018, 05, 10);
         let friday = thursday + 1;
         let thursday2 = friday - 1;
@@ -430,11 +428,9 @@ mod tests {
 
     #[test]
     fn interpolate_dates() {
-
         let d = Date::from_ymd(2018, 05, 10);
         let points = [(d, 0.0), (d + 2, 3.0), (d + 4, 8.0), (d + 6, 10.0)];
-        let interp = Linear::new(&points, Extrap::Flat, Extrap::Flat)
-            .unwrap();
+        let interp = Linear::new(&points, Extrap::Flat, Extrap::Flat).unwrap();
         let tol = 1e-12;
 
         let y1 = interp.interpolate(d - 1);
@@ -461,7 +457,6 @@ mod tests {
 
     #[test]
     fn date_serde() {
-    
         // a struct with dates in it
         let date = Date::from_ymd(2018, 05, 10);
 
@@ -477,12 +472,11 @@ mod tests {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
     struct Foo {
         start: Date,
-        end: Date
+        end: Date,
     }
 
     #[test]
     fn contained_date_serde() {
-    
         // a struct with dates in it
         let start = Date::from_ymd(2018, 05, 10);
         let end = start + 10;

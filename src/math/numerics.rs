@@ -1,4 +1,3 @@
-
 use std::fmt;
 
 /// Compares two floating point numbers for equality, with margin for error
@@ -16,14 +15,12 @@ pub fn approx_eq(first: f64, second: f64, tolerance: f64) -> bool {
 /// the largest acceptable difference is max(a, b, c) * tol. This means
 /// that gamma calculations have a tolerance much greater than tol * gamma.
 pub trait ApproxEq<T, Rhs: ?Sized = Self> {
-
     /// Are the two objects approximately the same? If so, return without doing anything. If they are
     /// different, write a description of the differences to the diffs parameter. If the diffs ends up
     /// not having been written to, treat this as success. Returns an error if the formatter fails or
     /// if the objects are so different they cannot be compared. The tol parameter changes its type and
     /// meaning depending on what is being valued.
-    fn validate(self, other: Rhs, tol: &T,
-        msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result;
+    fn validate(self, other: Rhs, tol: &T, msg: &str, diffs: &mut fmt::Formatter) -> fmt::Result;
 }
 
 /*
@@ -31,7 +28,7 @@ pub trait ApproxEq<T, Rhs: ?Sized = Self> {
  * ApproxEq for the underlying type. For now, we implement it specifically for
  * BoxReport, which is the only place that needs it.
 impl<'v, T, V> ApproxEq<T, &'v [V]> for &'v [V]
-where 
+where
     V: ApproxEq<T, &'v V>
 {
     fn validate(self, other: &'v [V], tol: &T,
@@ -47,7 +44,7 @@ where
 
         Ok(())
     }
-} 
+}
 */
 
 #[cfg(test)]
@@ -60,4 +57,3 @@ mod tests {
         assert!(!approx_eq(123.456, 123.4562, 0.0001));
     }
 }
-

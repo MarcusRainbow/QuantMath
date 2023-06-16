@@ -6,7 +6,6 @@ use dates::Date;
 /// itself, as this is very often what we want. It is easy to calculate the
 /// discount yourself if you need it, using exp.
 pub trait Discount {
-
     /// Returns the log of the discount factor from the given date to the
     /// base date. If you want the discount factor to any other date, you
     /// must ask for two discount factors and do a division (or subtraction
@@ -26,7 +25,6 @@ pub trait Discount {
 
 /// Forward curve
 pub trait Forward {
-
     /// Returns the forward on the given date. For example, this may be
     /// the equity forward. In almost all cases, forwards can be considered
     /// piecewise constant over a day. The exception is where there is a
@@ -37,16 +35,16 @@ pub trait Forward {
 /// A volatility surface is externally represented as a variance, which means
 /// we do not have to deal in time outside the vol surface.
 pub trait Variance {
-
     /// Returns the variances on the given date and time fraction, for a
     /// range of strikes. The day fraction runs from zero at the very start of
     /// the day to one at the end of the day. Known times such as 'open' and
     /// 'close' are somewhere in this range, where the exact position depends
     /// on the asset.
-    fn variances(&self,
-        date: Date, 
+    fn variances(
+        &self,
+        date: Date,
         day_fraction: f64,
-        strikes: &[f64], 
-        variances: &mut[f64]) -> Result<(), qm::Error>;
+        strikes: &[f64],
+        variances: &mut [f64],
+    ) -> Result<(), qm::Error>;
 }
-

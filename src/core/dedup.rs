@@ -1,18 +1,18 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::cell::RefCell;
-use std::fmt;
-use std::fmt::Debug;
-use std::ops::Deref;
-use std::thread::LocalKey;
-use std::mem::swap;
-use std::marker::PhantomData;
-use std::marker::Sized;
 use serde as sd;
+use serde::de::Visitor;
 use serde::ser::Error;
 use serde::Deserialize;
 use serde::Deserializer;
-use serde::de::Visitor;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::marker::Sized;
+use std::mem::swap;
+use std::ops::Deref;
+use std::sync::Arc;
+use std::thread::LocalKey;
 
 /// Technology to deduplicate directed acyclic graphs based on Rc pointers
 /// during serialization and deserialization.
@@ -23,7 +23,7 @@ where
     Drc<T, R>: FromId,
 {
     control: DedupControl,
-    map: HashMap<String, Drc<T, R>>
+    map: HashMap<String, Drc<T, R>>,
 }
 
 impl<T, R> Dedup<T, R>
@@ -35,11 +35,12 @@ where
     pub fn new(control: DedupControl, map: HashMap<String, Drc<T, R>>) -> Self {
         Dedup { control, map }
     }
-   
-    /// Run the supplied closure in the context of this Dedup state
-    pub fn with<F, Q>(&mut self, tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>, f: F) -> Q 
-    where F: FnOnce() -> Q {
 
+    /// Run the supplied closure in the context of this Dedup state
+    pub fn with<F, Q>(&mut self, tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>, f: F) -> Q
+    where
+        F: FnOnce() -> Q,
+    {
         // store our state in a thread-local variable, as there is no other way of
         // passing state through the serialize stack
         tls_seed.with(|s| {
@@ -58,7 +59,9 @@ where
         result
     }
 
-    pub fn control(&self) -> &DedupControl { &self.control }
+    pub fn control(&self) -> &DedupControl {
+        &self.control
+    }
 
     /// Tries to insert the element into the map. If it was inserted, returns None, otherwise
     /// returns the old value.
@@ -68,11 +71,7 @@ where
 
     /// Finds an element given a string, or returns None if not found.
     pub fn get(&self, id: &str) -> Option<Drc<T, R>> {
-        if let Some(element) = self.map.get(id) {
-            Some(element.clone())
-        } else {
-            None
-        }
+        self.map.get(id).cloned()
     }
 
     /// Returns true if the map contains this key
@@ -89,7 +88,7 @@ pub enum DedupControl {
     /// serialize with all components recursed inline
     Inline,
     /// when serializing, write once, then reuse
-    WriteOnce
+    WriteOnce,
 }
 
 /// Objects that can be deduplicated have to have a unique instance id
@@ -116,8 +115,8 @@ where
     T: InstanceId + Debug + Send + Sync + ?Sized,
     R: Deref<Target = T> + Clone + Send + Sync,
     Drc<T, R>: FromId;
-    
-impl<T, R> Drc<T, R> 
+
+impl<T, R> Drc<T, R>
 where
     T: InstanceId + Debug + Send + Sync + ?Sized,
     R: Deref<Target = T> + Clone + Send + Sync,
@@ -127,16 +126,21 @@ where
         Drc(value)
     }
 
-    pub fn content(&self) -> &R { &self.0 }
+    pub fn content(&self) -> &R {
+        &self.0
+    }
 
-    pub fn serialize_with_dedup<S, F>(&self, serializer: S,
+    pub fn serialize_with_dedup<S, F>(
+        &self,
+        serializer: S,
         tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>,
-        serialize: F) -> Result<S::Ok, S::Error>
+        serialize: F,
+    ) -> Result<S::Ok, S::Error>
     where
         S: sd::Serializer,
-        F: FnOnce(S) -> Result<S::Ok, S::Error> {
-
-        let control = tls_seed.with(|tls| tls.borrow().control().clone());
+        F: FnOnce(S) -> Result<S::Ok, S::Error>,
+    {
+        let control = tls_seed.with(|tls| *tls.borrow().control());
         match control {
             // Inline serialization means we just recurse into the shared pointer. There is
             // no deduplication.
@@ -147,7 +151,7 @@ where
                 let id = self.0.id();
                 let has_key = tls_seed.with(|tls| tls.borrow().contains_key(id));
                 if !has_key {
-                    Err(S::Error::custom(&format!("Unknown id: {}", id)))
+                    Err(S::Error::custom(format!("Unknown id: {}", id)))
                 } else {
                     serializer.serialize_str(id)
                 }
@@ -157,7 +161,7 @@ where
             // if it is not there
             DedupControl::WriteOnce => {
                 let prev = tls_seed.with(|tls| tls.borrow_mut().insert(self.clone()));
-                if let None = prev {
+                if prev.is_none() {
                     serialize(serializer)
                 } else {
                     serializer.serialize_str(self.0.id())
@@ -166,26 +170,24 @@ where
         }
     }
 
-    pub fn deserialize_with_dedup<'de, D, F>(deserializer: D,
+    pub fn deserialize_with_dedup<'de, D, F>(
+        deserializer: D,
         tls_seed: &'static LocalKey<RefCell<Dedup<T, R>>>,
-        deserialize: F) -> Result<Self, D::Error>
-    where 
+        deserialize: F,
+    ) -> Result<Self, D::Error>
+    where
         D: sd::Deserializer<'de>,
-        F: FnOnce(D) -> Result<Self, D::Error>
+        F: FnOnce(D) -> Result<Self, D::Error>,
     {
-        let control = tls_seed.with(|tls| tls.borrow().control().clone());
+        let control = tls_seed.with(|tls| *tls.borrow().control());
         match control {
             // Inline deserialization means we assume the serial form contains the definition
             // of the data inline. Simply recurse into it.
-            DedupControl::Inline => {
-                deserialize(deserializer)
-            },
+            DedupControl::Inline => deserialize(deserializer),
 
             // ErrorIfMissing means all subcomponents should be supplied in the map. We should just
             // be looking for a string.
-            DedupControl::ErrorIfMissing => {
-                deserialize(deserializer)
-            },
+            DedupControl::ErrorIfMissing => deserialize(deserializer),
 
             // WriteOnce means we look for the component in the map, and write it and insert it
             // if it is not there
@@ -209,7 +211,7 @@ where
     }
 }
 
-impl<T, R> Deref for Drc<T, R> 
+impl<T, R> Deref for Drc<T, R>
 where
     T: InstanceId + Debug + Send + Sync + ?Sized,
     R: Deref<Target = T> + Clone + Send + Sync,
@@ -222,7 +224,7 @@ where
     }
 }
 
-impl<T, R> Debug for Drc<T, R> 
+impl<T, R> Debug for Drc<T, R>
 where
     T: InstanceId + Debug + Send + Sync + ?Sized,
     R: Deref<Target = T> + Clone + Send + Sync,
@@ -234,7 +236,10 @@ where
 }
 
 /// Interface that fetches an instance of an object given its ID.
-pub trait FromId where Self: Sized {
+pub trait FromId
+where
+    Self: Sized,
+{
     fn from_id(id: &str) -> Option<Self>;
 }
 
@@ -274,7 +279,10 @@ where
             if let Some(result) = FromId::from_id(value) {
                 Ok(result)
             } else {
-                Err(sd::de::Error::invalid_value(sd::de::Unexpected::Str(value), &self))
+                Err(sd::de::Error::invalid_value(
+                    sd::de::Unexpected::Str(value),
+                    &self,
+                ))
             }
         }
 
@@ -286,7 +294,8 @@ where
             // into a `Deserializer`, allowing it to be used as the input to T's
             // `Deserialize` implementation. T then deserializes itself using
             // the entries from the map visitor.
-            let obj: T = Deserialize::deserialize(sd::de::value::MapAccessDeserializer::new(visitor))?;
+            let obj: T =
+                Deserialize::deserialize(sd::de::value::MapAccessDeserializer::new(visitor))?;
             Ok(Drc::new(obj.wrap()))
         }
     }
@@ -302,7 +311,7 @@ pub fn dedup_map_from_slice<T, R>(slice: &[Drc<T, R>]) -> HashMap<String, Drc<T,
 where
     T: InstanceId + Debug + Send + Sync + ?Sized,
     R: Deref<Target = T> + Clone + Send + Sync,
-    Drc<T, R>: FromId
+    Drc<T, R>: FromId,
 {
     let mut map = HashMap::new();
     for item in slice.iter() {
@@ -315,9 +324,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
     use serde::Deserialize;
     use serde::Serialize;
+    use serde_json;
 
     /// an example node from a DAG (here a binary tree)
     #[derive(Serialize, Deserialize, Debug)]
@@ -325,46 +334,54 @@ mod tests {
         id: String,
         data: i32,
         left: Option<Drc<Node, Arc<Node>>>,
-        right: Option<Drc<Node, Arc<Node>>>
+        right: Option<Drc<Node, Arc<Node>>>,
     }
 
     thread_local! {
-        static DEDUP_NODE : RefCell<Dedup<Node, Arc<Node>>> 
+        static DEDUP_NODE : RefCell<Dedup<Node, Arc<Node>>>
             = RefCell::new(Dedup::new(DedupControl::Inline, HashMap::new()));
     }
 
     type DrcNode = Drc<Node, Arc<Node>>;
 
     impl InstanceId for Node {
-        fn id(&self) -> &str { &self.id }
+        fn id(&self) -> &str {
+            &self.id
+        }
     }
 
     impl FromId for DrcNode {
         fn from_id(id: &str) -> Option<Self> {
-            DEDUP_NODE.with(|tls| tls.borrow().get(id).clone())
+            DEDUP_NODE.with(|tls| tls.borrow().get(id))
         }
     }
 
     impl sd::Serialize for DrcNode {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: sd::Serializer {
-            self.serialize_with_dedup(serializer, &DEDUP_NODE,
-                |s| self.0.serialize(s))
+        where
+            S: sd::Serializer,
+        {
+            self.serialize_with_dedup(serializer, &DEDUP_NODE, |s| self.0.serialize(s))
         }
     }
 
     impl<'de> sd::Deserialize<'de> for DrcNode {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where D: sd::Deserializer<'de> {
-            Self::deserialize_with_dedup(deserializer, &DEDUP_NODE, 
-                |d| string_or_struct::<Node, Arc<Node>, D>(d))
+        where
+            D: sd::Deserializer<'de>,
+        {
+            Self::deserialize_with_dedup(deserializer, &DEDUP_NODE, |d| {
+                string_or_struct::<Node, Arc<Node>, D>(d)
+            })
         }
     }
 
     #[test]
     fn serde_dedup_inline() {
-
-        test_dedup(DedupControl::Inline, HashMap::new(), r###"{
+        test_dedup(
+            DedupControl::Inline,
+            HashMap::new(),
+            r###"{
   "id": "e",
   "data": 4,
   "left": {
@@ -399,34 +416,61 @@ mod tests {
       "right": null
     }
   }
-}"###);
+}"###,
+        );
     }
 
     #[test]
     fn serde_dedup_error_if_missing() {
+        let a = DrcNode::new(Arc::new(Node {
+            id: "a".to_string(),
+            data: 0,
+            left: None,
+            right: None,
+        }));
+        let b = DrcNode::new(Arc::new(Node {
+            id: "b".to_string(),
+            data: 1,
+            left: None,
+            right: None,
+        }));
+        let c = DrcNode::new(Arc::new(Node {
+            id: "c".to_string(),
+            data: 2,
+            left: Some(a.clone()),
+            right: Some(b.clone()),
+        }));
+        let d = DrcNode::new(Arc::new(Node {
+            id: "d".to_string(),
+            data: 3,
+            left: Some(a.clone()),
+            right: Some(b.clone()),
+        }));
 
-        let a = DrcNode::new(Arc::new(Node { id: "a".to_string(), data: 0, left: None, right: None }));
-        let b = DrcNode::new(Arc::new(Node { id: "b".to_string(), data: 1, left: None, right: None }));
-        let c = DrcNode::new(Arc::new(Node { id: "c".to_string(), data: 2, left: Some(a.clone()), right: Some(b.clone()) }));
-        let d = DrcNode::new(Arc::new(Node { id: "d".to_string(), data: 3, left: Some(a.clone()), right: Some(b.clone()) }));
-        
         let mut map = HashMap::new();
         map.insert("a".to_string(), a);
         map.insert("b".to_string(), b);
         map.insert("c".to_string(), c);
         map.insert("d".to_string(), d);
 
-        test_dedup(DedupControl::ErrorIfMissing, map, r###"{
+        test_dedup(
+            DedupControl::ErrorIfMissing,
+            map,
+            r###"{
   "id": "e",
   "data": 4,
   "left": "c",
   "right": "d"
-}"###);
+}"###,
+        );
     }
 
     #[test]
     fn serde_dedup_write_once() {
-        test_dedup(DedupControl::WriteOnce, HashMap::new(), r###"{
+        test_dedup(
+            DedupControl::WriteOnce,
+            HashMap::new(),
+            r###"{
   "id": "e",
   "data": 4,
   "left": {
@@ -451,24 +495,50 @@ mod tests {
     "left": "a",
     "right": "b"
   }
-}"###);
+}"###,
+        );
     }
 
     fn test_dedup(control: DedupControl, map: HashMap<String, DrcNode>, expected: &str) {
-
         // create a sample graph
-        let a = DrcNode::new(Arc::new(Node { id: "a".to_string(), data: 0, left: None, right: None }));
-        let b = DrcNode::new(Arc::new(Node { id: "b".to_string(), data: 1, left: None, right: None }));
-        let c = DrcNode::new(Arc::new(Node { id: "c".to_string(), data: 2, left: Some(a.clone()), right: Some(b.clone()) }));
-        let d = DrcNode::new(Arc::new(Node { id: "d".to_string(), data: 3, left: Some(a.clone()), right: Some(b.clone()) }));
-        let e = Node { id: "e".to_string(), data: 4, left: Some(c.clone()), right: Some(d.clone()) };
+        let a = DrcNode::new(Arc::new(Node {
+            id: "a".to_string(),
+            data: 0,
+            left: None,
+            right: None,
+        }));
+        let b = DrcNode::new(Arc::new(Node {
+            id: "b".to_string(),
+            data: 1,
+            left: None,
+            right: None,
+        }));
+        let c = DrcNode::new(Arc::new(Node {
+            id: "c".to_string(),
+            data: 2,
+            left: Some(a.clone()),
+            right: Some(b.clone()),
+        }));
+        let d = DrcNode::new(Arc::new(Node {
+            id: "d".to_string(),
+            data: 3,
+            left: Some(a),
+            right: Some(b),
+        }));
+        let e = Node {
+            id: "e".to_string(),
+            data: 4,
+            left: Some(c),
+            right: Some(d),
+        };
 
         // write it out and read it back in
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut seed = Dedup::<Node, Arc<Node>>::new(control.clone(), map.clone());
-            seed.with(&DEDUP_NODE, || e.serialize(&mut serializer)).unwrap();
+            let mut seed = Dedup::<Node, Arc<Node>>::new(control, map.clone());
+            seed.with(&DEDUP_NODE, || e.serialize(&mut serializer))
+                .unwrap();
         }
 
         let json = String::from_utf8(buffer.clone()).unwrap();
@@ -477,8 +547,9 @@ mod tests {
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut seed = Dedup::<Node, Arc<Node>>::new(control.clone(), map.clone());
-            seed.with(&DEDUP_NODE, || DrcNode::deserialize(&mut deserializer)).unwrap()
+            let mut seed = Dedup::<Node, Arc<Node>>::new(control, map);
+            seed.with(&DEDUP_NODE, || DrcNode::deserialize(&mut deserializer))
+                .unwrap()
         };
 
         let e_debug = format!("{:?}", e);

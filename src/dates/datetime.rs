@@ -1,10 +1,10 @@
-use dates::Date;
-use math::interpolation::Interpolable;
+use crate::dates::Date;
+use crate::math::interpolation::Interpolable;
 use std::cmp::Ordering;
+use std::fmt;
+use std::fmt::Display;
 use std::ops::Add;
 use std::ops::AddAssign;
-use std::fmt::Display;
-use std::fmt;
 
 /// We define some commonly used times of day. These map to different amounts
 /// of volatility day_fraction depending on the exchange etc.
@@ -22,7 +22,7 @@ use std::fmt;
 pub enum TimeOfDay {
     Open,
     EDSP,
-    Close
+    Close,
 }
 
 impl Display for TimeOfDay {
@@ -30,7 +30,7 @@ impl Display for TimeOfDay {
         match *self {
             TimeOfDay::Open => write!(f, "Open"),
             TimeOfDay::Close => write!(f, "Close"),
-            TimeOfDay::EDSP => write!(f, "EDSP")
+            TimeOfDay::EDSP => write!(f, "EDSP"),
         }
     }
 }
@@ -40,16 +40,23 @@ impl Display for TimeOfDay {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct DateTime {
     date: Date,
-    time_of_day: TimeOfDay
+    time_of_day: TimeOfDay,
 }
 
 impl DateTime {
     pub fn new(date: Date, time_of_day: TimeOfDay) -> DateTime {
-        DateTime { date: date, time_of_day: time_of_day }
+        DateTime {
+            date,
+            time_of_day,
+        }
     }
 
-    pub fn date(&self) -> Date { self.date }
-    pub fn time_of_day(&self) -> TimeOfDay { self.time_of_day }
+    pub fn date(&self) -> Date {
+        self.date
+    }
+    pub fn time_of_day(&self) -> TimeOfDay {
+        self.time_of_day
+    }
 }
 
 impl Add<i32> for DateTime {
@@ -76,24 +83,31 @@ impl Display for DateTime {
 /// TimeOfDay enums is not defined.
 
 /// Day-fractions are pretty much only used for volatilities and correlations.
-/// The time is a fraction between 0 and 1 that represents the fraction of 
+/// The time is a fraction between 0 and 1 that represents the fraction of
 /// volatility time of the current day. Vol time is a monotonic function of
 /// real time, but certainly not a linear one, and it varies depending on the
 /// location and even the underlier.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct DateDayFraction {
     date: Date,
-    day_fraction: f64
+    day_fraction: f64,
 }
 
 impl DateDayFraction {
     pub fn new(date: Date, day_fraction: f64) -> DateDayFraction {
-        assert!(day_fraction >= 0.0 && day_fraction < 1.0);
-        DateDayFraction { date: date, day_fraction: day_fraction }
+        assert!((0.0..1.0).contains(&day_fraction));
+        DateDayFraction {
+            date,
+            day_fraction,
+        }
     }
 
-    pub fn date(&self) -> Date { self.date }
-    pub fn day_fraction(&self) -> f64 { self.day_fraction }
+    pub fn date(&self) -> Date {
+        self.date
+    }
+    pub fn day_fraction(&self) -> f64 {
+        self.day_fraction
+    }
 }
 
 impl Add<i32> for DateDayFraction {
@@ -112,7 +126,8 @@ impl AddAssign<i32> for DateDayFraction {
 
 impl Ord for DateDayFraction {
     fn cmp(&self, other: &DateDayFraction) -> Ordering {
-        self.partial_cmp(&other).expect("Non-orderable day fraction found in DateDayFraction")
+        self.partial_cmp(other)
+            .expect("Non-orderable day fraction found in DateDayFraction")
     }
 }
 
@@ -129,19 +144,17 @@ impl Eq for DateDayFraction {}
 /// ordering of DateDayFraction.
 impl Interpolable<DateDayFraction> for DateDayFraction {
     fn interp_diff(&self, other: DateDayFraction) -> f64 {
-        (other.date - self.date) as f64
-            + other.day_fraction - self.day_fraction
+        (other.date - self.date) as f64 + other.day_fraction - self.day_fraction
     }
 
     fn interp_cmp(&self, other: DateDayFraction) -> Ordering {
-
         // We cannot use self.cmp because day_fraction is an f64,
         // which only supports partial ordering. However, we know
         // the day fraction is not NaN (see DateDayFraction::new)
         // so we can just panic if the order does not exist.
         match self.partial_cmp(&other) {
             Some(order) => order,
-            None => panic!("DateDayFraction contains NaN day-fraction")
+            None => panic!("DateDayFraction contains NaN day-fraction"),
         }
     }
 }
@@ -152,7 +165,6 @@ mod tests {
 
     #[test]
     fn equality_and_order_for_date_times() {
-
         let thursday = Date::from_ymd(2018, 05, 10);
         let thursday_early = DateTime::new(thursday, TimeOfDay::Open);
         let thursday_late = DateTime::new(thursday, TimeOfDay::Close);
@@ -172,7 +184,6 @@ mod tests {
 
     #[test]
     fn equality_and_order_for_date_day_fractions() {
-
         let thursday = Date::from_ymd(2018, 05, 10);
         let thursday_early = DateDayFraction::new(thursday, 0.1);
         let thursday_late = DateDayFraction::new(thursday, 0.9);

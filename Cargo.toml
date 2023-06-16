@@ -1,9 +1,15 @@
 [package]
 name = "quantmath"
 version = "0.1.0"
+edition = '2021'
 authors = ["Marcus Rainbow"]
 license = "MIT"
-description = "A library of quantitative maths and a framework for quantitative valuation and risk"
+description = "A library of quantitative maths and a framework for quantitative valuation and risk."
+
+[lib]
+name = "quantmath"
+path = "src/lib.rs"
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
 statrs = "0.9.0"
@@ -18,8 +24,3 @@ serde_tagged = "0.2.0"
 lazy_static = "1.0"
 void = "1"
 libc = "0.2"
-
-[lib]
-name = "quantmath"
-path = "src/lib.rs"
-crate-type = ["lib", "cdylib"]
