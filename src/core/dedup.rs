@@ -161,7 +161,7 @@ where
             // if it is not there
             DedupControl::WriteOnce => {
                 let prev = tls_seed.with(|tls| tls.borrow_mut().insert(self.clone()));
-                if let None = prev {
+                if prev.is_none() {
                     serialize(serializer)
                 } else {
                     serializer.serialize_str(self.0.id())

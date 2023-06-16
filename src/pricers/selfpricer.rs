@@ -41,6 +41,12 @@ pub struct SelfPricerFactory {
     // no parameterisation for self-pricers
 }
 
+impl Default for SelfPricerFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SelfPricerFactory {
     pub fn new() -> SelfPricerFactory {
         SelfPricerFactory {}

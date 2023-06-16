@@ -68,6 +68,12 @@ impl TypeId for NullRule {
     }
 }
 
+impl Default for NullRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NullRule {
     pub fn new() -> NullRule {
         NullRule {}

@@ -390,6 +390,12 @@ pub struct SavedPrefetch {
     vol_surfaces: HashMap<String, RcVolSurface>,
 }
 
+impl Default for SavedPrefetch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SavedPrefetch {
     /// Creates an empty market data object, which can be used for saving state
     /// so it can be restored after a bump

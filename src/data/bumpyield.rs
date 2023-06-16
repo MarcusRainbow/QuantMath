@@ -23,15 +23,15 @@ impl BumpYield {
 
 impl Bumper<RcRateCurve> for BumpYield {
     fn apply(&self, surface: RcRateCurve) -> RcRateCurve {
-        match self {
-            &BumpYield::FlatAnnualised { size } => {
+        match *self {
+            BumpYield::FlatAnnualised { size } => {
                 RcRateCurve::new(Arc::new(AnnualisedFlatBump::new(surface.clone(), size)))
             }
 
             // Note that an alternative methodology here would be to
             // bump the pillars. Consider this if profiling shows this
             // to be a bottleneck.
-            &BumpYield::FlatContinuouslyCompounded { size } => RcRateCurve::new(Arc::new(
+            BumpYield::FlatContinuouslyCompounded { size } => RcRateCurve::new(Arc::new(
                 ContinuouslyCompoundedFlatBump::new(surface.clone(), size),
             )),
         }

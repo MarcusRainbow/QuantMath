@@ -425,6 +425,12 @@ impl SavedData {
     }
 }
 
+impl Default for SavedData {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Saveable for SavedData {
     fn as_any(&self) -> &dyn Any {
         self

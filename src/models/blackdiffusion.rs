@@ -285,7 +285,7 @@ impl BlackDiffusion {
 pub fn calculate_substepping(
     observations: &[DateDayFraction],
     context: &dyn PricingContext,
-    instruments: &Vec<RcInstrument>,
+    instruments: &[RcInstrument],
     path_substep: f64,
 ) -> Result<Vec<usize>, qm::Error> {
     let n_obs = observations.len();

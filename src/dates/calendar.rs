@@ -146,6 +146,12 @@ impl TypeId for EveryDayCalendar {
     }
 }
 
+impl Default for EveryDayCalendar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EveryDayCalendar {
     pub fn new() -> EveryDayCalendar {
         EveryDayCalendar {}
@@ -202,6 +208,12 @@ pub struct WeekdayCalendar();
 impl TypeId for WeekdayCalendar {
     fn get_type_id(&self) -> &'static str {
         "WeekdayCalendar"
+    }
+}
+
+impl Default for WeekdayCalendar {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -287,7 +299,7 @@ impl Calendar for WeekdayCalendar {
         // to end up on the Tuesday, not Monday.
         let week_day = to.day_of_week();
         if week_day < 5 {
-            to// already on a business day
+            to // already on a business day
         } else if step > 0 {
             return to + 2; // following Monday or Tuesday
         } else {
@@ -308,7 +320,7 @@ impl Calendar for WeekdayCalendar {
 fn slip_to_next_weekday(from: Date, slip_forward: bool) -> Date {
     let week_day = from.day_of_week();
     if week_day < 5 {
-        from// already on a business day
+        from // already on a business day
     } else if slip_forward {
         return from + 7 - week_day; // following Monday
     } else {

@@ -297,11 +297,7 @@ pub mod extern_handle {
     /// Tests whether a handle contains an error. Never consumes the handle. This function
     /// must never panic, as it is invoked direct from C.
     pub fn is_error(handle: u64) -> bool {
-        if let &Handle::Err(_) = handle_from_ext(handle) {
-            true
-        } else {
-            false
-        }
+        matches!(handle_from_ext(handle), &Handle::Err(_))
     }
 
     /// The handle is freed as a result of this call. This function

@@ -29,10 +29,10 @@ impl BumpVol {
     }
 
     pub fn bumpsize(&self) -> f64 {
-        match self {
-            &BumpVol::FlatAdditive { size } => size,
-            &BumpVol::TimeScaled { size, floor: _ } => size,
-            &BumpVol::Replace { vol: _ } => NAN,
+        match *self {
+            BumpVol::FlatAdditive { size } => size,
+            BumpVol::TimeScaled { size, floor: _ } => size,
+            BumpVol::Replace { vol: _ } => NAN,
         }
     }
 
@@ -56,16 +56,16 @@ impl BumpVol {
 
 impl Bumper<RcVolSurface> for BumpVol {
     fn apply(&self, surface: RcVolSurface) -> RcVolSurface {
-        match self {
-            &BumpVol::FlatAdditive { size } => {
+        match *self {
+            BumpVol::FlatAdditive { size } => {
                 RcVolSurface::new(Arc::new(ParallelBumpVol::new(surface.clone(), size)))
             }
 
-            &BumpVol::TimeScaled { size, floor } => RcVolSurface::new(Arc::new(
+            BumpVol::TimeScaled { size, floor } => RcVolSurface::new(Arc::new(
                 TimeScaledBumpVol::new(surface.clone(), size, floor),
             )),
 
-            &BumpVol::Replace { vol } => RcVolSurface::new(Arc::new(FlatVolSurface::new(
+            BumpVol::Replace { vol } => RcVolSurface::new(Arc::new(FlatVolSurface::new(
                 vol,
                 surface.calendar().clone(),
                 surface.base_date(),

@@ -24,6 +24,12 @@ pub struct Registry<V> {
     registry: HashMap<&'static str, V>,
 }
 
+impl<V> Default for Registry<V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<V> Registry<V> {
     /// Creates an empty registry
     pub fn new() -> Registry<V> {

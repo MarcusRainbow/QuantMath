@@ -346,15 +346,15 @@ impl VolTimeDynamics {
             return Ok(()); // no need for evolution (e.g. over weekend days)
         }
 
-        match self {
-            &VolTimeDynamics::ConstantExpiry => {
+        match *self {
+            VolTimeDynamics::ConstantExpiry => {
                 *surface = Qrc::new(Arc::new(ConstantExpiryTimeEvolution::new(
                     surface.clone(),
                     year_fraction,
                     target,
                 )));
             }
-            &VolTimeDynamics::RollingExpiry => {
+            VolTimeDynamics::RollingExpiry => {
                 *surface = Qrc::new(Arc::new(RollingExpiryTimeEvolution::new(
                     surface.clone(),
                     year_fraction,
@@ -446,13 +446,16 @@ impl VolSurface for FlatVolSurface {
         strikes: &[f64],
         volatilities: &mut [f64],
     ) -> Result<f64, qm::Error> {
-        let n = strikes.len();
-        assert!(n == volatilities.len());
-        for i in 0..n {
-            volatilities[i] = self.vol;
+        if strikes.len() != volatilities.len() {
+            return Err(qm::Error::new(
+                "strikes and volatilities arrays must have the same length",
+            ));
         }
 
-        // return the vol time
+        for volatility in volatilities.iter_mut() {
+            *volatility = self.vol;
+        }
+
         Ok(self.calendar.year_fraction(self.base_date, date_time))
     }
 
@@ -593,7 +596,8 @@ impl<T: VolSmile + Clone + Sync + Send + Debug> VolSurface for VolByProbability<
 
         let n = self.input.smiles.len();
 
-        // binary chop to find our element.
+        // binary chop to find our element.            variances[i] = variances[i] * variances[i] * vol_time;
+
         let found = self
             .input
             .smiles
@@ -818,8 +822,9 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         self.input.smiles[pillar]
             .1
             .volatilities(strikes, variances)?;
-        for i in 0..variances.len() {
-            variances[i] = variances[i] * variances[i] * vol_time;
+
+        for variance in variances.iter_mut() {
+            (*variance) = (*variance) * (*variance) * vol_time;
         }
         Ok(())
     }

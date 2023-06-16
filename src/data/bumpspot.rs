@@ -19,9 +19,9 @@ impl BumpSpot {
 
 impl Bumper<f64> for BumpSpot {
     fn apply(&self, old_spot: f64) -> f64 {
-        match self {
-            &BumpSpot::Relative { bump } => old_spot * (1.0 + bump),
-            &BumpSpot::Replace { spot } => spot,
+        match *self {
+            BumpSpot::Relative { bump } => old_spot * (1.0 + bump),
+            BumpSpot::Replace { spot } => spot,
         }
     }
 }

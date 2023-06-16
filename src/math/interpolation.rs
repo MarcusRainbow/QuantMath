@@ -85,23 +85,19 @@ impl Extrap {
     pub fn extrapolate(&self, value: f64) -> Result<f64, qm::Error> {
         // we can handle all forms of extrapolation apart from natural,
         // which must be handled externally
-        match self {
-            &Extrap::Flat => Ok(value),
-            &Extrap::Natural => Err(qm::Error::new(
+        match *self {
+            Extrap::Flat => Ok(value),
+            Extrap::Natural => Err(qm::Error::new(
                 "Natural extrapolation not supported for this interpolation",
             )),
-            &Extrap::NotANumber => Ok(NAN),
-            &Extrap::Zero => Ok(0.0),
-            &Extrap::Throw => Err(qm::Error::new("Extrapolation not permitted")),
+            Extrap::NotANumber => Ok(NAN),
+            Extrap::Zero => Ok(0.0),
+            Extrap::Throw => Err(qm::Error::new("Extrapolation not permitted")),
         }
     }
 
     pub fn is_natural(&self) -> bool {
-        if let &Extrap::Natural = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, &Extrap::Natural)
     }
 }
 
