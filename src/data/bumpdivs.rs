@@ -11,7 +11,7 @@ pub enum BumpDivs {
 
 impl BumpDivs {
     pub fn new_all_relative(size: f64) -> BumpDivs {
-        BumpDivs::BumpAllRelative { size: size }
+        BumpDivs::BumpAllRelative { size }
     }
 }
 
@@ -19,7 +19,7 @@ impl Bumper<RcDividendStream> for BumpDivs {
     fn apply(&self, divs: RcDividendStream) -> RcDividendStream {
         match self {
             &BumpDivs::BumpAllRelative { size } => {
-                RcDividendStream::new(Arc::new(DividendStream::new_bump_all(&*divs, size)))
+                RcDividendStream::new(Arc::new(DividendStream::new_bump_all(&divs, size)))
             }
         }
     }

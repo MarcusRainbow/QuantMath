@@ -44,7 +44,7 @@ impl PricingContextPrefetch {
         let mut forward_curves = HashMap::new();
         let mut vol_surfaces = HashMap::new();
         walk_dependencies(
-            &context,
+            context,
             &dependencies,
             &mut forward_curves,
             &mut vol_surfaces,
@@ -52,9 +52,9 @@ impl PricingContextPrefetch {
 
         Ok(PricingContextPrefetch {
             context: context.clone(),
-            dependencies: dependencies,
-            forward_curves: forward_curves,
-            vol_surfaces: vol_surfaces,
+            dependencies,
+            forward_curves,
+            vol_surfaces,
         })
     }
 
@@ -151,7 +151,7 @@ fn walk_dependencies(
     let forward_dependencies = dependencies.forward_curves();
     let vol_dependencies = dependencies.vol_surfaces();
 
-    for (rc_instrument, high_water_mark) in &*forward_dependencies {
+    for (rc_instrument, high_water_mark) in forward_dependencies {
         // fetch the forward curve
         let instrument: &dyn Instrument = rc_instrument.deref();
         let id = instrument.id().to_string();
@@ -268,7 +268,7 @@ impl Bumpable for PricingContextPrefetch {
         // Delegate to the underlying market data to do the actual bumping
         // except for SpotDate, which raises an error. For SpotDate, just
         // set the bumped flag according to whether anything needs to be done.
-        let bumped = if let &Bump::SpotDate(ref bump) = bump {
+        let bumped = if let Bump::SpotDate(bump) = bump {
             bump.spot_date() != self.spot_date()
         } else {
             self.context.bump(bump, saved_data)?
@@ -276,23 +276,23 @@ impl Bumpable for PricingContextPrefetch {
 
         // we may need to refetch some of the prefetched data
         match bump {
-            &Bump::Spot(ref id, _) => {
-                self.refetch(&id, bumped, false, saved_forward_curves, saved_vol_surfaces)
+            Bump::Spot(id, _) => {
+                self.refetch(id, bumped, false, saved_forward_curves, saved_vol_surfaces)
             }
-            &Bump::Divs(ref id, _) => {
-                self.refetch(&id, bumped, false, saved_forward_curves, saved_vol_surfaces)
+            Bump::Divs(id, _) => {
+                self.refetch(id, bumped, false, saved_forward_curves, saved_vol_surfaces)
             }
-            &Bump::Vol(ref id, _) => {
-                self.refetch(&id, false, bumped, saved_forward_curves, saved_vol_surfaces)
+            Bump::Vol(id, _) => {
+                self.refetch(id, false, bumped, saved_forward_curves, saved_vol_surfaces)
             }
-            &Bump::Borrow(ref id, _) => {
-                self.refetch(&id, bumped, false, saved_forward_curves, saved_vol_surfaces)
+            Bump::Borrow(id, _) => {
+                self.refetch(id, bumped, false, saved_forward_curves, saved_vol_surfaces)
             }
-            &Bump::Yield(ref credit_id, _) => {
+            Bump::Yield(credit_id, _) => {
                 // we have to copy these ids to avoid a tangle with borrowing
                 let v = self
                     .dependencies
-                    .forward_id_by_credit_id(&credit_id)
+                    .forward_id_by_credit_id(credit_id)
                     .to_vec();
 
                 // We also have to unpack then repack saved_forward curves

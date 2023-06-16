@@ -13,7 +13,7 @@ impl Black76 {
         // For some reason we cannot use the ? operator for this sort of error.
         // as a workaround, do it manually for now.
         match Normal::new(0.0, 1.0) {
-            Ok(normal) => Ok(Black76 { normal: normal }),
+            Ok(normal) => Ok(Black76 { normal }),
             Err(e) => Err(qm::Error::new(&format!("RSStat error: {}", e))),
         }
     }

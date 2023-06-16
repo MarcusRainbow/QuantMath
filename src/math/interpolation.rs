@@ -220,8 +220,8 @@ impl<T: Interpolable<T> + Copy> FlyweightLinear<T> {
     /// are passed to the interpolate method.
     pub fn new(left: Extrap, right: Extrap) -> FlyweightLinear<T> {
         FlyweightLinear {
-            left: left,
-            right: right,
+            left,
+            right,
             unused: PhantomData,
         }
     }
@@ -229,7 +229,7 @@ impl<T: Interpolable<T> + Copy> FlyweightLinear<T> {
 
 impl<T: Interpolable<T> + Copy> FlyweightInterpolate<T> for FlyweightLinear<T> {
     fn interpolate(&self, x: T, points: &[(T, f64)]) -> Result<f64, qm::Error> {
-        linear_interpolate_extrapolate(x, &points, self.left, self.right)
+        linear_interpolate_extrapolate(x, points, self.left, self.right)
     }
 }
 
@@ -255,10 +255,10 @@ impl<T: Interpolable<T> + Copy> Linear<T> {
     /// Construct an interpolator given the rules for extrapolation to
     /// left and right, plus the points to interpolate.
     pub fn new(points: &[(T, f64)], left: Extrap, right: Extrap) -> Result<Linear<T>, qm::Error> {
-        validate_abscissae(&points)?;
+        validate_abscissae(points)?;
         Ok(Linear {
-            left: left,
-            right: right,
+            left,
+            right,
             points: points.to_vec(),
         })
     }
@@ -366,7 +366,7 @@ impl<T: Interpolable<T> + Copy> CubicSpline<T> {
         left: Extrap,
         right: Extrap,
     ) -> Result<CubicSpline<T>, qm::Error> {
-        validate_abscissae(&points)?;
+        validate_abscissae(points)?;
 
         let mut second_deriv = vec![0.0; points.len()];
         let deriv_0 = if left.is_natural() { INFINITY } else { 0.0 };
@@ -376,11 +376,11 @@ impl<T: Interpolable<T> + Copy> CubicSpline<T> {
 
         Ok(CubicSpline {
             inputs: CubicSplineInputs {
-                left: left,
-                right: right,
+                left,
+                right,
                 points: points.to_vec(),
             },
-            second_deriv: second_deriv,
+            second_deriv,
         })
     }
 }

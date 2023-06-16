@@ -48,7 +48,7 @@ impl VolSmile for FlatSmile {
 impl FlatSmile {
     /// Creates a flat smile with the given volatility.
     pub fn new(vol: f64) -> Result<FlatSmile, qm::Error> {
-        Ok(FlatSmile { vol: vol })
+        Ok(FlatSmile { vol })
     }
 }
 

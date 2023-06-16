@@ -46,8 +46,8 @@ impl SelfPricerFactory {
         SelfPricerFactory {}
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn PricerFactory>, esd::Error> {
         Ok(Qrc::new(Arc::new(SelfPricerFactory::deserialize(de)?)))
     }
@@ -68,12 +68,12 @@ impl PricerFactory for SelfPricerFactory {
     ) -> Result<Box<dyn Pricer>, qm::Error> {
         // Apply the fixings to the instrument. (This is the last time we need
         // the fixings.)
-        let instruments = match instrument.fix(&*fixing_table)? {
+        let instruments = match instrument.fix(&fixing_table)? {
             Some(fixed) => fixed,
             None => vec![(1.0, instrument)],
         };
 
-        let pricer = SelfPricer::new(instruments, &*market_data)?;
+        let pricer = SelfPricer::new(instruments, &market_data)?;
         Ok(Box::new(pricer))
     }
 }
@@ -86,9 +86,9 @@ impl SelfPricer {
         // Find the dependencies of the resulting vector of instruments
         // also validate that all instruments are self-priceable
         let mut dependencies = DependencyCollector::new(market_data.spot_date());
-        for &(_, ref instr) in instruments.iter() {
+        for (_, instr) in instruments.iter() {
             dependencies.spot(instr);
-            if let None = instr.as_priceable() {
+            if instr.as_priceable().is_none() {
                 return Err(qm::Error::new(&format!(
                     "Instrument {} is not \
                     priceable",
@@ -98,11 +98,11 @@ impl SelfPricer {
         }
 
         // Create a cached pricing context, prefetching the data to price them
-        let context = PricingContextPrefetch::new(&*market_data, Arc::new(dependencies))?;
+        let context = PricingContextPrefetch::new(market_data, Arc::new(dependencies))?;
 
         Ok(SelfPricer {
-            instruments: instruments,
-            context: context,
+            instruments,
+            context,
         })
     }
 }
@@ -384,7 +384,7 @@ mod tests {
 
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&factory).unwrap();
-        print!("serialized: {}\n", serialized);
+        println!("serialized: {}", serialized);
         let deserialized: RcPricerFactory = serde_json::from_str(&serialized).unwrap();
 
         // check that they match, at least in debug representation

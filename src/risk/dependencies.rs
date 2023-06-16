@@ -24,7 +24,7 @@ pub struct DependencyCollector {
 impl DependencyCollector {
     pub fn new(spot_date: Date) -> DependencyCollector {
         DependencyCollector {
-            spot_date: spot_date,
+            spot_date,
             spots: HashSet::new(),
             yield_curves: HashMap::new(),
             forward_curves: HashMap::new(),
@@ -68,7 +68,7 @@ impl DependencyCollector {
 
     pub fn forward_id_by_credit_id(&self, credit_id: &str) -> &[String] {
         if let Some(ids) = self.forward_id_from_credit_id.get(&credit_id.to_string()) {
-            &ids
+            ids
         } else {
             &self.empty
         }
@@ -80,7 +80,7 @@ impl DependencyCollector {
 
     pub fn fixings(&self, id: &str) -> &[DateTime] {
         if let Some(fixings) = self.fixings.get(&id.to_string()) {
-            &fixings
+            fixings
         } else {
             &self.empty_fixings
         }
@@ -99,18 +99,12 @@ impl DependencyCollector {
 }
 
 fn get_hwm_by_str(map: &HashMap<String, Date>, id: &str) -> Option<Date> {
-    match map.get(id) {
-        Some(hwm) => Some(*hwm),
-        None => None,
-    }
+    map.get(id).copied()
 }
 
 fn get_hwm(map: &HashMap<RcInstrument, Date>, instrument: &RcInstrument) -> Option<Date> {
     let key = instrument.clone();
-    match map.get(&key) {
-        Some(hwm) => Some(*hwm),
-        None => None,
-    }
+    map.get(&key).copied()
 }
 
 impl DependencyContext for DependencyCollector {

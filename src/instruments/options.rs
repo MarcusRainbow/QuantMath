@@ -84,13 +84,13 @@ impl VanillaOption {
         Ok(VanillaOption {
             id: id.to_string(),
             credit_id: credit_id.to_string(),
-            underlying: underlying,
-            settlement: settlement,
-            expiry: expiry,
-            put_or_call: put_or_call,
-            cash_or_physical: cash_or_physical,
-            expiry_time: expiry_time,
-            pay_date: pay_date,
+            underlying,
+            settlement,
+            expiry,
+            put_or_call,
+            cash_or_physical,
+            expiry_time,
+            pay_date,
         })
     }
 
@@ -161,16 +161,15 @@ impl VanillaOption {
                 // between now and the val date. Whether this is the right thing to
                 // do depends on how forward valuation will be used. The first real
                 // use case should drive the behaviour.
-                let price = match self.put_or_call {
-                    PutOrCall::Put => black76.put_price(df, f, k, sqrt_var),
-                    PutOrCall::Call => black76.call_price(df, f, k, sqrt_var),
-                };
 
                 // for helpful debug trace, uncomment the below
                 //println!("forward-starting european: df={} F={} K={} sqrt_var={} displacement={} spot_date={} expiry={:?} price={}",
                 //     df, f, k, sqrt_var, displacement, context.spot_date(), self.expiry_time, price);
 
-                price
+                match self.put_or_call {
+                    PutOrCall::Put => black76.put_price(df, f, k, sqrt_var),
+                    PutOrCall::Call => black76.call_price(df, f, k, sqrt_var),
+                }
             } else {
                 0.0
             };
@@ -260,22 +259,16 @@ impl SpotStartingEuropean {
                 put_or_call,
                 cash_or_physical,
             )?;
-            Ok(SpotStartingEuropean {
-                vanilla: vanilla,
-                strike: strike,
-            })
+            Ok(SpotStartingEuropean { vanilla, strike })
         }
     }
 
     fn from_vanilla(vanilla: VanillaOption, strike: f64) -> SpotStartingEuropean {
-        SpotStartingEuropean {
-            vanilla: vanilla,
-            strike: strike,
-        }
+        SpotStartingEuropean { vanilla, strike }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(SpotStartingEuropean::deserialize(de)?)))
     }
@@ -307,16 +300,16 @@ impl ForwardStartingEuropean {
                 cash_or_physical,
             )?;
             Ok(ForwardStartingEuropean {
-                vanilla: vanilla,
-                strike_fraction: strike_fraction,
-                strike_date: strike_date,
-                strike_time: strike_time,
+                vanilla,
+                strike_fraction,
+                strike_date,
+                strike_time,
             })
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(ForwardStartingEuropean::deserialize(
             de,
@@ -339,7 +332,7 @@ impl Instrument for VanillaOption {
     }
 
     fn credit_id(&self) -> &str {
-        &*self.credit_id
+        &self.credit_id
     }
 
     fn settlement(&self) -> &RcDateRule {
@@ -502,7 +495,7 @@ impl Instrument for ForwardStartingEuropean {
 
             // we may be able to further decompose this
             let further = spot_starting.fix(fixing_table)?;
-            if let Some(_) = further {
+            if further.is_some() {
                 Ok(further)
             } else {
                 decomp.push((1.0, RcInstrument::new(Qrc::new(Arc::new(spot_starting)))));
@@ -605,13 +598,13 @@ impl MonteCarloPriceable for SpotStartingEuropean {
     fn mc_price(&self, context: &dyn MonteCarloContext) -> Result<f64, qm::Error> {
         // This is asserting what the context should know from our response
         // to the mc_dependencies call. No need for proper error handling.
-        let ref paths = context.paths(&self.vanilla.underlying)?;
+        let paths = &(context.paths(&self.vanilla.underlying)?);
         let shape = paths.shape();
         assert_eq!(shape.len(), 2);
         let n_paths = shape[0];
         let n_obs = shape[1];
         assert_eq!(n_obs, 1);
-        let ref path_column = paths.subview(Axis(1), 0);
+        let path_column = &paths.subview(Axis(1), 0);
 
         // Create an array to hold the cashflows (one per path). Note that
         // there is no need to distinguish cash and physically settled options,
@@ -626,7 +619,7 @@ impl MonteCarloPriceable for SpotStartingEuropean {
 
         // Calculate the quantity of each flow for each path
         {
-            let ref mut flow_column = quantities.subview_mut(Axis(1), 0);
+            let flow_column = &mut quantities.subview_mut(Axis(1), 0);
             for (spot, flow) in path_column.iter().zip(flow_column.iter_mut()) {
                 let intrinsic = (sign * (spot - strike)).max(0.0);
                 *flow = intrinsic;
@@ -678,7 +671,7 @@ impl MonteCarloPriceable for ForwardStartingEuropean {
     fn mc_price(&self, context: &dyn MonteCarloContext) -> Result<f64, qm::Error> {
         // This is asserting what the context should know from our response
         // to the mc_dependencies call. No need for proper error handling.
-        let ref paths = context.paths(&self.vanilla.underlying)?;
+        let paths = &(context.paths(&self.vanilla.underlying)?);
         let shape = paths.shape();
         assert_eq!(shape.len(), 2);
         let n_paths = shape[0];
@@ -698,7 +691,7 @@ impl MonteCarloPriceable for ForwardStartingEuropean {
 
         // Calculate the quantity of each flow for each path
         {
-            let ref mut flow_column = quantities.subview_mut(Axis(1), 0);
+            let flow_column = &mut quantities.subview_mut(Axis(1), 0);
             for (path, flow) in paths.axis_iter(Axis(0)).zip(flow_column.iter_mut()) {
                 let strike = strike_fraction * path[0];
                 let spot = path[1];
@@ -813,7 +806,7 @@ mod tests {
     }
 
     fn sample_pricing_context(spot: f64) -> SamplePricingContext {
-        SamplePricingContext { spot: spot }
+        SamplePricingContext { spot }
     }
 
     fn sample_fixings() -> FixingTable {
@@ -1064,7 +1057,7 @@ mod tests {
             Basket::new(
                 "basket",
                 az.credit_id(),
-                currency.clone(),
+                currency,
                 az.settlement().clone(),
                 basket,
             )
@@ -1145,7 +1138,7 @@ mod tests {
             Basket::new(
                 "basket",
                 az.credit_id(),
-                currency.clone(),
+                currency,
                 az.settlement().clone(),
                 basket,
             )
@@ -1235,7 +1228,7 @@ mod tests {
             Basket::new(
                 "basket",
                 az.credit_id(),
-                currency.clone(),
+                currency,
                 az.settlement().clone(),
                 basket,
             )
@@ -1650,7 +1643,7 @@ mod tests {
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut seed = Dedup::<Currency, Arc<Currency>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Currency, Arc<Currency>>::new(control, map.clone());
             seed.with(&DEDUP_CURRENCY, || instrument.serialize(&mut serializer))
                 .unwrap();
         }
@@ -1661,7 +1654,7 @@ mod tests {
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut seed = Dedup::<Currency, Arc<Currency>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Currency, Arc<Currency>>::new(control, map);
             seed.with(&DEDUP_CURRENCY, || {
                 RcInstrument::deserialize(&mut deserializer)
             })
@@ -2219,12 +2212,9 @@ mod tests {
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut ccy_seed =
-                Dedup::<Currency, Arc<Currency>>::new(control.clone(), currencies.clone());
-            let mut opt_seed = Dedup::<dyn Instrument, Qrc<dyn Instrument>>::new(
-                control.clone(),
-                instruments.clone(),
-            );
+            let mut ccy_seed = Dedup::<Currency, Arc<Currency>>::new(control, currencies.clone());
+            let mut opt_seed =
+                Dedup::<dyn Instrument, Qrc<dyn Instrument>>::new(control, instruments.clone());
             ccy_seed
                 .with(&DEDUP_CURRENCY, || {
                     opt_seed.with(&DEDUP_INSTRUMENT, || {
@@ -2240,12 +2230,9 @@ mod tests {
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut ccy_seed =
-                Dedup::<Currency, Arc<Currency>>::new(control.clone(), currencies.clone());
-            let mut opt_seed = Dedup::<dyn Instrument, Qrc<dyn Instrument>>::new(
-                control.clone(),
-                instruments.clone(),
-            );
+            let mut ccy_seed = Dedup::<Currency, Arc<Currency>>::new(control, currencies);
+            let mut opt_seed =
+                Dedup::<dyn Instrument, Qrc<dyn Instrument>>::new(control, instruments.clone());
             ccy_seed
                 .with(&DEDUP_CURRENCY, || {
                     opt_seed.with(&DEDUP_INSTRUMENT, || Basket::deserialize(&mut deserializer))

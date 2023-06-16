@@ -52,7 +52,7 @@ where
     {
         self.registry
             .get(tag.as_ref())
-            .ok_or_else(|| sd::de::Error::custom(&format!("Unknown tag: {}", tag.as_ref())))
+            .ok_or_else(|| sd::de::Error::custom(format!("Unknown tag: {}", tag.as_ref())))
     }
 }
 
@@ -340,17 +340,17 @@ pub mod tests {
         use serde::Deserialize;
 
         /// Deserialize a value of type `A` as trait-object.
-        pub fn a<'de>(de: &mut dyn Deserializer<'de>) -> Result<RcStored, Error> {
+        pub fn a(de: &mut dyn Deserializer<'_>) -> Result<RcStored, Error> {
             Ok(RcStored::new(Arc::new(A::deserialize(de)?)))
         }
 
         /// Deserialize a value of type `B` as trait-object.
-        pub fn b<'de>(de: &mut dyn Deserializer<'de>) -> Result<RcStored, Error> {
+        pub fn b(de: &mut dyn Deserializer<'_>) -> Result<RcStored, Error> {
             Ok(RcStored::new(Arc::new(B::deserialize(de)?)))
         }
 
         /// Deserialize a value of type `B` as trait-object.
-        pub fn c<'de>(de: &mut dyn Deserializer<'de>) -> Result<RcStored, Error> {
+        pub fn c(de: &mut dyn Deserializer<'_>) -> Result<RcStored, Error> {
             Ok(RcStored::new(Arc::new(C::deserialize(de)?)))
         }
     }
@@ -494,7 +494,7 @@ pub mod tests {
 
     impl FromId for DrcStored {
         fn from_id(id: &str) -> Option<Self> {
-            DEDUP_STORED.with(|tls| tls.borrow().get(id).clone())
+            DEDUP_STORED.with(|tls| tls.borrow().get(id))
         }
     }
 
@@ -731,7 +731,7 @@ pub mod tests {
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut seed = Dedup::<dyn Stored, Qrc<dyn Stored>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<dyn Stored, Qrc<dyn Stored>>::new(control, map.clone());
             seed.with(&DEDUP_STORED, || obj.serialize(&mut serializer))
                 .unwrap();
         }
@@ -739,8 +739,8 @@ pub mod tests {
     }
 
     fn from_json(ser: &[u8], control: DedupControl, map: &HashMap<String, DrcStored>) -> DrcStored {
-        let mut deserializer = serde_json::Deserializer::from_slice(&ser);
-        let mut seed = Dedup::<dyn Stored, Qrc<dyn Stored>>::new(control.clone(), map.clone());
+        let mut deserializer = serde_json::Deserializer::from_slice(ser);
+        let mut seed = Dedup::<dyn Stored, Qrc<dyn Stored>>::new(control, map.clone());
         seed.with(&DEDUP_STORED, || DrcStored::deserialize(&mut deserializer))
             .unwrap()
     }

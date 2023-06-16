@@ -61,14 +61,14 @@ impl Basket {
         Ok(Basket {
             id: id.to_string(),
             credit_id: credit_id.to_string(),
-            currency: currency,
-            settlement: settlement,
-            basket: basket,
+            currency,
+            settlement,
+            basket,
         })
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(Basket::deserialize(de)?)))
     }
@@ -76,7 +76,7 @@ impl Basket {
 
 impl Instrument for Basket {
     fn payoff_currency(&self) -> &Currency {
-        &*self.currency
+        &self.currency
     }
     fn credit_id(&self) -> &str {
         &self.credit_id
@@ -86,11 +86,11 @@ impl Instrument for Basket {
     }
 
     fn dependencies(&self, context: &mut dyn DependencyContext) -> SpotRequirement {
-        for &(_, ref underlying) in self.basket.iter() {
+        for (_, underlying) in self.basket.iter() {
             let spot_requirement = underlying.dependencies(context);
             match spot_requirement {
                 SpotRequirement::NotRequired => {} // nothing to do
-                _ => context.spot(&underlying),
+                _ => context.spot(underlying),
             };
         }
         SpotRequirement::NotRequired

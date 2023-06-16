@@ -25,7 +25,7 @@ impl Error {
 
 impl error::Error for Error {
     fn description(&self) -> &str {
-        &*self.message
+        &self.message
     }
 }
 

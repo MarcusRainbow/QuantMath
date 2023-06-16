@@ -151,7 +151,7 @@ impl EveryDayCalendar {
         EveryDayCalendar {}
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(EveryDayCalendar::deserialize(de)?)))
     }
 }
@@ -210,7 +210,7 @@ impl WeekdayCalendar {
         WeekdayCalendar {}
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(WeekdayCalendar::deserialize(de)?)))
     }
 }
@@ -287,7 +287,7 @@ impl Calendar for WeekdayCalendar {
         // to end up on the Tuesday, not Monday.
         let week_day = to.day_of_week();
         if week_day < 5 {
-            return to; // already on a business day
+            to// already on a business day
         } else if step > 0 {
             return to + 2; // following Monday or Tuesday
         } else {
@@ -308,7 +308,7 @@ impl Calendar for WeekdayCalendar {
 fn slip_to_next_weekday(from: Date, slip_forward: bool) -> Date {
     let week_day = from.day_of_week();
     if week_day < 5 {
-        return from; // already on a business day
+        from// already on a business day
     } else if slip_forward {
         return from + 7 - week_day; // following Monday
     } else {
@@ -340,7 +340,7 @@ impl WeekdayAndHolidayCalendar {
         }
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(WeekdayAndHolidayCalendar::deserialize(
             de,
         )?)))
@@ -534,12 +534,12 @@ impl VolatilityCalendar {
     pub fn new(name: &str, calendar: RcCalendar, holiday_weight: f64) -> VolatilityCalendar {
         VolatilityCalendar {
             name: name.to_string(),
-            calendar: calendar,
-            holiday_weight: holiday_weight,
+            calendar,
+            holiday_weight,
         }
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcCalendar, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcCalendar, esd::Error> {
         Ok(Qrc::new(Arc::new(VolatilityCalendar::deserialize(de)?)))
     }
 }
@@ -830,9 +830,9 @@ mod tests {
                     "count={} manual={} from={}:{} to={}:{}",
                     count,
                     manual,
-                    from.to_string(),
+                    from,
                     from.day_of_week(),
-                    to.to_string(),
+                    to,
                     to.day_of_week()
                 );
 
@@ -882,11 +882,11 @@ mod tests {
             approx_eq(0.0, miss, tolerance),
             "stepped={}:{} manual={}:{} from={}:{} count={} \
             miss={} step_count={} man_count={}",
-            stepped.to_string(),
+            stepped,
             stepped.day_of_week(),
-            manual.to_string(),
+            manual,
             manual.day_of_week(),
-            from.to_string(),
+            from,
             from.day_of_week(),
             count,
             miss,
@@ -916,11 +916,11 @@ mod tests {
                     step_forward,
                     man_forward,
                     "step_forward={}:{} manual={}:{} from={}:{} count={}",
-                    step_forward.to_string(),
+                    step_forward,
                     step_forward.day_of_week(),
-                    man_forward.to_string(),
+                    man_forward,
                     man_forward.day_of_week(),
-                    from.to_string(),
+                    from,
                     from.day_of_week(),
                     j
                 );
@@ -928,11 +928,11 @@ mod tests {
                     step_backward,
                     man_backward,
                     "step_backward={}:{} manual={}:{} from={}:{} count={}",
-                    step_backward.to_string(),
+                    step_backward,
                     step_backward.day_of_week(),
-                    man_backward.to_string(),
+                    man_backward,
                     man_backward.day_of_week(),
-                    from.to_string(),
+                    from,
                     from.day_of_week(),
                     j
                 );

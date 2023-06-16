@@ -47,9 +47,7 @@ impl TimeBumpedReport {
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<Qbox<dyn Report>, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<Qbox<dyn Report>, esd::Error> {
         Ok(Qbox::new(Box::new(TimeBumpedReport::deserialize(de)?)))
     }
 
@@ -154,8 +152,8 @@ impl TimeBumpedReportGenerator {
         self.subgenerators.push(generator);
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn ReportGenerator>, esd::Error> {
         Ok(Qrc::new(Arc::new(TimeBumpedReportGenerator::deserialize(
             de,

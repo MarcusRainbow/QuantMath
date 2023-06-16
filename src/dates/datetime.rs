@@ -46,8 +46,8 @@ pub struct DateTime {
 impl DateTime {
     pub fn new(date: Date, time_of_day: TimeOfDay) -> DateTime {
         DateTime {
-            date: date,
-            time_of_day: time_of_day,
+            date,
+            time_of_day,
         }
     }
 
@@ -95,10 +95,10 @@ pub struct DateDayFraction {
 
 impl DateDayFraction {
     pub fn new(date: Date, day_fraction: f64) -> DateDayFraction {
-        assert!(day_fraction >= 0.0 && day_fraction < 1.0);
+        assert!((0.0..1.0).contains(&day_fraction));
         DateDayFraction {
-            date: date,
-            day_fraction: day_fraction,
+            date,
+            day_fraction,
         }
     }
 
@@ -126,7 +126,7 @@ impl AddAssign<i32> for DateDayFraction {
 
 impl Ord for DateDayFraction {
     fn cmp(&self, other: &DateDayFraction) -> Ordering {
-        self.partial_cmp(&other)
+        self.partial_cmp(other)
             .expect("Non-orderable day fraction found in DateDayFraction")
     }
 }

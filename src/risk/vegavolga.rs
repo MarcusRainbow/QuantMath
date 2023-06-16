@@ -51,9 +51,7 @@ impl TypeId for VegaVolgaReport {
 }
 
 impl VegaVolgaReport {
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<Qbox<dyn Report>, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<Qbox<dyn Report>, esd::Error> {
         Ok(Qbox::new(Box::new(VegaVolgaReport::deserialize(de)?)))
     }
 
@@ -84,9 +82,9 @@ impl<'v> ApproxEq<ReportTolerances, &'v VegaVolgaReport> for &'v VegaVolgaReport
         let volga = vega / self.bumpsize;
         let tolerances = VegaVolgaTolerances { vega, volga };
 
-        for (id, ref vega_volga) in &self.results {
+        for (id, vega_volga) in &self.results {
             if let Some(other_vega_volga) = other.results.get(id) {
-                vega_volga.validate(other_vega_volga, &tolerances, &id, diffs)?;
+                vega_volga.validate(other_vega_volga, &tolerances, id, diffs)?;
             } else {
                 write!(diffs, "VegaVolgaReport: {} is missing", id)?;
             }
@@ -173,11 +171,11 @@ pub struct VegaVolgaReportGenerator {
 
 impl VegaVolgaReportGenerator {
     pub fn new(bump: BumpVol) -> VegaVolgaReportGenerator {
-        VegaVolgaReportGenerator { bump: bump }
+        VegaVolgaReportGenerator { bump }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn ReportGenerator>, esd::Error> {
         Ok(Qrc::new(Arc::new(VegaVolgaReportGenerator::deserialize(
             de,

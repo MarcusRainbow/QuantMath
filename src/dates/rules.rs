@@ -73,7 +73,7 @@ impl NullRule {
         NullRule {}
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcDateRule, esd::Error> {
         Ok(Qrc::new(Arc::new(NullRule::deserialize(de)?)))
     }
 }
@@ -97,7 +97,7 @@ impl BusinessDays {
     /// today is a business day.
     pub fn new_next(calendar: RcCalendar) -> BusinessDays {
         BusinessDays {
-            calendar: calendar,
+            calendar,
             step: 0,
             slip_forward: true,
         }
@@ -107,7 +107,7 @@ impl BusinessDays {
     /// today is a business day.
     pub fn new_prev(calendar: RcCalendar) -> BusinessDays {
         BusinessDays {
-            calendar: calendar,
+            calendar,
             step: 0,
             slip_forward: false,
         }
@@ -116,7 +116,7 @@ impl BusinessDays {
     /// Creates a rule that steps forward a given number of business days
     pub fn new_step(calendar: RcCalendar, step: u32) -> BusinessDays {
         BusinessDays {
-            calendar: calendar,
+            calendar,
             step: step as i32,
             slip_forward: true,
         }
@@ -125,13 +125,13 @@ impl BusinessDays {
     /// Creates a rule that steps backward a given number of business days
     pub fn new_back(calendar: RcCalendar, step: u32) -> BusinessDays {
         BusinessDays {
-            calendar: calendar,
+            calendar,
             step: -(step as i32),
             slip_forward: false,
         }
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcDateRule, esd::Error> {
         Ok(Qrc::new(Arc::new(BusinessDays::deserialize(de)?)))
     }
 }
@@ -157,10 +157,10 @@ impl TypeId for ModifiedFollowing {
 
 impl ModifiedFollowing {
     pub fn new(calendar: RcCalendar) -> ModifiedFollowing {
-        ModifiedFollowing { calendar: calendar }
+        ModifiedFollowing { calendar }
     }
 
-    pub fn from_serial<'de>(de: &mut dyn esd::Deserializer<'de>) -> Result<RcDateRule, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcDateRule, esd::Error> {
         Ok(Qrc::new(Arc::new(ModifiedFollowing::deserialize(de)?)))
     }
 }
@@ -213,11 +213,11 @@ mod tests {
             step1,
             prev,
             "step1={}:{} prev={}:{} start={}:{}",
-            step1.to_string(),
+            step1,
             step1.day_of_week(),
-            prev.to_string(),
+            prev,
             prev.day_of_week(),
-            start.to_string(),
+            start,
             start.day_of_week()
         );
 

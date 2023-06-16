@@ -41,12 +41,12 @@ impl Currency {
     pub fn new(id: &str, settlement: RcDateRule) -> Currency {
         Currency {
             id: id.to_string(),
-            settlement: settlement,
+            settlement,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(Currency::deserialize(de)?)))
     }
@@ -166,7 +166,7 @@ thread_local! {
 
 impl FromId for RcCurrency {
     fn from_id(id: &str) -> Option<Self> {
-        DEDUP_CURRENCY.with(|tls| tls.borrow().get(id).clone())
+        DEDUP_CURRENCY.with(|tls| tls.borrow().get(id))
     }
 }
 
@@ -218,13 +218,13 @@ impl Equity {
         Equity {
             id: id.to_string(),
             credit_id: credit_id.to_string(),
-            currency: currency,
-            settlement: settlement,
+            currency,
+            settlement,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(Equity::deserialize(de)?)))
     }
@@ -232,7 +232,7 @@ impl Equity {
 
 impl Instrument for Equity {
     fn payoff_currency(&self) -> &Currency {
-        &*self.currency
+        &self.currency
     }
 
     fn credit_id(&self) -> &str {
@@ -350,13 +350,13 @@ impl CreditEntity {
     pub fn new(id: &str, currency: RcCurrency, settlement: RcDateRule) -> CreditEntity {
         CreditEntity {
             id: id.to_string(),
-            currency: currency,
-            settlement: settlement,
+            currency,
+            settlement,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(CreditEntity::deserialize(de)?)))
     }
@@ -370,7 +370,7 @@ impl InstanceId for CreditEntity {
 
 impl Instrument for CreditEntity {
     fn payoff_currency(&self) -> &Currency {
-        &*self.currency
+        &self.currency
     }
 
     fn credit_id(&self) -> &str {
@@ -531,7 +531,7 @@ pub mod tests {
     }
 
     fn sample_pricing_context(spot: f64) -> SamplePricingContext {
-        SamplePricingContext { spot: spot }
+        SamplePricingContext { spot }
     }
 
     #[test]

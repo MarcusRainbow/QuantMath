@@ -177,7 +177,7 @@ pub fn assert_approx_eq_reports(
     let tolerances = ReportTolerances::new(tol_price, tol_ccy_risk, tol_unit_risk);
     let diffs = format!(
         "{}",
-        Fmt(|f| reports.validate(&expected, &tolerances, "", f))
+        Fmt(|f| reports.validate(expected, &tolerances, "", f))
     );
 
     if diffs.is_empty() {
@@ -235,7 +235,7 @@ pub mod tests {
             european,
             fixing_table,
             market_data,
-            &vec![delta_gamma],
+            &[delta_gamma],
         )
         .unwrap();
 
@@ -266,7 +266,7 @@ pub mod tests {
         let _ = instrument_from_json(
             &mut Cursor::new(sample_equity_json()),
             DedupControl::WriteOnce,
-            &vec![currency],
+            &[currency],
             DedupControl::WriteOnce,
             &[],
         )

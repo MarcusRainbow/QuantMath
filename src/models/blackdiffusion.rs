@@ -58,14 +58,14 @@ impl BlackDiffusionFactory {
         number_of_paths: usize,
     ) -> BlackDiffusionFactory {
         BlackDiffusionFactory {
-            correlation_substep: correlation_substep,
-            path_substep: path_substep,
-            number_of_paths: number_of_paths,
+            correlation_substep,
+            path_substep,
+            number_of_paths,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn MonteCarloModelFactory>, esd::Error> {
         Ok(Qrc::new(Arc::new(BlackDiffusionFactory::deserialize(de)?)))
     }
@@ -216,14 +216,14 @@ impl BlackDiffusion {
 
         // create the model with these paths and gaussians
         Ok(BlackDiffusion {
-            observations: observations,
+            observations,
             flows: timeline.flows().to_vec(),
-            context: context,
-            key: key,
-            instruments: instruments,
-            substepping: substepping,
-            correlated_gaussians: correlated_gaussians,
-            paths: paths,
+            context,
+            key,
+            instruments,
+            substepping,
+            correlated_gaussians,
+            paths,
         })
     }
 
@@ -431,7 +431,7 @@ pub fn fetch_paths(
         .zip(paths.axis_iter_mut(Axis(2)))
     {
         let instr: &dyn Instrument = asset.deref();
-        fetch_path(instr, context, &observations, gaussians, substepping, path)?;
+        fetch_path(instr, context, observations, gaussians, substepping, path)?;
     }
 
     Ok(paths)
@@ -576,7 +576,7 @@ impl MonteCarloContext for BlackDiffusion {
     }
 
     fn pricing_context(&self) -> &dyn PricingContext {
-        &*self.context.as_pricing_context()
+        self.context.as_pricing_context()
     }
 }
 
@@ -603,26 +603,26 @@ impl Bumpable for BlackDiffusion {
 
         // refetch any paths that may have changed
         match bump {
-            &Bump::Spot(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Divs(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Borrow(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Vol(ref id, _) => self.refetch(&id, bumped, saved_paths),
-            &Bump::Yield(ref credit_id, _) => {
+            Bump::Spot(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Divs(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Borrow(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Vol(id, _) => self.refetch(id, bumped, saved_paths),
+            Bump::Yield(credit_id, _) => {
                 // we have to copy these ids to avoid a tangle with borrowing
                 let v = self
                     .dependencies()?
-                    .forward_id_by_credit_id(&credit_id)
+                    .forward_id_by_credit_id(credit_id)
                     .to_vec();
 
                 // we also have to unpack then repack saved_paths to clarify borrowing
                 // (is this something the Rust compiler could be cleverer about?)
                 if let Some(s) = saved_paths {
                     for id in v.iter() {
-                        self.refetch(&id, bumped, Some(s))?;
+                        self.refetch(id, bumped, Some(s))?;
                     }
                 } else {
                     for id in v.iter() {
-                        self.refetch(&id, bumped, None)?;
+                        self.refetch(id, bumped, None)?;
                     }
                 }
                 Ok(bumped)
@@ -698,7 +698,7 @@ impl SavedBlackDiffusion {
     /// so it can be restored after a bump
     pub fn new(saved_data: Box<dyn Saveable>) -> SavedBlackDiffusion {
         SavedBlackDiffusion {
-            saved_data: saved_data,
+            saved_data,
             paths: HashMap::new(),
         }
     }

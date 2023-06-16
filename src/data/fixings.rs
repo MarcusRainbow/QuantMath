@@ -51,14 +51,14 @@ impl FixingTable {
     /// Creates an empty fixing table, given a date to which fixings are known.
     pub fn new(fixings_known_until: Date) -> FixingTable {
         FixingTable {
-            fixings_known_until: fixings_known_until,
+            fixings_known_until,
             fixings_by_id: HashMap::new(),
         }
     }
 
     /// Adds a fixings curve
     pub fn insert(&mut self, id: &str, fixings: Fixings) -> Result<(), qm::Error> {
-        if let Some(_) = self.fixings_by_id.insert(id.to_string(), fixings) {
+        if self.fixings_by_id.insert(id.to_string(), fixings).is_some() {
             return Err(duplicate_fixing_curve(id));
         }
         Ok(())
@@ -229,19 +229,13 @@ impl Fixings {
                 return Err(duplicate_fixing(id, value, fixing.1, fixing.0));
             }
         }
-        Ok(Fixings {
-            fixing_by_date: fixing_by_date,
-        })
+        Ok(Fixings { fixing_by_date })
     }
 
     /// Tries to gets a fixing on the given date, or returns None if it is
     /// absent.
     pub fn get_optional(&self, date_time: DateTime) -> Option<f64> {
-        if let Some(fixing) = self.fixing_by_date.get(&date_time) {
-            Some(*fixing)
-        } else {
-            None
-        }
+        self.fixing_by_date.get(&date_time).copied()
     }
 }
 
@@ -274,7 +268,7 @@ mod tests {
                     ],
                 ),
                 (
-                    &"GSK.L",
+                    "GSK.L",
                     &[
                         (DateTime::new(today, TimeOfDay::Open), 223.4),
                         (DateTime::new(today - 7, TimeOfDay::Close), 223.3),
@@ -307,7 +301,7 @@ mod tests {
         let fixing = fixings
             .get("BT.L", DateTime::new(today, TimeOfDay::Close))
             .unwrap();
-        if let Some(_) = fixing {
+        if fixing.is_some() {
             assert!(false, "fixing present");
         }
     }
@@ -341,7 +335,7 @@ mod tests {
         let fixings = sample_fixings();
         let today = fixings.fixings_known_until();
         let fixing = fixings.get_optional("BT.L", DateTime::new(today - 9, TimeOfDay::Close));
-        if let Some(_) = fixing {
+        if fixing.is_some() {
             assert!(false, "fixing present");
         }
     }
@@ -365,7 +359,7 @@ mod tests {
 
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&fixings).unwrap();
-        print!("serialized: {}\n", serialized);
+        println!("serialized: {}", serialized);
         let deserialized: FixingTable = serde_json::from_str(&serialized).unwrap();
 
         // check some fixings

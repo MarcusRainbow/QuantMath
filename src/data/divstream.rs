@@ -47,10 +47,10 @@ pub struct Dividend {
 impl Dividend {
     pub fn new(cash: f64, relative: f64, ex_date: Date, pay_date: Date) -> Dividend {
         Dividend {
-            cash: cash,
-            relative: relative,
-            ex_date: ex_date,
-            pay_date: pay_date,
+            cash,
+            relative,
+            ex_date,
+            pay_date,
         }
     }
 
@@ -108,8 +108,8 @@ impl DividendStream {
 
         DividendStream {
             dividends: dividends.to_vec(),
-            div_yield: div_yield,
-            last_cash_ex_date: last_cash_ex_date,
+            div_yield,
+            last_cash_ex_date,
         }
     }
 
@@ -226,9 +226,9 @@ impl DividendBootstrap {
         let mut accumulation = Vec::<DividendAccumulation>::with_capacity(n);
         if n == 0 {
             return Ok(DividendBootstrap {
-                base_date: base_date,
-                accumulation: accumulation,
-                high_water_mark: high_water_mark,
+                base_date,
+                accumulation,
+                high_water_mark,
             });
         }
 
@@ -264,9 +264,9 @@ impl DividendBootstrap {
                 // got a new ex date, so finish off the last one
                 accumulation.push(DividendAccumulation {
                     ex_date: prev_ex_date,
-                    undiscounted_sum: undiscounted_sum,
-                    discounted_sum: discounted_sum,
-                    discounted_cash: discounted_cash,
+                    undiscounted_sum,
+                    discounted_sum,
+                    discounted_cash,
                     discounted_cash_remaining: NAN,
                 });
                 prev_ex_date = ex_date;
@@ -299,9 +299,9 @@ impl DividendBootstrap {
         if prev_ex_date > base_date {
             accumulation.push(DividendAccumulation {
                 ex_date: prev_ex_date,
-                undiscounted_sum: undiscounted_sum,
-                discounted_sum: discounted_sum,
-                discounted_cash: discounted_cash,
+                undiscounted_sum,
+                discounted_sum,
+                discounted_cash,
                 discounted_cash_remaining: NAN,
             });
         }
@@ -320,8 +320,8 @@ impl DividendBootstrap {
         accumulation.shrink_to_fit();
 
         Ok(DividendBootstrap {
-            base_date: base_date,
-            accumulation: accumulation,
+            base_date,
+            accumulation,
             high_water_mark: bootstrap_to,
         })
     }

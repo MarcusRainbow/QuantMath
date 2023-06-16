@@ -252,7 +252,7 @@ thread_local! {
 
 impl FromId for RcInstrument {
     fn from_id(id: &str) -> Option<Self> {
-        DEDUP_INSTRUMENT.with(|tls| tls.borrow().get(id).clone())
+        DEDUP_INSTRUMENT.with(|tls| tls.borrow().get(id))
     }
 }
 

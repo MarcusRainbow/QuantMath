@@ -55,7 +55,7 @@ impl Forward for DriftlessForward {
 
 impl DriftlessForward {
     pub fn new(value: f64) -> DriftlessForward {
-        DriftlessForward { value: value }
+        DriftlessForward { value }
     }
 }
 
@@ -79,7 +79,7 @@ impl Forward for InterpolatedForward {
 
 impl InterpolatedForward {
     pub fn new(interp: Box<dyn Interpolate<Date>>) -> InterpolatedForward {
-        InterpolatedForward { interp: interp }
+        InterpolatedForward { interp }
     }
 }
 
@@ -145,7 +145,7 @@ impl EquityForward {
 
         // Bootstrap the dividend stream to turn it into accumulated totals
         let bootstrap = DividendBootstrap::new(
-            &divs,
+            divs,
             &*rate,
             &*borrow,
             reference_spot,
@@ -154,13 +154,13 @@ impl EquityForward {
         )?;
 
         Ok(EquityForward {
-            settlement: settlement,
-            rate: rate,
-            borrow: borrow,
+            settlement,
+            rate,
+            borrow,
             div_yield: divs.div_yield(),
-            bootstrap: bootstrap,
-            reference_spot: reference_spot,
-            base_log_discount: base_log_discount,
+            bootstrap,
+            reference_spot,
+            base_log_discount,
         })
     }
 }

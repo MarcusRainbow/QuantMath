@@ -13,11 +13,11 @@ pub enum BumpYield {
 
 impl BumpYield {
     pub fn new_flat_annualised(size: f64) -> BumpYield {
-        BumpYield::FlatAnnualised { size: size }
+        BumpYield::FlatAnnualised { size }
     }
 
     pub fn new_flat_continuously_compounded(size: f64) -> BumpYield {
-        BumpYield::FlatContinuouslyCompounded { size: size }
+        BumpYield::FlatContinuouslyCompounded { size }
     }
 }
 

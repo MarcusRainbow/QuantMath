@@ -75,12 +75,12 @@ impl MarketData {
         vol_surfaces: HashMap<String, RcVolSurface>,
     ) -> MarketData {
         MarketData {
-            spot_date: spot_date,
-            spots: spots,
-            yield_curves: yield_curves,
-            borrow_curves: borrow_curves,
-            dividends: dividends,
-            vol_surfaces: vol_surfaces,
+            spot_date,
+            spots,
+            yield_curves,
+            borrow_curves,
+            dividends,
+            vol_surfaces,
         }
     }
 
@@ -212,7 +212,7 @@ impl PricingContext for MarketData {
 
         let credit_id = instrument.credit_id();
         let yield_curve =
-            find_market_data(&credit_id, &self.yield_curves, "Yield curve for forward")?;
+            find_market_data(credit_id, &self.yield_curves, "Yield curve for forward")?;
 
         // We create the forward on the fly. For efficiency, we could cache
         // the forward if the request is the same and there are no relevant
@@ -224,7 +224,7 @@ impl PricingContext for MarketData {
             settlement,
             yield_curve,
             borrow,
-            &*divs,
+            &divs,
             high_water_mark,
         )?;
         Ok(Arc::new(forward))
@@ -280,35 +280,35 @@ impl Bumpable for MarketData {
         // e.g. bump as &BumpSpot, even though it already is this type. I think
         // this is a compiler bug.
         match bump {
-            &Bump::Spot(ref id, ref bump) => apply_bump(
-                &id,
+            Bump::Spot(id, bump) => apply_bump(
+                id,
                 bump as &BumpSpot,
                 &mut self.spots,
-                saved.map_or(None, |s| Some(&mut s.spots)),
+                saved.map(|s| &mut s.spots), // saved.map_or(None, |s| Some(&mut s.spots)),
             ),
-            &Bump::Divs(ref id, ref bump) => apply_bump(
-                &id,
+            Bump::Divs(id, bump) => apply_bump(
+                id,
                 bump as &BumpDivs,
                 &mut self.dividends,
-                saved.map_or(None, |s| Some(&mut s.dividends)),
+                saved.map(|s| &mut s.dividends), // saved.map_or(None, |s| Some(&mut s.dividends)),
             ),
-            &Bump::Borrow(ref id, ref bump) => apply_bump(
-                &id,
+            Bump::Borrow(id, bump) => apply_bump(
+                id,
                 bump as &BumpYield,
                 &mut self.borrow_curves,
-                saved.map_or(None, |s| Some(&mut s.borrow_curves)),
+                saved.map(|s| &mut s.borrow_curves), // saved.map_or(None, |s| Some(&mut s.borrow_curves)),
             ),
-            &Bump::Vol(ref id, ref bump) => apply_bump(
-                &id,
+            Bump::Vol(id, bump) => apply_bump(
+                id,
                 bump as &BumpVol,
                 &mut self.vol_surfaces,
-                saved.map_or(None, |s| Some(&mut s.vol_surfaces)),
+                saved.map(|s| &mut s.vol_surfaces), // saved.map_or(None, |s| Some(&mut s.vol_surfaces)),
             ),
-            &Bump::Yield(ref credit_id, ref bump) => apply_bump(
-                &credit_id,
+            Bump::Yield(credit_id, bump) => apply_bump(
+                credit_id,
                 bump as &BumpYield,
                 &mut self.yield_curves,
-                saved.map_or(None, |s| Some(&mut s.yield_curves)),
+                saved.map(|s| &mut s.yield_curves), // saved.map_or(None, |s| Some(&mut s.yield_curves)),
             ),
             &Bump::SpotDate(_) => Err(qm::Error::new(
                 "MarketData does not have \
@@ -639,7 +639,7 @@ pub mod tests {
 
         // clone the market data so we can modify it and also create an
         // empty saved data to save state so we can restore it
-        let mut mut_data = market_data.clone();
+        let mut mut_data = market_data;
         let mut save = SavedData::new();
 
         // now bump the spot and price. Note that this equates to roughly
@@ -724,7 +724,7 @@ pub mod tests {
 
         // clone the market data so we can modify it and also create an
         // empty saved data to save state so we can restore it
-        let mut mut_data = market_data.clone();
+        let mut mut_data = market_data;
         let mut save = SavedData::new();
 
         // now bump the spot and price. Note that this equates to quite small delta
@@ -766,7 +766,7 @@ pub mod tests {
 
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&market_data).unwrap();
-        print!("serialized: {}\n", serialized);
+        println!("serialized: {}", serialized);
         let deserialized: MarketData = serde_json::from_str(&serialized).unwrap();
 
         // check that we still get the same price

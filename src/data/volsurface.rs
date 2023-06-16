@@ -25,7 +25,7 @@ use serde::de::Error;
 use serde::Deserialize;
 use serde_tagged as sdt;
 use serde_tagged::de::BoxFnSeed;
-use std::error::Error as stdError;
+// use std::error::Error as stdError;
 use std::f64::NAN;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -488,15 +488,13 @@ impl FlatVolSurface {
     /// the surface, or with a decorator.
     pub fn new(vol: f64, calendar: RcCalendar, base_date: DateDayFraction) -> FlatVolSurface {
         FlatVolSurface {
-            vol: vol,
-            calendar: calendar,
-            base_date: base_date,
+            vol,
+            calendar,
+            base_date,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(FlatVolSurface::deserialize(de)?)))
     }
 }
@@ -566,11 +564,11 @@ where
     ) -> VolByProbabilityInput<T> {
         VolByProbabilityInput {
             smiles: smiles.to_vec(),
-            calendar: calendar,
-            base_date: base_date,
-            forward: forward,
-            fixed_divs_after: fixed_divs_after,
-            div_assumptions: div_assumptions,
+            calendar,
+            base_date,
+            forward,
+            fixed_divs_after,
+            div_assumptions,
         }
     }
 }
@@ -589,7 +587,7 @@ impl<T: VolSmile + Clone + Sync + Send + Debug> VolSurface for VolByProbability<
         &self,
         date_time: DateDayFraction,
         strikes: &[f64],
-        mut out: &mut [f64],
+        out: &mut [f64],
     ) -> Result<f64, qm::Error> {
         //print!("volatilities: base_date={:?} date_time={:?} strikes={:?}\n", self.base_date(), date_time, strikes);
 
@@ -603,7 +601,7 @@ impl<T: VolSmile + Clone + Sync + Send + Debug> VolSurface for VolByProbability<
         match found {
             // If we find it, return the vols and vol time on that pillar
             Ok(i) => {
-                self.input.smiles[i].1.volatilities(&strikes, &mut out)?;
+                self.input.smiles[i].1.volatilities(strikes, out)?;
                 //print!("at pillar: out={:?} vol_time={}\n", out, self.pillar_vol_times[i]);
                 Ok(self.pillar_vol_times[i])
             }
@@ -611,11 +609,11 @@ impl<T: VolSmile + Clone + Sync + Send + Debug> VolSurface for VolByProbability<
             // extrapolate or interpolate if we are not on a pillar
             Err(i) => {
                 if i == 0 {
-                    self.extrapolate(0, date_time, &strikes, &mut out)
+                    self.extrapolate(0, date_time, strikes, out)
                 } else if i >= n {
-                    self.extrapolate(n - 1, date_time, &strikes, &mut out)
+                    self.extrapolate(n - 1, date_time, strikes, out)
                 } else {
-                    self.interpolate(i - 1, i, date_time, &strikes, &mut out)
+                    self.interpolate(i - 1, i, date_time, strikes, out)
                 }
             }
         }
@@ -700,10 +698,10 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         }
 
         Ok(VolByProbability {
-            input: input,
-            pillar_forwards: pillar_forwards,
-            pillar_sqrt_variances: pillar_sqrt_variances,
-            pillar_vol_times: pillar_vol_times,
+            input,
+            pillar_forwards,
+            pillar_sqrt_variances,
+            pillar_vol_times,
         })
     }
 
@@ -712,7 +710,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         pillar: usize,
         date_time: DateDayFraction,
         strikes: &[f64],
-        mut out: &mut [f64],
+        out: &mut [f64],
     ) -> Result<f64, qm::Error> {
         let vol_time = self
             .input
@@ -739,7 +737,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         // flat extrapolation in normalised strike space
         self.input.smiles[pillar]
             .1
-            .volatilities(&adj_strikes, &mut out)?;
+            .volatilities(&adj_strikes, out)?;
         //print!("extrapolate: out={:?} vol_time={}\n", out, vol_time);
         Ok(vol_time)
     }
@@ -778,7 +776,7 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         let left_atm_var = left_sqrt_var * left_sqrt_var;
         let right_atm_var = right_sqrt_var * right_sqrt_var;
         let atm_variance = lerp(left_atm_var, right_atm_var, fraction);
-        let normalised = to_normalised(&strikes, forward, atm_variance.sqrt());
+        let normalised = to_normalised(strikes, forward, atm_variance.sqrt());
 
         // fetch the left pillar variances
         let left_fwd = self.pillar_forwards[left];
@@ -797,13 +795,10 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         // interpolate
         for i in 0..n {
             if left_vars[i] > right_vars[i] {
-                return Err(qm::Error::new(
-                    &format!(
-                        "Negative forward variance from {:?} to {:?} strike={}",
-                        self.input.smiles[left].0, self.input.smiles[right].0, strikes[i]
-                    )
-                    .to_string(),
-                ));
+                return Err(qm::Error::new(&format!(
+                    "Negative forward variance from {:?} to {:?} strike={}",
+                    self.input.smiles[left].0, self.input.smiles[right].0, strikes[i]
+                )));
             }
             let variance = lerp(left_vars[i], right_vars[i], fraction);
             out[i] = (variance / vol_time).sqrt();
@@ -817,12 +812,12 @@ impl<T: VolSmile + Clone> VolByProbability<T> {
         pillar: usize,
         vol_time: f64,
         strikes: &[f64],
-        mut variances: &mut [f64],
+        variances: &mut [f64],
     ) -> Result<(), qm::Error> {
         // we use the variances vector as workspace to fetch vols
         self.input.smiles[pillar]
             .1
-            .volatilities(&strikes, &mut variances)?;
+            .volatilities(strikes, variances)?;
         for i in 0..variances.len() {
             variances[i] = variances[i] * variances[i] * vol_time;
         }
@@ -867,13 +862,11 @@ impl VolByProbabilityFlatSmile {
     // which are calculated on load. We manually implement the
     // deserialize to first deserialize the inputs, then calculate the
     // extra fields.
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcVolSurface, esd::Error> {
         let input = VolByProbabilityInput::<FlatSmile>::deserialize(de)?;
         match VolByProbability::new(input) {
             Ok(surface) => Ok(Qrc::new(Arc::new(surface))),
-            Err(e) => Err(esd::Error::custom(e.description())),
+            Err(e) => Err(esd::Error::custom(e.to_string())), // .description() is deprecated
         }
     }
 }
@@ -941,13 +934,11 @@ impl VolByProbabilityCubicSplineSmile {
     // which are calculated on load. We manually implement the
     // deserialize to first deserialize the inputs, then calculate the
     // extra fields.
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcVolSurface, esd::Error> {
         let input = VolByProbabilityInput::<CubicSplineSmile>::deserialize(de)?;
         match VolByProbability::new(input) {
             Ok(surface) => Ok(Qrc::new(Arc::new(surface))),
-            Err(e) => Err(esd::Error::custom(e.description())),
+            Err(e) => Err(esd::Error::custom(e.to_string())), // .description() is deprecated
         }
     }
 }
@@ -1091,7 +1082,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.2759858459301978,
                 0.08993517414933526,
                 0.020825822062781562,
@@ -1108,7 +1099,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.12197114285714238,
                 0.03802857142857133,
                 0.012473999999999992,
@@ -1125,7 +1116,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.03686790530234713,
                 0.020163068302689324,
                 0.012093666670268526,
@@ -1142,7 +1133,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.03164939725794168,
                 0.02427312328380183,
                 0.016527757040504347,
@@ -1159,7 +1150,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.031650052703373004,
                 0.024273713417658733,
                 0.016528170758928578,
@@ -1176,7 +1167,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.03165079590958693,
                 0.024274202473730577,
                 0.0165285608575132,
@@ -1194,7 +1185,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.10798852946631321,
                 0.0912236949840647,
                 0.07688606931438749,
@@ -1214,7 +1205,7 @@ pub mod tests {
         v.variances(expiry, &strikes, &mut variances).unwrap();
         assert_vars(
             &variances,
-            &vec![
+            &[
                 0.18192823836742086,
                 0.15752211322351797,
                 0.1381609452301703,
@@ -1237,7 +1228,7 @@ pub mod tests {
 
         // Convert the surface to a JSON string.
         let serialized = serde_json::to_string_pretty(&surface).unwrap();
-        print!("serialized: {}\n", serialized);
+        println!("serialized: {}", serialized);
 
         // Convert the JSON string back to a surface.
         let deserialized: RcVolSurface = serde_json::from_str(&serialized).unwrap();

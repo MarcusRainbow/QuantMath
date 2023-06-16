@@ -17,14 +17,11 @@ pub enum BumpVol {
 
 impl BumpVol {
     pub fn new_flat_additive(size: f64) -> BumpVol {
-        BumpVol::FlatAdditive { size: size }
+        BumpVol::FlatAdditive { size }
     }
 
     pub fn new_time_scaled(size: f64, floor: f64) -> BumpVol {
-        BumpVol::TimeScaled {
-            size: size,
-            floor: floor,
-        }
+        BumpVol::TimeScaled { size, floor }
     }
 
     pub fn new_replace(vol: f64) -> BumpVol {
@@ -50,7 +47,7 @@ impl BumpVol {
             &BumpVol::FlatAdditive { size: _ } => BumpVol::FlatAdditive { size: down_bump },
             &BumpVol::TimeScaled { size: _, floor } => BumpVol::TimeScaled {
                 size: down_bump,
-                floor: floor,
+                floor,
             },
             &BumpVol::Replace { vol: _ } => BumpVol::Replace { vol: NAN },
         }

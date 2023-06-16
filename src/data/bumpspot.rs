@@ -9,11 +9,11 @@ pub enum BumpSpot {
 
 impl BumpSpot {
     pub fn new_relative(bump: f64) -> BumpSpot {
-        BumpSpot::Relative { bump: bump }
+        BumpSpot::Relative { bump }
     }
 
     pub fn new_replace(spot: f64) -> BumpSpot {
-        BumpSpot::Replace { spot: spot }
+        BumpSpot::Replace { spot }
     }
 }
 

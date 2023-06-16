@@ -104,7 +104,7 @@ impl FromStr for Date {
         // It upsets me how inefficient this is. In C I'd use scanf,
         // which would allow me to parse the string without any heap
         // access or intermediate objects.
-        let ymd: Vec<&str> = s.split("-").collect();
+        let ymd: Vec<&str> = s.split('-').collect();
 
         let mut array: [i32; 3] = [0; 3];
         for (i, elem) in array.iter_mut().enumerate() {

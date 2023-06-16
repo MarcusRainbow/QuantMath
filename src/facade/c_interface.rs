@@ -4,7 +4,7 @@ use crate::facade;
 use crate::facade::handle::extern_handle as eh;
 use crate::facade::handle::Handle;
 use libc::c_char;
-use std::error::Error;
+// use std::error::Error;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
@@ -379,7 +379,8 @@ pub extern "C" fn qm_is_error(handle: u64) -> bool {
 #[no_mangle]
 pub extern "C" fn qm_error_string(handle: u64) -> *mut c_char {
     let error_string =
-        match catch_unwind(|| CString::new(eh::as_error(handle).description()).unwrap()) {
+        match catch_unwind(|| CString::new(eh::as_error(handle).to_string()).unwrap()) {
+            // .description() is deprecated
             Ok(result) => result,
             // the unwrap below could theoretically panic into C code, but in reality we
             // are passing in a hard-coded string which is known never to cause a panic
@@ -416,7 +417,7 @@ pub extern "C" fn qm_clone(handle: u64) -> u64 {
 pub extern "C" fn qm_free_handle(handle: u64) {
     // we cannot assume that free_handle never panics. A drop method could
     // panic
-    if let Err(_) = catch_unwind(|| eh::free_handle(handle)) {
+    if catch_unwind(|| eh::free_handle(handle)).is_err() {
         eprint!("Caught panic during qm_free_handle");
     }
 }
@@ -437,7 +438,7 @@ where
     F: Fn() -> Result<Handle, qm::Error>,
     F: RefUnwindSafe,
 {
-    let result = match catch_unwind(|| f()) {
+    let result = match catch_unwind(f) {
         Ok(result) => result,
         Err(_) => Err(qm::Error::new("Caught panic when creating handle")),
     };
@@ -445,10 +446,10 @@ where
 }
 
 fn convert_dedup(dedup: &QmDedupControl) -> DedupControl {
-    match dedup {
-        &QmDedupControl::QmErrorIfMissing => DedupControl::ErrorIfMissing,
-        &QmDedupControl::QmInline => DedupControl::Inline,
-        &QmDedupControl::QmWriteOnce => DedupControl::WriteOnce,
+    match *dedup {
+        QmDedupControl::QmErrorIfMissing => DedupControl::ErrorIfMissing,
+        QmDedupControl::QmInline => DedupControl::Inline,
+        QmDedupControl::QmWriteOnce => DedupControl::WriteOnce,
     }
 }
 

@@ -32,15 +32,13 @@ impl ConstantExpiryTimeEvolution {
         base_date: DateDayFraction,
     ) -> ConstantExpiryTimeEvolution {
         ConstantExpiryTimeEvolution {
-            base_vol: base_vol,
-            vol_time_offset: vol_time_offset,
-            base_date: base_date,
+            base_vol,
+            vol_time_offset,
+            base_date,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(
             ConstantExpiryTimeEvolution::deserialize(de)?,
         )))
@@ -117,15 +115,13 @@ impl RollingExpiryTimeEvolution {
         base_date: DateDayFraction,
     ) -> RollingExpiryTimeEvolution {
         RollingExpiryTimeEvolution {
-            base_vol: base_vol,
-            vol_time_offset: vol_time_offset,
-            base_date: base_date,
+            base_vol,
+            vol_time_offset,
+            base_date,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(RollingExpiryTimeEvolution::deserialize(
             de,
         )?)))
@@ -199,15 +195,10 @@ impl TypeId for ParallelBumpVol {
 
 impl ParallelBumpVol {
     pub fn new(base_vol: RcVolSurface, bump: f64) -> ParallelBumpVol {
-        ParallelBumpVol {
-            base_vol: base_vol,
-            bump: bump,
-        }
+        ParallelBumpVol { base_vol, bump }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(ParallelBumpVol::deserialize(de)?)))
     }
 }
@@ -271,15 +262,13 @@ impl TypeId for TimeScaledBumpVol {
 impl TimeScaledBumpVol {
     pub fn new(base_vol: RcVolSurface, bump: f64, vol_time_floor: f64) -> TimeScaledBumpVol {
         TimeScaledBumpVol {
-            base_vol: base_vol,
-            bump: bump,
-            vol_time_floor: vol_time_floor,
+            base_vol,
+            bump,
+            vol_time_floor,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
-    ) -> Result<RcVolSurface, esd::Error> {
+    pub fn from_serial(de: &mut dyn esd::Deserializer<'_>) -> Result<RcVolSurface, esd::Error> {
         Ok(Qrc::new(Arc::new(TimeScaledBumpVol::deserialize(de)?)))
     }
 }
@@ -345,8 +334,8 @@ impl TypeId for StickyDeltaBumpVol {
 impl StickyDeltaBumpVol {
     pub fn new(base_vol: RcVolSurface, bumped_forward: Arc<dyn Forward>) -> StickyDeltaBumpVol {
         StickyDeltaBumpVol {
-            base_vol: base_vol,
-            bumped_forward: bumped_forward,
+            base_vol,
+            bumped_forward,
         }
     }
 }
@@ -399,7 +388,7 @@ impl VolSurface for StickyDeltaBumpVol {
 
     fn forward(&self) -> Option<&dyn Interpolate<Date>> {
         // as a result of this bump, the forward for the vol surface changes
-        Some(&*self.bumped_forward.as_interp())
+        Some(self.bumped_forward.as_interp())
     }
 
     fn base_date(&self) -> DateDayFraction {

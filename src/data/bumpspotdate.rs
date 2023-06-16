@@ -14,8 +14,8 @@ pub struct BumpSpotDate {
 impl BumpSpotDate {
     pub fn new(spot_date: Date, spot_dynamics: SpotDynamics) -> BumpSpotDate {
         BumpSpotDate {
-            spot_date: spot_date,
-            spot_dynamics: spot_dynamics,
+            spot_date,
+            spot_dynamics,
         }
     }
 

@@ -71,11 +71,7 @@ where
 
     /// Finds an element given a string, or returns None if not found.
     pub fn get(&self, id: &str) -> Option<Drc<T, R>> {
-        if let Some(element) = self.map.get(id) {
-            Some(element.clone())
-        } else {
-            None
-        }
+        self.map.get(id).cloned()
     }
 
     /// Returns true if the map contains this key
@@ -144,7 +140,7 @@ where
         S: sd::Serializer,
         F: FnOnce(S) -> Result<S::Ok, S::Error>,
     {
-        let control = tls_seed.with(|tls| tls.borrow().control().clone());
+        let control = tls_seed.with(|tls| *tls.borrow().control());
         match control {
             // Inline serialization means we just recurse into the shared pointer. There is
             // no deduplication.
@@ -155,7 +151,7 @@ where
                 let id = self.0.id();
                 let has_key = tls_seed.with(|tls| tls.borrow().contains_key(id));
                 if !has_key {
-                    Err(S::Error::custom(&format!("Unknown id: {}", id)))
+                    Err(S::Error::custom(format!("Unknown id: {}", id)))
                 } else {
                     serializer.serialize_str(id)
                 }
@@ -183,7 +179,7 @@ where
         D: sd::Deserializer<'de>,
         F: FnOnce(D) -> Result<Self, D::Error>,
     {
-        let control = tls_seed.with(|tls| tls.borrow().control().clone());
+        let control = tls_seed.with(|tls| *tls.borrow().control());
         match control {
             // Inline deserialization means we assume the serial form contains the definition
             // of the data inline. Simply recurse into it.
@@ -356,7 +352,7 @@ mod tests {
 
     impl FromId for DrcNode {
         fn from_id(id: &str) -> Option<Self> {
-            DEDUP_NODE.with(|tls| tls.borrow().get(id).clone())
+            DEDUP_NODE.with(|tls| tls.borrow().get(id))
         }
     }
 
@@ -526,21 +522,21 @@ mod tests {
         let d = DrcNode::new(Arc::new(Node {
             id: "d".to_string(),
             data: 3,
-            left: Some(a.clone()),
-            right: Some(b.clone()),
+            left: Some(a),
+            right: Some(b),
         }));
         let e = Node {
             id: "e".to_string(),
             data: 4,
-            left: Some(c.clone()),
-            right: Some(d.clone()),
+            left: Some(c),
+            right: Some(d),
         };
 
         // write it out and read it back in
         let mut buffer = Vec::new();
         {
             let mut serializer = serde_json::Serializer::pretty(&mut buffer);
-            let mut seed = Dedup::<Node, Arc<Node>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Node, Arc<Node>>::new(control, map.clone());
             seed.with(&DEDUP_NODE, || e.serialize(&mut serializer))
                 .unwrap();
         }
@@ -551,7 +547,7 @@ mod tests {
 
         let deserialized = {
             let mut deserializer = serde_json::Deserializer::from_slice(&buffer);
-            let mut seed = Dedup::<Node, Arc<Node>>::new(control.clone(), map.clone());
+            let mut seed = Dedup::<Node, Arc<Node>>::new(control, map);
             seed.with(&DEDUP_NODE, || DrcNode::deserialize(&mut deserializer))
                 .unwrap()
         };

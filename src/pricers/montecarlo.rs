@@ -50,12 +50,12 @@ impl MonteCarloPricerFactory {
     /// model used for the simulation.
     pub fn new(model_factory: RcMonteCarloModelFactory) -> MonteCarloPricerFactory {
         MonteCarloPricerFactory {
-            model_factory: model_factory,
+            model_factory,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn PricerFactory>, esd::Error> {
         Ok(Qrc::new(Arc::new(MonteCarloPricerFactory::deserialize(
             de,
@@ -78,12 +78,12 @@ impl PricerFactory for MonteCarloPricerFactory {
     ) -> Result<Box<dyn Pricer>, qm::Error> {
         // Apply the fixings to the instrument. (This is the last time we need
         // the fixings.)
-        let instruments = match instrument.fix(&*fixing_table)? {
+        let instruments = match instrument.fix(&fixing_table)? {
             Some(fixed) => fixed,
             None => vec![(1.0, instrument)],
         };
 
-        let pricer = MonteCarloPricer::new(instruments, self.model_factory.clone(), &*market_data)?;
+        let pricer = MonteCarloPricer::new(instruments, self.model_factory.clone(), &market_data)?;
         Ok(Box::new(pricer))
     }
 }
@@ -101,7 +101,7 @@ impl MonteCarloPricer {
         let mut dependencies = DependencyCollector::new(spot_date);
         let mut timeline: MonteCarloTimeline = MonteCarloTimeline::new(spot_date);
         let dates_to_value = Vec::new();
-        for &(_, ref instr) in instruments.iter() {
+        for (_, instr) in instruments.iter() {
             dependencies.spot(instr);
             if let Some(mc) = instr.as_mc_priceable() {
                 mc.mc_dependencies(&dates_to_value, &mut timeline)?;

@@ -42,8 +42,8 @@ impl TypeId for DeltaGammaReport {
 }
 
 impl DeltaGammaReport {
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qbox<dyn Report>, esd::Error> {
         Ok(Qbox::new(Box::new(DeltaGammaReport::deserialize(de)?)))
     }
@@ -75,9 +75,9 @@ impl<'v> ApproxEq<ReportTolerances, &'v DeltaGammaReport> for &'v DeltaGammaRepo
         let delta = tol.unit_risk() / self.bumpsize;
         let gamma = delta / self.bumpsize;
         let tolerances = DeltaGammaTolerances { delta, gamma };
-        for (id, ref delta_gamma) in &self.results {
+        for (id, delta_gamma) in &self.results {
             if let Some(other_delta_gamma) = other.results.get(id) {
-                delta_gamma.validate(other_delta_gamma, &tolerances, &id, diffs)?;
+                delta_gamma.validate(other_delta_gamma, &tolerances, id, diffs)?;
             } else {
                 write!(diffs, "DeltaGammaReport: {} is missing", id)?;
             }
@@ -164,11 +164,11 @@ pub struct DeltaGammaReportGenerator {
 
 impl DeltaGammaReportGenerator {
     pub fn new(bumpsize: f64) -> DeltaGammaReportGenerator {
-        DeltaGammaReportGenerator { bumpsize: bumpsize }
+        DeltaGammaReportGenerator { bumpsize }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn ReportGenerator>, esd::Error> {
         Ok(Qrc::new(Arc::new(DeltaGammaReportGenerator::deserialize(
             de,
@@ -223,7 +223,7 @@ impl ReportGenerator for DeltaGammaReportGenerator {
 
         Ok(Qbox::new(Box::new(DeltaGammaReport {
             bumpsize: self.bumpsize,
-            results: results,
+            results,
         })))
     }
 }
@@ -263,13 +263,13 @@ pub mod tests {
         let european = sample_european();
 
         let spot_date = market_data.spot_date();
-        let instrument = RcInstrument::new(Qrc::new(european.clone()));
+        let instrument = RcInstrument::new(Qrc::new(european));
         let dependencies = create_dependencies(&instrument, spot_date);
         let context = PricingContextPrefetch::new(&market_data, dependencies).unwrap();
 
         Box::new(SamplePricer {
             instruments: vec![(1.0, instrument)],
-            context: context,
+            context,
         })
     }
 
@@ -382,7 +382,7 @@ pub mod tests {
 
         // round trip it via JSON
         let serialized = serde_json::to_string_pretty(&generator).unwrap();
-        print!("serialized: {}\n", serialized);
+        println!("serialized: {}", serialized);
         let deserialized: RcReportGenerator = serde_json::from_str(&serialized).unwrap();
 
         // check that they match, at least in debug representation

@@ -62,15 +62,15 @@ impl ZeroCoupon {
         ZeroCoupon {
             id: id.to_string(),
             credit_id: credit_id.to_string(),
-            currency: currency,
-            ex_date: ex_date,
-            payment_date: payment_date,
-            settlement: settlement,
+            currency,
+            ex_date,
+            payment_date,
+            settlement,
         }
     }
 
-    pub fn from_serial<'de>(
-        de: &mut dyn esd::Deserializer<'de>,
+    pub fn from_serial(
+        de: &mut dyn esd::Deserializer<'_>,
     ) -> Result<Qrc<dyn Instrument>, esd::Error> {
         Ok(Qrc::new(Arc::new(ZeroCoupon::deserialize(de)?)))
     }
@@ -78,7 +78,7 @@ impl ZeroCoupon {
 
 impl Instrument for ZeroCoupon {
     fn payoff_currency(&self) -> &Currency {
-        &*self.currency
+        &self.currency
     }
 
     fn credit_id(&self) -> &str {
